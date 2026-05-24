@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="40" fill="#080d1a"/>
+  <!-- Ondas radar -->
+  <circle cx="96" cy="96" r="70" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.3"/>
+  <circle cx="96" cy="96" r="50" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.5"/>
+  <circle cx="96" cy="96" r="30" fill="none" stroke="#2563eb" stroke-width="2.5" opacity="0.7"/>
+  <!-- Bus -->
+  <rect x="58" y="74" width="76" height="44" rx="10" fill="#2563eb"/>
+  <rect x="64" y="80" width="20" height="16" rx="4" fill="#080d1a" opacity="0.8"/>
+  <rect x="108" y="80" width="20" height="16" rx="4" fill="#080d1a" opacity="0.8"/>
+  <rect x="58" y="96" width="76" height="4" fill="#1d4ed8"/>
+  <circle cx="76" cy="122" r="7" fill="#1e293b" stroke="#2563eb" stroke-width="2.5"/>
+  <circle cx="116" cy="122" r="7" fill="#1e293b" stroke="#2563eb" stroke-width="2.5"/>
+  <!-- Dot verde -->
+  <circle cx="140" cy="56" r="10" fill="#22c55e"/>
+</svg>
