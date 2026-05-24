@@ -9,6 +9,7 @@ import { getNearbyStopsClient, walkingMinutes, distanceTo, formatEta, formatTime
 import { STOPS_DATASET, lineColorFromCode, type BusStop } from "@/lib/stm";
 import LeaveNowHero from "@/components/home/LeaveNowHero";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
+import RoutesManager from "@/components/home/RoutesManager";
 
 type Tab = "home" | "map" | "search";
 
@@ -21,13 +22,19 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [nearbyStops, setNearbyStops] = useState<BusStop[]>([]);
   const [activeStopId, setActiveStopId] = useState<string | null>(null);
   const [sheetStopId, setSheetStopId] = useState<string | null>(null);
-  const [favorites] = useState<FavoriteRoute[]>(() => getPrefs().favoriteRoutes);
-  const [now, setNow] = useState(new Date());
+  const [showRoutesManager, setShowRoutesManager] = useState(false);
+  // Favoritos: inicializar vacío para evitar hydration mismatch, cargar en useEffect
+  const [favorites, setFavorites] = useState<FavoriteRoute[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState<Date | null>(null);
 
-  // Reloj vivo
+  // Todo lo que toca localStorage/Date: solo en cliente
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(id);
+    setMounted(true);
+    setNow(new Date());
+    setFavorites(getPrefs().favoriteRoutes);
+    const clockId = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(clockId);
   }, []);
 
   // Paradas cercanas apenas tenemos ubicación
@@ -48,7 +55,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     ? walkingMinutes(distanceTo(location.lat, location.lon, activeStop.stopLat, activeStop.stopLon))
     : 5;
 
-  const greeting = getGreeting(now);
+  const greeting = now ? getGreeting(now) : "Buen día";
 
   return (
     <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden">
@@ -63,7 +70,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
             </h1>
           </div>
           <div className="flex items-center gap-1.5 mt-1">
-            {lastUpdated && (
+            {mounted && lastUpdated && (
               <span className="text-[10px] text-slate-600">{formatTime(lastUpdated)}</span>
             )}
             <div className="w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
@@ -151,22 +158,39 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       )}
 
       {/* ── FAVORITOS ── */}
-      {favorites.length > 0 && (
+      {mounted && (
         <section className="px-5 mb-5 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Mis rutas</p>
-            <button className="text-xs text-blue-400 font-medium">Editar</button>
+            <button onClick={() => setShowRoutesManager(true)} className="text-xs text-blue-400 font-medium">
+              {favorites.length > 0 ? "Editar" : "+ Agregar"}
+            </button>
           </div>
-          <div className="space-y-2">
-            {favorites.map((fav, i) => (
-              <FavoriteRouteRow
-                key={fav.id}
-                route={fav}
-                index={i}
-                onTap={() => setSheetStopId(fav.fromStop)}
-              />
-            ))}
-          </div>
+          {favorites.length > 0 ? (
+            <div className="space-y-2">
+              {favorites.map((fav, i) => (
+                <FavoriteRouteRow
+                  key={fav.id}
+                  route={fav}
+                  index={i}
+                  onTap={() => setSheetStopId(fav.fromStop)}
+                />
+              ))}
+            </div>
+          ) : (
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowRoutesManager(true)}
+              className="w-full glass rounded-2xl px-4 py-4 flex items-center gap-3 border border-dashed border-white/10"
+            >
+              <div className="w-9 h-9 rounded-xl bg-blue-600/10 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </div>
+              <p className="text-sm text-slate-500">Guardá tus rutas favoritas para acceso rápido</p>
+            </motion.button>
+          )}
         </section>
       )}
 
@@ -221,6 +245,16 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
           <StopArrivalSheet
             stopId={sheetStopId}
             onClose={() => setSheetStopId(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── GESTOR DE RUTAS ── */}
+      <AnimatePresence>
+        {showRoutesManager && (
+          <RoutesManager
+            onClose={() => setShowRoutesManager(false)}
+            onChange={() => setFavorites(getPrefs().favoriteRoutes)}
           />
         )}
       </AnimatePresence>
