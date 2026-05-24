@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { lineColorFromId } from "@/lib/utils";
+import { lineColorFromCode } from "@/lib/stm";
 import type { BusStop } from "@/lib/stm";
 
 interface NearbyStopCardProps {
@@ -50,7 +50,7 @@ export default function NearbyStopCard({ stop, isActive, onTap }: NearbyStopCard
           <span
             key={line}
             className="text-[10px] font-bold px-1.5 py-0.5 rounded-md text-white shrink-0"
-            style={{ backgroundColor: lineColorFromId(line) + "40" }}
+            style={{ backgroundColor: lineColorFromCode(line) + "40" }}
           >
             {line}
           </span>

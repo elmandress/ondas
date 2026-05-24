@@ -5,18 +5,21 @@ export async function GET(req: NextRequest) {
   const lat = req.nextUrl.searchParams.get("lat");
   const lon = req.nextUrl.searchParams.get("lon");
   const q = req.nextUrl.searchParams.get("q");
+  const radius = req.nextUrl.searchParams.get("radius");
 
-  try {
-    if (q) {
-      const stops = await searchStops(q);
-      return NextResponse.json({ stops });
-    }
-    if (lat && lon) {
-      const stops = await getNearbyStops(parseFloat(lat), parseFloat(lon));
-      return NextResponse.json({ stops });
-    }
-    return NextResponse.json({ error: "Parámetros insuficientes" }, { status: 400 });
-  } catch {
-    return NextResponse.json({ error: "Error al obtener paradas" }, { status: 500 });
+  if (q !== null) {
+    const stops = searchStops(q);
+    return NextResponse.json({ stops });
   }
+
+  if (lat && lon) {
+    const stops = getNearbyStops(
+      parseFloat(lat),
+      parseFloat(lon),
+      radius ? parseInt(radius) : 600
+    );
+    return NextResponse.json({ stops });
+  }
+
+  return NextResponse.json({ error: "Parámetros insuficientes — usar ?q= o ?lat=&lon=" }, { status: 400 });
 }

@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { STOPS_DATASET, type BusStop } from "@/lib/stm";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -27,7 +28,6 @@ export function etaColorClass(minutes: number): string {
 }
 
 export function walkToLeaveTime(walkMinutes: number, etaMinutes: number): number {
-  // Cuántos minutos tenés para salir
   return Math.max(0, etaMinutes - walkMinutes);
 }
 
@@ -37,30 +37,36 @@ export function leaveNowUrgency(leaveInMinutes: number): "now" | "soon" | "chill
   return "chill";
 }
 
-export function lineColorFromId(lineId: string): string {
-  const colors: Record<string, string> = {
-    "103": "#2563eb",
-    "174": "#7c3aed",
-    "D1": "#ea580c",
-    "189": "#0891b2",
-    "G": "#16a34a",
-    "H": "#dc2626",
-    "21": "#ca8a04",
-    "121": "#db2777",
-    "20": "#0284c7",
-  };
-  return colors[lineId] || "#64748b";
-}
-
 export function formatTime(date: Date): string {
   return date.toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" });
 }
 
-export function bearing(from: [number, number], to: [number, number]): number {
-  const [lat1, lon1] = from.map((d) => (d * Math.PI) / 180);
-  const [lat2, lon2] = to.map((d) => (d * Math.PI) / 180);
-  const dLon = lon2 - lon1;
-  const y = Math.sin(dLon) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+// Búsqueda de paradas cercanas del lado del cliente
+export function getNearbyStopsClient(lat: number, lon: number, radiusM = 600): BusStop[] {
+  return STOPS_DATASET.filter((s) => {
+    const dist = haversineMeters(lat, lon, s.stopLat, s.stopLon);
+    return dist <= radiusM;
+  })
+    .sort((a, b) => haversineMeters(lat, lon, a.stopLat, a.stopLon) - haversineMeters(lat, lon, b.stopLat, b.stopLon))
+    .slice(0, 6);
+}
+
+// Distancia entre dos paradas en metros
+export function distanceTo(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  return Math.round(haversineMeters(lat1, lon1, lat2, lon2));
+}
+
+// Tiempo caminando estimado (4.5 km/h)
+export function walkingMinutes(distanceMeters: number): number {
+  return Math.ceil(distanceMeters / 75); // 75m/min ≈ 4.5km/h
+}
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

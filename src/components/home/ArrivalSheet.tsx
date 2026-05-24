@@ -2,7 +2,8 @@
 
 import { motion } from "framer-motion";
 import type { Arrival } from "@/lib/stm";
-import { formatEta, etaColorClass, lineColorFromId, formatTime } from "@/lib/utils";
+import { formatEta, etaColorClass, formatTime } from "@/lib/utils";
+import { lineColorFromCode } from "@/lib/stm";
 
 interface ArrivalSheetProps {
   stopName: string;
@@ -122,7 +123,7 @@ function OccupancyIcon({ level }: { level?: string }) {
 }
 
 function ArrivalRow({ arrival }: { arrival: Arrival }) {
-  const color = arrival.lineColor || lineColorFromId(arrival.lineId);
+  const color = arrival.lineColor || lineColorFromCode(arrival.lineId);
   const isUrgent = arrival.eta <= 2;
 
   return (

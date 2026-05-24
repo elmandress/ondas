@@ -2,7 +2,8 @@
 
 import { motion } from "framer-motion";
 import type { Arrival } from "@/lib/stm";
-import { walkToLeaveTime, leaveNowUrgency, formatEta, lineColorFromId } from "@/lib/utils";
+import { walkToLeaveTime, leaveNowUrgency, formatEta } from "@/lib/utils";
+import { lineColorFromCode } from "@/lib/stm";
 
 interface LeaveNowCardProps {
   arrivals: Arrival[];
@@ -111,7 +112,7 @@ export default function LeaveNowCard({ arrivals, walkMinutes, stopName, onTap }:
 }
 
 function BusChip({ arrival, highlight }: { arrival: Arrival; highlight?: boolean }) {
-  const color = arrival.lineColor || lineColorFromId(arrival.lineId);
+  const color = arrival.lineColor || lineColorFromCode(arrival.lineId);
   return (
     <div
       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl ${highlight ? "bg-white/10" : "bg-white/5"}`}

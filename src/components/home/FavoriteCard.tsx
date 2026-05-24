@@ -2,7 +2,8 @@
 
 import { motion } from "framer-motion";
 import { useArrivals } from "@/hooks/useArrivals";
-import { formatEta, etaColorClass, lineColorFromId } from "@/lib/utils";
+import { formatEta, etaColorClass } from "@/lib/utils";
+import { lineColorFromCode } from "@/lib/stm";
 import type { FavoriteRoute } from "@/lib/store";
 
 interface FavoriteCardProps {
@@ -34,7 +35,7 @@ export default function FavoriteCard({ route, onTap }: FavoriteCardProps) {
             <span
               key={line}
               className="text-[10px] font-bold px-1.5 py-0.5 rounded-md text-white"
-              style={{ backgroundColor: lineColorFromId(line) + "55", border: `1px solid ${lineColorFromId(line)}66` }}
+              style={{ backgroundColor: lineColorFromCode(line) + "55", border: `1px solid ${lineColorFromCode(line)}66` }}
             >
               {line}
             </span>
