@@ -28,9 +28,10 @@ import {
   getStopsBetween,
 } from "@/lib/gtfs-db";
 import { getLineHoursLookup, type LineHoursLookup } from "@/lib/line-hours";
+import { getNextScheduledPerLine } from "@/lib/schedule-db";
 
-const WALK_SPEED_MS = 1.25;            // 4.5 km/h
-const BUS_WAIT_DEFAULT_S = 360;        // 6 min promedio de espera por bus
+const WALK_SPEED_MS = 1.25;            // 4.5 km/h (igual que walkingMinutes en utils.ts)
+const BUS_WAIT_DEFAULT_S = 360;        // 6 min — fallback si schedule.db no disponible
 const TRANSFER_WAIT_S = 240;           // 4 min de espera al transbordo
 const MAX_WALK_TO_STOP_M = 1500;
 /** Si origen y destino están a menos de esto, ofrecer caminar como opción. */
@@ -269,6 +270,25 @@ function buildSignature(route: Omit<PlannedRoute, "signature">): string {
   return `transfer:${busLines.join("+")}`;
 }
 
+/**
+ * Calcula el tiempo de espera real en una parada para una lista de líneas,
+ * consultando schedule.db. Devuelve el mínimo entre las líneas (tomas el
+ * primer bus que llegue). Fallback a BUS_WAIT_DEFAULT_S si no hay datos.
+ */
+function realWaitSeconds(stopId: string, lines: string[], nowDate: Date): number {
+  try {
+    const scheduled = getNextScheduledPerLine(stopId, lines, 120);
+    if (!scheduled.length) return BUS_WAIT_DEFAULT_S;
+    const minWait = Math.min(...scheduled.map((s) => s.minutesFromNow));
+    // Si el próximo pasa en ≤0 min (ahora) o >90 min (no práctico), usar default
+    if (minWait <= 0) return 60; // acaba de pasar, el siguiente en ~1min
+    if (minWait > 90) return BUS_WAIT_DEFAULT_S;
+    return minWait * 60;
+  } catch {
+    return BUS_WAIT_DEFAULT_S;
+  }
+}
+
 export function planRoutesGtfs(
   origin: { lat: number; lon: number },
   destination: { lat: number; lon: number },
@@ -281,6 +301,9 @@ export function planRoutesGtfs(
     now,
     operatingWindowMin = 90,
   } = options;
+
+  // Fecha actual para calcular espera real (se pasa a realWaitSeconds)
+  const nowDate = now ?? new Date();
 
   // Filtro de horario operativo: si now === null, no filtramos.
   // Si no se pasa, usamos new Date() para filtrar líneas que no operan ahora.
@@ -344,7 +367,9 @@ export function planRoutesGtfs(
 
       const busSeconds = Math.max(60, m.toArrivalSeconds - m.fromArrivalSeconds);
       const busDistM = m.numStops * 350;
-      const totalSeconds = f.walkS + BUS_WAIT_DEFAULT_S + busSeconds + toNear.walkS;
+      // Tiempo de espera REAL al próximo bus (desde schedule.db), no el fijo de 6 min
+      const waitS = realWaitSeconds(f.stop.stopId, [m.shortName], nowDate);
+      const totalSeconds = f.walkS + waitS + busSeconds + toNear.walkS;
 
       const busPolyline = buildBusLegPolyline(m.fromVariantId, m.fromSeq, m.toSeq, allStopsById);
       const r: Omit<PlannedRoute, "signature"> = {
@@ -358,7 +383,6 @@ export function planRoutesGtfs(
             distanceM: Math.round(f.walkM),
             toStopId: f.stop.stopId,
             toStopName: f.stop.stopName,
-            // walk inicial: del origen real a la parada
             polyline: [[origin.lat, origin.lon], [f.stop.stopLat, f.stop.stopLon]],
           },
           {
@@ -370,7 +394,7 @@ export function planRoutesGtfs(
             lines: [m.shortName],
             headsign: m.headsign,
             numStops: m.numStops,
-            durationS: busSeconds + BUS_WAIT_DEFAULT_S,
+            durationS: busSeconds + waitS,
             distanceM: busDistM,
             variantId: m.fromVariantId,
             polyline: busPolyline,
@@ -381,7 +405,6 @@ export function planRoutesGtfs(
             distanceM: Math.round(toNear.walkM),
             fromStopId: m.toStopId,
             fromStopName: toNear.stop.stopName,
-            // walk final: de la parada al destino real
             polyline: [[toNear.stop.stopLat, toNear.stop.stopLon], [destination.lat, destination.lon]],
           },
         ],
@@ -441,8 +464,10 @@ export function planRoutesGtfs(
               const bus1Seconds = Math.max(60, alightStop.arrivalSeconds - v1.arrivalSeconds);
               const bus2Seconds = Math.max(60, m2.toArrivalSeconds - m2.fromArrivalSeconds);
               const transferWalkS = Math.round(board.walkM / WALK_SPEED_MS);
+              // Espera real al primer bus (schedule.db), fallback 6min
+              const wait1S = realWaitSeconds(f.stop.stopId, [v1.shortName], nowDate);
               const totalSeconds =
-                f.walkS + BUS_WAIT_DEFAULT_S + bus1Seconds +
+                f.walkS + wait1S + bus1Seconds +
                 transferWalkS + TRANSFER_WAIT_S +
                 bus2Seconds + toNear.walkS;
 
@@ -466,7 +491,7 @@ export function planRoutesGtfs(
                   lines: [v1.shortName],
                   headsign: v1.headsign,
                   numStops: alightStop.sequence - v1.sequence,
-                  durationS: bus1Seconds + BUS_WAIT_DEFAULT_S,
+                  durationS: bus1Seconds + wait1S,
                   distanceM: (alightStop.sequence - v1.sequence) * 350,
                   variantId: v1.variantId,
                   polyline: bus1Polyline,

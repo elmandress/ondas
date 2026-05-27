@@ -1,26 +1,40 @@
 {
   "name": "Ondas — Transporte Montevideo",
   "short_name": "Ondas",
-  "description": "La app de transporte más inteligente de Montevideo. Sabé cuándo salir.",
-  "start_url": "/",
+  "description": "La app de transporte más inteligente de Montevideo. Llegadas en tiempo real, rutas inteligentes y mapa en vivo.",
+  "start_url": "/?source=pwa",
   "display": "standalone",
   "background_color": "#080d1a",
   "theme_color": "#080d1a",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
   "categories": ["travel", "utilities"],
   "lang": "es-UY",
+  "dir": "ltr",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "screenshots": [],
@@ -29,14 +43,21 @@
       "name": "Ver llegadas",
       "short_name": "Llegadas",
       "description": "Ver próximas llegadas en mi parada",
-      "url": "/?tab=home",
+      "url": "/?tab=home&source=shortcut",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Mapa en vivo",
       "short_name": "Mapa",
-      "description": "Ver buses en tiempo real",
-      "url": "/?tab=map",
+      "description": "Ver buses en tiempo real en el mapa",
+      "url": "/?tab=map&source=shortcut",
+      "icons": [{ "src": "/icons/icon-512.png", "sizes": "512x512" }]
+    },
+    {
+      "name": "Cómo llegar",
+      "short_name": "Ruta",
+      "description": "Planificar una ruta en colectivo",
+      "url": "/?tab=route&source=shortcut",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]

@@ -15,6 +15,7 @@ import { setSelectedRoute } from "@/lib/selected-route";
 import { setActiveTab } from "@/lib/active-tab";
 import { useRouteInput, setRouteInput } from "@/lib/route-input";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 
 interface Place { name: string; subtitle?: string; lat: number; lon: number; icon?: string; }
 
@@ -33,7 +34,19 @@ export default function RouteScreen() {
   const [searching, setSearching] = useState(false);
   const [sheetStopId, setSheetStopId] = useState<string | null>(null);
   const [history, setHistory] = useState<Place[]>([]);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const voice = useVoiceInput({
+    onResult: (transcript) => {
+      setQuery(transcript);
+      setVoiceError(null);
+    },
+    onError: (msg) => {
+      setVoiceError(msg);
+      setTimeout(() => setVoiceError(null), 3000);
+    },
+  });
 
   // Cargar historial
   useEffect(() => {
@@ -205,7 +218,7 @@ export default function RouteScreen() {
           {showSuggestions ? (
             <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
               <div className="card-soft px-3 py-2 flex items-center gap-2">
-                <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-4 h-4 text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input
@@ -215,8 +228,46 @@ export default function RouteScreen() {
                   placeholder={activeInput === "from" ? "Desde dónde…" : "A dónde vas…"}
                   className="flex-1 bg-transparent outline-none text-body text-white placeholder:text-slate-600"
                 />
-                <button onClick={() => { setActiveInput(null); setQuery(""); }} className="text-xs text-blue-400 font-semibold">Cancelar</button>
+                {voice.supported && (
+                  <button
+                    onClick={() => voice.state === "listening" ? voice.stop() : voice.start()}
+                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+                    style={{
+                      background: voice.state === "listening"
+                        ? "rgba(239,68,68,0.2)"
+                        : "rgba(255,255,255,0.05)",
+                    }}
+                    aria-label={voice.state === "listening" ? "Detener grabación" : "Buscar por voz"}
+                  >
+                    {voice.state === "listening" ? (
+                      <svg className="w-3.5 h-3.5 text-red-400 animate-pulse" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="6" width="12" height="12" rx="2"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                        <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                      </svg>
+                    )}
+                  </button>
+                )}
+                <button onClick={() => { setActiveInput(null); setQuery(""); voice.stop(); }} className="text-xs text-blue-400 font-semibold flex-shrink-0">Cancelar</button>
               </div>
+              {/* Toast de error de voz */}
+              <AnimatePresence>
+                {voiceError && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-[11px] text-red-400 px-1"
+                  >
+                    {voiceError}
+                  </motion.p>
+                )}
+              </AnimatePresence>
 
               {/* Mi ubicación rápida si activeInput=from y hay location */}
               {activeInput === "from" && location && !query && (

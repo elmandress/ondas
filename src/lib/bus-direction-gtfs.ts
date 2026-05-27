@@ -32,6 +32,13 @@ import { findStopServer } from "@/lib/stops-server";
 /** Tiempo promedio entre paradas en tráfico urbano de MVD (segundos). */
 const AVG_SECONDS_PER_STOP = 70;
 
+/**
+ * Distancia máxima entre el GPS del bus y la parada GTFS más cercana para
+ * considerar el posicionamiento válido. 900m tolera GPS ruidoso urbano y
+ * buses entre paradas sin señal (puentes, túneles, giros largos).
+ */
+const MAX_GPS_SNAP_M = 900;
+
 export interface GtfsCheckResult {
   /** true si el bus va hacia la parada (upstream). */
   goingTo: boolean;
@@ -135,9 +142,9 @@ export function busTowardsStopGtfs(
   const currentStop = stops[bestStopIdx];
   const currentSeq = currentStop.sequence;
 
-  // Salvaguarda: si el bus está muy lejos (>500m) de la parada GTFS más cercana,
-  // el GPS no es confiable o el bus está fuera de ruta
-  if (bestDist > 600) {
+  // Salvaguarda: si el bus está muy lejos de la parada GTFS más cercana,
+  // el GPS no es confiable o el bus está fuera de ruta.
+  if (bestDist > MAX_GPS_SNAP_M) {
     return {
       goingTo: false,
       reason: "no-position",

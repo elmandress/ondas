@@ -1,11 +1,13 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 import { useArrivals } from "@/hooks/useArrivals";
 import { useStopInfo } from "@/hooks/useStopInfo";
 import { STOPS_DATASET } from "@/lib/stm";
 import { formatEta, etaColorClass, formatTime } from "@/lib/utils";
 import { useFavoriteStops, toggleFavoriteStop } from "@/lib/favorite-stops";
+import LineDetailSheet from "@/components/home/LineDetailSheet";
 
 interface StopArrivalSheetProps {
   stopId: string;
@@ -18,6 +20,8 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
   const { arrivals, loading, lastUpdated, refetch } = useArrivals(stopId, 20000);
   // Líneas REALES de la API (no las del shapefile que están desactualizadas)
   const realLines = info?.variants.map((v) => v.lineCode) || stop?.lines || [];
+  // Vista de línea completa
+  const [lineDetail, setLineDetail] = useState<{ line: string; destination?: string } | null>(null);
 
   // Favoritos reactivos
   const favorites = useFavoriteStops();
@@ -118,17 +122,19 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
               </div>
             </div>
 
-            {/* Line chips — usar líneas REALES de la API */}
+            {/* Line chips — tocar para ver recorrido completo */}
             {realLines.length > 0 && (
               <div className="flex gap-1.5 flex-wrap mt-3 max-h-14 overflow-hidden">
                 {realLines.slice(0, 12).map((l) => (
-                  <span
+                  <button
                     key={l}
-                    className="text-[10px] font-black px-2 py-0.5 rounded-md text-slate-300"
+                    onClick={() => setLineDetail({ line: l })}
+                    className="text-[10px] font-black px-2 py-0.5 rounded-md text-slate-300 active:scale-95 transition-transform"
                     style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}
+                    title={`Ver recorrido completo línea ${l}`}
                   >
                     {l}
-                  </span>
+                  </button>
                 ))}
                 {realLines.length > 12 && (
                   <span className="text-[10px] text-slate-600 self-center">+{realLines.length - 12}</span>
@@ -183,7 +189,10 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.03 }}
                   >
-                    <ArrivalRow arrival={a} />
+                    <ArrivalRow
+                      arrival={a}
+                      onLinePress={(line, destination) => setLineDetail({ line, destination })}
+                    />
                   </motion.div>
                 ))}
 
@@ -195,11 +204,29 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
           </div>
         </div>
       </motion.div>
+
+      {/* Vista de recorrido completo de una línea */}
+      <AnimatePresence>
+        {lineDetail && (
+          <LineDetailSheet
+            line={lineDetail.line}
+            destination={lineDetail.destination}
+            highlightStopId={stopId}
+            onClose={() => setLineDetail(null)}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }
 
-function ArrivalRow({ arrival }: { arrival: import("@/lib/stm").Arrival }) {
+function ArrivalRow({
+  arrival,
+  onLinePress,
+}: {
+  arrival: import("@/lib/stm").Arrival;
+  onLinePress?: (line: string, destination: string) => void;
+}) {
   const isUrgent = arrival.eta <= 2;
   const isSoon = arrival.eta <= 8;
 
@@ -211,13 +238,15 @@ function ArrivalRow({ arrival }: { arrival: import("@/lib/stm").Arrival }) {
         border: isUrgent ? "1px solid rgba(52,211,153,0.2)" : isSoon ? "1px solid rgba(251,191,36,0.1)" : "1px solid rgba(255,255,255,0.04)",
       }}
     >
-      {/* Unified line badge */}
-      <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm text-white flex-shrink-0"
+      {/* Line badge — tappable para ver recorrido completo */}
+      <button
+        onClick={() => onLinePress?.(arrival.lineName, arrival.destination)}
+        className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm text-white flex-shrink-0 active:scale-95 transition-transform"
         style={{ background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.12)" }}
+        title={`Ver recorrido línea ${arrival.lineName}`}
       >
         {arrival.lineName}
-      </div>
+      </button>
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-white truncate">{arrival.destination}</p>

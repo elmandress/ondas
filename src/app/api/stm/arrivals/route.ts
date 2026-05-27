@@ -37,7 +37,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function mapUpcomingToArrival(u: MvdUpcomingBus, stopId?: string): Arrival {
-  // Enriquecer con paradas restantes y distancia real de recorrido usando GTFS
+  // upcomingBuses ya viene con ETA calculado por el backend STM con GPS real.
+  // Usamos ese ETA como fuente primaria — NO lo sobreescribimos con estimación GTFS.
+  // GTFS solo se consulta para enriquecer: paradas restantes, distancia real, isShortened.
   let remainingStops: number | undefined;
   let routeDistanceM: number | undefined;
   let isShortened = false;
@@ -65,15 +67,18 @@ function mapUpcomingToArrival(u: MvdUpcomingBus, stopId?: string): Arrival {
     }
   }
 
+  // ETA oficial STM (GPS real, calculado por el backend de IM).
+  // Nota: u.eta viene en segundos. Math.round para evitar saltos de ±30s.
+  const etaSeconds = Math.max(0, u.eta);
   return {
     lineId: u.line,
     lineName: u.line,
     lineColor: lineColorFromCode(u.line),
     destination: u.destination,
     destinationCode: u.lineVariantId,
-    eta: Math.max(0, Math.round(u.eta / 60)),
-    etaSeconds: u.eta,
-    // Preferimos distancia REAL del recorrido (GTFS), fallback a la que da la API oficial
+    eta: Math.round(etaSeconds / 60),
+    etaSeconds,
+    // Distancia REAL del recorrido (GTFS) si disponible, fallback al dato STM oficial
     distance: routeDistanceM ?? u.distance,
     remainingStops,
     vehicleId: String(u.busId),
