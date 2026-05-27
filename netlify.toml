@@ -1,15 +1,19 @@
 [build]
+  # No declaramos `publish`: el adaptador oficial de Netlify para Next.js
+  # (OpenNext) detecta el output y monta las funciones server-side
+  # automáticamente. Si seteamos publish=".next" Netlify trata la carpeta
+  # como estática y devuelve 404 porque no hay index.html (Next 16 con App
+  # Router no genera uno: las páginas son server-rendered).
+  #
+  # Tampoco declaramos [[plugins]] @netlify/plugin-nextjs: la doc oficial
+  # recomienda NO pinearlo — Netlify aplica la última versión en cada build.
   command = "npm run build"
-  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "22"
   NEXT_TELEMETRY_DISABLED = "1"
   # better-sqlite3 necesita compilarse contra el Node de Netlify Functions
   NPM_FLAGS = "--include=optional"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
 
 # Bundlear los archivos de datos (gtfs.db, mvd-pois.json, variant_to_line.json)
 # en las API routes serverless. schedule.db (84MB) excluido por tamaño.
