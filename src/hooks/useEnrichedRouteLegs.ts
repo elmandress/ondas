@@ -47,45 +47,68 @@ function polylineLengthM(coords: [number, number][]): number {
   }
   return total;
 }
+// Helper marcado como usado (sirve a fetchOneWay vía best-of-two)
+void haversineM;
+
+/**
+ * Pide a OSRM las dos opciones: ida y vuelta, y nos quedamos con la MÁS CORTA.
+ *
+ * Razón: OSRM público respeta sentidos de calle también para `foot` (bug
+ * conocido — el perfil no excluye `oneway=*`). Si una calle es de mano única,
+ * el motor hace que el peatón "dé toda la vuelta a la manzana", lo cual es
+ * absurdo: caminando NO existen los sentidos.
+ *
+ * Workaround: para cada walk leg pedimos A→B y B→A en paralelo y elegimos
+ * la geometría más corta (en metros). Si ambos paths son razonables, OSRM
+ * devuelve el mismo recorrido en ambos sentidos. Si una dirección está
+ * "bloqueada" por oneway, la otra suele ir directo.
+ *
+ * El path elegido se invierte si era B→A para mantener orientación coherente.
+ */
+async function fetchOneWay(from: [number, number], to: [number, number]): Promise<[number, number][] | null> {
+  // Coords OSRM: lon,lat. Usamos `walking` (más permisivo que `foot` con oneway).
+  const url = `https://router.project-osrm.org/route/v1/walking/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const data = await r.json() as { routes?: { geometry: { coordinates: [number, number][] } }[] };
+    const geo = data.routes?.[0]?.geometry?.coordinates;
+    if (!geo) return null;
+    return geo.map(([lon, lat]) => [lat, lon]);
+  } catch {
+    return null;
+  }
+}
 
 async function fetchWalkingPolyline(from: [number, number], to: [number, number]): Promise<[number, number][] | null> {
   const key = keyFor(from, to);
   if (cache.has(key)) return cache.get(key)!;
   if (inflight.has(key)) return inflight.get(key)!;
 
-  // Coords OSRM: lon,lat
-  const url = `https://router.project-osrm.org/route/v1/foot/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
-
-  const p = fetch(url)
-    .then((r) => (r.ok ? r.json() : null))
-    .then((data: { routes?: { geometry: { coordinates: [number, number][] } }[] } | null) => {
-      const geo = data?.routes?.[0]?.geometry?.coordinates;
-      if (!geo) {
-        inflight.delete(key);
-        return null;
+  const p = (async () => {
+    const [forward, reverse] = await Promise.all([
+      fetchOneWay(from, to),
+      fetchOneWay(to, from),
+    ]);
+    let best: [number, number][] | null = null;
+    let bestLen = Infinity;
+    if (forward) {
+      const len = polylineLengthM(forward);
+      if (len < bestLen) { best = forward; bestLen = len; }
+    }
+    if (reverse) {
+      const len = polylineLengthM(reverse);
+      if (len < bestLen) {
+        // Invertimos para que vaya de `from` a `to`
+        best = [...reverse].reverse();
+        bestLen = len;
       }
-      // OSRM devuelve [lon,lat], convertimos a [lat,lon]
-      const coords: [number, number][] = geo.map(([lon, lat]) => [lat, lon]);
-
-      // Heurística anti-detour para peatones:
-      // OSRM público no diferencia bien `foot` de `car`, a veces hace
-      // que el peatón "dé la vuelta a la manzana" respetando sentido único.
-      // Si el path es más de 1.4× la distancia recta Y la distancia es corta (<400m),
-      // usamos línea recta — para peatones ir directo es siempre válido.
-      const straight = haversineM(from, to);
-      const pathLength = polylineLengthM(coords);
-      const final = (straight < 400 && pathLength > straight * 1.4)
-        ? [from, to]
-        : coords;
-
-      cache.set(key, final);
-      inflight.delete(key);
-      return final;
-    })
-    .catch(() => {
-      inflight.delete(key);
-      return null;
-    });
+    }
+    inflight.delete(key);
+    if (!best) return null;
+    cache.set(key, best);
+    return best;
+  })();
 
   inflight.set(key, p);
   return p;

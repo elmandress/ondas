@@ -17,7 +17,8 @@
   included_files = [
     "data/gtfs.db",
     "data/mvd-pois.json",
-    "data/variant_to_line.json"
+    "data/variant_to_line.json",
+    "data/line-hours.json"
   ]
   external_node_modules = ["better-sqlite3"]
   node_bundler = "nft"

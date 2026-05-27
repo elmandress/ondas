@@ -8,9 +8,8 @@ import { useStopsDataset } from "@/hooks/useStopsDataset";
 import { getPrefs, type FavoriteRoute } from "@/lib/store";
 import { useFavoriteStops, removeFavoriteStop, aliasIcon, type FavoriteStop } from "@/lib/favorite-stops";
 import AliasEditor from "@/components/home/AliasEditor";
-import { getNearbyStopsClient, walkingMinutes, distanceTo, formatEta, formatTime } from "@/lib/utils";
-import { STOPS_DATASET, type BusStop } from "@/lib/stm";
-import LeaveNowHero from "@/components/home/LeaveNowHero";
+import { getNearbyStopsClient, distanceTo, formatEta } from "@/lib/utils";
+import { type BusStop } from "@/lib/stm";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
 import RoutesManager from "@/components/home/RoutesManager";
 
@@ -21,7 +20,7 @@ interface HomeScreenProps {
 }
 
 export default function HomeScreen({ onTabChange }: HomeScreenProps) {
-  const { location, loading: locationLoading, isReal: locationIsReal } = useLocation();
+  const { location, isReal: locationIsReal } = useLocation();
   const { ready: stopsReady } = useStopsDataset();
   const [nearbyStops, setNearbyStops] = useState<BusStop[]>([]);
   const [activeStopId, setActiveStopId] = useState<string | null>(null);
@@ -59,15 +58,6 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     }
   }, [location, stopsReady]);
 
-  // Llegadas de la parada activa (el LeaveNow hero)
-  const { arrivals: heroArrivals, loading: heroLoading, lastUpdated } = useArrivals(activeStopId, 20000);
-
-  const activeStop = STOPS_DATASET.find((s) => s.stopId === activeStopId);
-  // Solo calcular caminata si el GPS es real (no usar el fallback "centro de MVD")
-  const walkMins = activeStop && location && locationIsReal
-    ? walkingMinutes(distanceTo(location.lat, location.lon, activeStop.stopLat, activeStop.stopLon))
-    : 5;
-
   const greeting = now ? getGreeting(now) : "Buen día";
 
   return (
@@ -78,27 +68,27 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         <div className="flex items-end justify-between">
           <div>
             <p className="text-slate-500 text-[13px] font-medium">{greeting}</p>
-            <h1 className="text-title-large mt-1">¿Cuándo salís?</h1>
+            <h1 className="text-title-large mt-1">Ondas</h1>
           </div>
-          {mounted && lastUpdated && (
-            <span className="text-[10px] text-slate-600 pb-1">{formatTime(lastUpdated)}</span>
-          )}
         </div>
       </header>
 
-      {/* ── HERO: LEAVE NOW ── */}
+      {/* ── HERO: ¿CUÁNDO SALÍS? — temporalmente desactivado, "PRÓXIMAMENTE" ── */}
+      {/* La feature está pensada para integrar todo (caminata GPS, llegada en vivo,
+          urgencia) en un solo countdown. Quedó deshabilitada hasta refinarla
+          (necesita más calibración de tiempos de caminata y manejo de baja señal). */}
       <section className="px-5 mb-5 flex-shrink-0">
-        {locationLoading || (nearbyStops.length === 0 && !location) ? (
-          <div className="h-44 skeleton rounded-3xl" />
-        ) : (
-          <LeaveNowHero
-            arrivals={heroArrivals}
-            loading={heroLoading}
-            walkMinutes={walkMins}
-            stopName={activeStop?.stopName}
-            onTap={() => activeStopId && setSheetStopId(activeStopId)}
-          />
-        )}
+        <div className="relative h-44 rounded-3xl border border-white/[0.06] bg-gradient-to-br from-slate-800/40 via-slate-900/40 to-transparent overflow-hidden">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-400 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30">
+              Próximamente
+            </span>
+            <h2 className="text-xl font-black text-white mt-1">¿Cuándo salís?</h2>
+            <p className="text-[12px] text-slate-500 leading-snug max-w-[260px]">
+              Te vamos a avisar el momento exacto para salir según tu caminata y el próximo bus.
+            </p>
+          </div>
+        </div>
       </section>
 
       {/* ── SELECTOR DE PARADA ACTIVA ── */}

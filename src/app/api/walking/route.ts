@@ -44,6 +44,24 @@ function parseLatLon(s: string | null): [number, number] | null {
 interface WalkStep { distanceM: number; durationS: number; name: string; instruction: string; }
 interface WalkResult { ok: boolean; distanceM: number; durationS: number; steps: WalkStep[]; source: "osrm" | "fallback"; }
 
+type OsrmStep = { distance: number; name: string };
+type OsrmRoute = { distance: number; legs?: { steps?: OsrmStep[] }[] };
+type OsrmResp = { code: string; routes?: OsrmRoute[] };
+
+async function fetchOsrm(from: [number, number], to: [number, number], signal: AbortSignal): Promise<OsrmRoute | null> {
+  // perfil `walking` (más permisivo con oneway que `foot`)
+  const url = `${OSRM_URL}/route/v1/walking/${from[1]},${from[0]};${to[1]},${to[0]}?steps=true&overview=false`;
+  try {
+    const res = await fetch(url, { signal });
+    if (!res.ok) return null;
+    const data = (await res.json()) as OsrmResp;
+    if (data.code !== "Ok" || !data.routes?.length) return null;
+    return data.routes[0];
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const from = parseLatLon(req.nextUrl.searchParams.get("from"));
   const to = parseLatLon(req.nextUrl.searchParams.get("to"));
@@ -51,44 +69,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "from y to requeridos como 'lat,lon'" }, { status: 400 });
   }
 
-  // OSRM acepta coords como lon,lat (NO lat,lon)
-  const url = `${OSRM_URL}/route/v1/foot/${from[1]},${from[0]};${to[1]},${to[0]}?steps=true&overview=false`;
-
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const res = await fetch(url, { signal: controller.signal });
+
+    // Bidi: pedimos A→B y B→A en paralelo. Para peatones no existen sentidos,
+    // así que la opción MÁS CORTA es la correcta — si una dirección "da la
+    // vuelta a la manzana" por oneway, la otra suele ir directo.
+    const [forward, reverse] = await Promise.all([
+      fetchOsrm(from, to, controller.signal),
+      fetchOsrm(to, from, controller.signal),
+    ]);
     clearTimeout(timer);
 
-    if (!res.ok) return jsonFallback(from, to);
+    const candidates = [forward, reverse].filter((r): r is OsrmRoute => !!r);
+    if (!candidates.length) return jsonFallback(from, to);
 
-    const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.length) return jsonFallback(from, to);
+    const route = candidates.reduce((best, r) => (r.distance < best.distance ? r : best));
 
-    const route = data.routes[0];
-
-    // Anti-detour para peatones: OSRM público no respeta perfil pedestrian puro,
-    // a veces hace "dar vuelta a la manzana" por sentido único. Si el path es
-    // >1.4× la línea recta y la distancia recta es corta (<400m), usamos línea recta.
-    const straightDist = haversineM(from[0], from[1], to[0], to[1]);
-    const useStraight = straightDist < 400 && route.distance > straightDist * 1.4;
-    const finalDistance = useStraight ? straightDist : route.distance;
-
-    // OSRM `foot` perfil tiene velocidad demasiado optimista por defecto (~80% más rápido).
-    // Aplicamos factor de corrección para que coincida con paso humano real (~4.5 km/h).
-    const correctedDurationS = Math.round(finalDistance / WALK_SPEED_MS);
+    // OSRM tiene velocidad demasiado optimista; recalculamos por paso humano real (4.5 km/h)
+    const correctedDurationS = Math.round(route.distance / WALK_SPEED_MS);
 
     const steps: WalkStep[] = (route.legs?.[0]?.steps || [])
-      .map((s: { distance: number; name: string; maneuver?: { type?: string } }) => {
+      .map((s: OsrmStep) => {
         const name = s.name || "";
         const distanceM = Math.round(s.distance);
         const durationS = Math.round(s.distance / WALK_SPEED_MS);
-        const instruction = name
-          ? `Caminá ${distanceM}m por ${name}`
-          : `Caminá ${distanceM}m`;
+        const instruction = name ? `Caminá ${distanceM}m por ${name}` : `Caminá ${distanceM}m`;
         return { distanceM, durationS, name, instruction };
       })
-      .filter((s: WalkStep) => s.distanceM >= 10); // descarta pasos triviales
+      .filter((s: WalkStep) => s.distanceM >= 10);
 
     return NextResponse.json(
       {
@@ -98,7 +108,7 @@ export async function GET(req: NextRequest) {
         steps,
         source: "osrm",
       } satisfies WalkResult,
-      { headers: { "Cache-Control": "public, s-maxage=86400" } } // 1 día (las calles no cambian seguido)
+      { headers: { "Cache-Control": "public, s-maxage=86400" } }
     );
   } catch {
     return jsonFallback(from, to);

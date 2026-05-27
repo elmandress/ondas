@@ -27,6 +27,7 @@ import {
   getDownstreamStops,
   getStopsBetween,
 } from "@/lib/gtfs-db";
+import { getLineHoursLookup, type LineHoursLookup } from "@/lib/line-hours";
 
 const WALK_SPEED_MS = 1.25;            // 4.5 km/h
 const BUS_WAIT_DEFAULT_S = 360;        // 6 min promedio de espera por bus
@@ -40,6 +41,12 @@ export interface PlanOptions {
   maxResults?: number;
   /** Permite 0 (solo directos) o 1 (con transbordos). Default 1. */
   maxTransfers?: 0 | 1;
+  /** Fecha/hora "ahora" para filtrar líneas no operativas. Default: Date.now().
+   *  Si se pasa null, no se filtra por horario (modo "ver todas las opciones posibles"). */
+  now?: Date | null;
+  /** Ventana en min para "está por pasar" (default 90). Una línea pasa el filtro si
+   *  tiene servicio dentro de [now, now+window]. */
+  operatingWindowMin?: number;
 }
 
 export interface RouteLeg {
@@ -212,7 +219,21 @@ export function planRoutesGtfs(
   destination: { lat: number; lon: number },
   options: PlanOptions = {}
 ): PlannedRoute[] {
-  const { walkRadiusM = MAX_WALK_TO_STOP_M, maxResults = 5, maxTransfers = 1 } = options;
+  const {
+    walkRadiusM = MAX_WALK_TO_STOP_M,
+    maxResults = 5,
+    maxTransfers = 1,
+    now,
+    operatingWindowMin = 90,
+  } = options;
+
+  // Filtro de horario operativo: si now === null, no filtramos.
+  // Si no se pasa, usamos new Date() para filtrar líneas que no operan ahora.
+  const hoursLookup: LineHoursLookup | null = now === null ? null : getLineHoursLookup(now ?? new Date());
+  const isLineOperating = (line: string): boolean => {
+    if (!hoursLookup) return true;
+    return hoursLookup.operatesNowOrSoon(line, operatingWindowMin);
+  };
 
   const directDistM = haversineM(origin.lat, origin.lon, destination.lat, destination.lon);
 
@@ -256,6 +277,8 @@ export function planRoutesGtfs(
     for (const m of directs) {
       const toNear = toStopById.get(m.toStopId);
       if (!toNear) continue;
+      // Filtro horario: descartar líneas que NO operan ahora ni en próx. 90 min
+      if (!isLineOperating(m.shortName)) continue;
 
       const busSeconds = Math.max(60, m.toArrivalSeconds - m.fromArrivalSeconds);
       const busDistM = m.numStops * 350;
@@ -318,6 +341,7 @@ export function planRoutesGtfs(
     outer: for (const f of fromStops.slice(0, 6)) {
       const variantsAtFrom = getAllVariantsAtStop(f.stop.stopId);
       for (const v1 of variantsAtFrom) {
+        if (!isLineOperating(v1.shortName)) continue;
         const v1Downstream = getDownstreamStops(v1.variantId, v1.sequence);
         for (const transferStop of v1Downstream) {
           const transferStopRecord = getStopsServerSync().find((s) => s.stopId === transferStop.stopId);
@@ -332,6 +356,7 @@ export function planRoutesGtfs(
           for (const m2 of directsFromTransfer) {
             if (m2.fromVariantId === v1.variantId) continue;
             if (v1.shortName === m2.shortName) continue; // mismo nº de línea = no es transbordo real
+            if (!isLineOperating(m2.shortName)) continue;
             const toNear = toStopById.get(m2.toStopId);
             if (!toNear) continue;
 
