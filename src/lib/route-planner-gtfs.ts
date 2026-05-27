@@ -76,6 +76,12 @@ export interface RouteLeg {
   polyline?: [number, number][];
   /** Solo para bus: variantId GTFS (para que el cliente pida la polyline real si quiere). */
   variantId?: string;
+  /** Solo para bus: la línea cierra dentro de los próximos ~45min. La UI debe
+   *  destacarlo ("última corrida 22:45") para que el usuario no se quede tirado. */
+  closingSoon?: boolean;
+  /** Solo para bus: minuto del día (0-1439) cuando deja de operar el bloque actual.
+   *  Útil para mostrar la hora exacta. */
+  endOfServiceMin?: number;
 }
 
 export interface PlannedRoute {
@@ -282,6 +288,13 @@ export function planRoutesGtfs(
   const isLineOperating = (line: string): boolean => {
     if (!hoursLookup) return true;
     return hoursLookup.operatesNowOrSoon(line, operatingWindowMin);
+  };
+  const annotateBusLeg = (leg: RouteLeg): RouteLeg => {
+    if (!hoursLookup || leg.type !== "bus" || !leg.lines?.length) return leg;
+    const line = leg.lines[0];
+    const end = hoursLookup.endOfCurrentBlock(line);
+    if (end === null) return leg;
+    return { ...leg, endOfServiceMin: end, closingSoon: hoursLookup.closingSoon(line, 45) };
   };
 
   const directDistM = haversineM(origin.lat, origin.lon, destination.lat, destination.lon);
@@ -513,6 +526,11 @@ export function planRoutesGtfs(
         }
       }
     }
+  }
+
+  // ─── ANOTAR BUS LEGS con metadata de horario (closingSoon, endOfServiceMin) ───
+  for (const c of candidates) {
+    c.legs = c.legs.map(annotateBusLeg);
   }
 
   // ─── DEDUPE INTELIGENTE: mejor opción por signature, con conteo de alternativas ───

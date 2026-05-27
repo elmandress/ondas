@@ -19,6 +19,10 @@ export interface RouteLegDto {
   distanceM: number;
   polyline?: [number, number][];
   variantId?: string;
+  /** Bus leg: la línea deja de operar dentro de los próximos ~45min */
+  closingSoon?: boolean;
+  /** Bus leg: minuto del día (0-1439) cuando deja de operar el bloque actual */
+  endOfServiceMin?: number;
 }
 
 export interface PlannedRouteDto {

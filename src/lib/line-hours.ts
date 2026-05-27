@@ -70,6 +70,15 @@ export interface LineHoursLookup {
   operatesNowOrSoon: (line: string, windowMinutes?: number) => boolean;
   /** Saber si tenemos datos de la línea (si no, no la filtramos — fail open). */
   hasData: (line: string) => boolean;
+  /**
+   * Último cuarto operativo del bloque actual (en minutos del día, 0-1439).
+   * Si la línea opera ahora y sigue operando en cuartos consecutivos hasta hora X,
+   * devuelve X. Si no opera ahora, devuelve null.
+   * Útil para mostrar "última corrida ~HH:MM" en la UI.
+   */
+  endOfCurrentBlock: (line: string) => number | null;
+  /** Helper UI: ¿la línea cierra dentro de los próximos N min? (default 45min) */
+  closingSoon: (line: string, withinMinutes?: number) => boolean;
 }
 
 /**
@@ -115,5 +124,34 @@ export function getLineHoursLookup(now: Date = new Date()): LineHoursLookup {
     return !!(entry && (entry[1] || entry[2] || entry[3]));
   }
 
-  return { operatesBetween, operatesNowOrSoon, hasData };
+  function endOfCurrentBlock(line: string): number | null {
+    const bytes = bytesFor(line);
+    if (!bytes) return null;
+    const nowQ = minutesToQuarter(nowMin);
+    if (!bitAt(bytes, nowQ)) return null;
+    // Avanzar mientras los cuartos siguen prendidos (consecutivos).
+    // Cortar tras 1 cuarto apagado para tolerar huecos chiquitos (15min de gap).
+    let last = nowQ;
+    let gap = 0;
+    for (let q = nowQ + 1; q < QUARTERS; q++) {
+      if (bitAt(bytes, q)) {
+        last = q;
+        gap = 0;
+      } else {
+        gap++;
+        if (gap >= 2) break; // 30min apagados = bloque cerrado
+      }
+    }
+    // Devolver el inicio del cuarto siguiente al último activo (= hora de cierre)
+    return (last + 1) * 15;
+  }
+
+  function closingSoon(line: string, withinMinutes: number = 45): boolean {
+    const end = endOfCurrentBlock(line);
+    if (end === null) return false;
+    const minsUntilClose = end - nowMin;
+    return minsUntilClose > 0 && minsUntilClose <= withinMinutes;
+  }
+
+  return { operatesBetween, operatesNowOrSoon, hasData, endOfCurrentBlock, closingSoon };
 }

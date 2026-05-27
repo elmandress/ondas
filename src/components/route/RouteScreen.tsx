@@ -802,6 +802,8 @@ function GtfsRouteCard({
               fromStopName={leg.fromStopName}
               numStops={leg.numStops}
               minutes={minutes}
+              closingSoon={leg.closingSoon}
+              endOfServiceMin={leg.endOfServiceMin}
               onTap={() => leg.fromStopId && onTapStop(leg.fromStopId)}
             />
           );
@@ -828,7 +830,8 @@ function GtfsRouteCard({
 // ── GtfsBusLegStep ─────────────────────────────────────────────────
 // Paso de bus con ETA en vivo (FR-4.4) integrado en el Cómo Llegar.
 function GtfsBusLegStep({
-  line, headsign, fromStopId, fromStopName, numStops, minutes, onTap,
+  line, headsign, fromStopId, fromStopName, numStops, minutes,
+  closingSoon, endOfServiceMin, onTap,
 }: {
   line: string;
   headsign: string;
@@ -836,6 +839,8 @@ function GtfsBusLegStep({
   fromStopName?: string;
   numStops?: number;
   minutes: number;
+  closingSoon?: boolean;
+  endOfServiceMin?: number;
   onTap: () => void;
 }) {
   const { etaMin, realtime, loading } = useNextArrivalForLine(fromStopId, line);
@@ -875,6 +880,14 @@ function GtfsBusLegStep({
           </p>
           {nextLabel && (
             <p className={`text-[11px] font-bold mt-0.5 ${nextColor}`}>{nextLabel}</p>
+          )}
+          {closingSoon && typeof endOfServiceMin === "number" && (
+            <p className="text-[11px] font-bold mt-0.5 text-amber-400 flex items-center gap-1">
+              <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Última corrida ~{String(Math.floor(endOfServiceMin / 60) % 24).padStart(2, "0")}:{String(endOfServiceMin % 60).padStart(2, "0")}
+            </p>
           )}
         </div>
         <span className="text-[10px] text-blue-400 font-semibold flex items-center gap-0.5 flex-shrink-0">
