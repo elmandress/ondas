@@ -5,9 +5,22 @@
 [build.environment]
   NODE_VERSION = "22"
   NEXT_TELEMETRY_DISABLED = "1"
+  # better-sqlite3 necesita compilarse contra el Node de Netlify Functions
+  NPM_FLAGS = "--include=optional"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Bundlear los archivos de datos (gtfs.db, mvd-pois.json, variant_to_line.json)
+# en las API routes serverless. schedule.db (84MB) excluido por tamaño.
+[functions]
+  included_files = [
+    "data/gtfs.db",
+    "data/mvd-pois.json",
+    "data/variant_to_line.json"
+  ]
+  external_node_modules = ["better-sqlite3"]
+  node_bundler = "nft"
 
 [[headers]]
   for = "/*"

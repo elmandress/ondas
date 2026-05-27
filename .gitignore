@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Archivos grandes que NO van al deploy:
+# schedule.db son horarios programados (84MB, no entra en Netlify Functions).
+# La app funciona sin él gracias al fallback a la API oficial.
+/data/schedule.db
+
+# Datos crudos GTFS (se regeneran con scripts/, no subir)
+/data/gtfs_raw/

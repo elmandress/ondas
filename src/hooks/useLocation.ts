@@ -1,44 +1,68 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-interface Location {
+export interface Location {
   lat: number;
   lon: number;
   accuracy: number;
+  /** true si vino del GPS real; false si es fallback (centro de Montevideo) */
+  isReal: boolean;
 }
+
+export type LocationStatus = "pending" | "ok" | "denied" | "unavailable" | "timeout";
+
+const MVD_CENTER = { lat: -34.9058, lon: -56.1882, accuracy: 5000 };
 
 export function useLocation() {
   const [location, setLocation] = useState<Location | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<LocationStatus>("pending");
 
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      // Fallback a centro de Montevideo
-      setLocation({ lat: -34.9058, lon: -56.1882, accuracy: 1000 });
-      setLoading(false);
+  const request = useCallback(() => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setLocation({ ...MVD_CENTER, isReal: false });
+      setStatus("unavailable");
       return;
     }
 
+    setStatus("pending");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocation({
           lat: pos.coords.latitude,
           lon: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
+          isReal: true,
         });
-        setLoading(false);
+        setStatus("ok");
       },
-      () => {
-        // Si el usuario niega permisos, usar centro de MVD
-        setLocation({ lat: -34.9058, lon: -56.1882, accuracy: 1000 });
-        setLoading(false);
-        setError("Usando ubicación por defecto — Montevideo Centro");
+      (err) => {
+        // Mostramos el centro como fallback PERO marcado como isReal=false
+        // para que la UI no muestre distancias mentirosas.
+        setLocation({ ...MVD_CENTER, isReal: false });
+        if (err.code === err.PERMISSION_DENIED) setStatus("denied");
+        else if (err.code === err.TIMEOUT) setStatus("timeout");
+        else setStatus("unavailable");
       },
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
     );
   }, []);
 
-  return { location, loading, error };
+  useEffect(() => {
+    request();
+  }, [request]);
+
+  return {
+    location,
+    loading: status === "pending",
+    status,
+    error: status === "denied" ? "Permiso de ubicación denegado"
+         : status === "timeout" ? "GPS demoró demasiado"
+         : status === "unavailable" ? "GPS no disponible"
+         : null,
+    /** Reintentar solicitar permiso/ubicación */
+    retry: request,
+    /** true si la ubicación viene del GPS y es confiable */
+    isReal: location?.isReal ?? false,
+  };
 }

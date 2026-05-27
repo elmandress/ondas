@@ -13,7 +13,6 @@
 const MVD_HOST = "https://m.montevideo.gub.uy";
 const MVD_BUSES_HOST = "http://www.montevideo.gub.uy"; // solo HTTP
 const IDE_GEOCODE = "https://direcciones.ide.uy/api/v0/geocode/BusquedaDireccion";
-const COMOIR_HOST = "https://api.montevideo.gub.uy/comoirRest";
 
 // Estas APIs no requieren auth — son públicas del gobierno uruguayo
 const MVD_HEADERS = {
@@ -36,8 +35,9 @@ export interface BusStop {
 }
 
 export interface StopVariant {
-  lineCode: string;
-  lineName: string;
+  lineCode: string;    // número de línea real visible al usuario (ej: "76", "329")
+  lineName: string;    // idem (para display)
+  variantCode?: string; // código interno de variante STM (ej: "480", "448")
   destinations: { code: number; name: string }[];
 }
 
@@ -59,9 +59,33 @@ export interface Arrival {
   vehicleId?: string;
   lat?: number;
   lon?: number;
+  /**
+   * @deprecated SRS FR-6.4: STM no publica ocupación por bus.
+   * Heurística por hora del día daba "muy lleno" a casi todo en hora pico → engañoso.
+   * Mantenemos el campo opcional para no romper consumidores, pero la app nunca lo setea.
+   */
   occupancy?: "low" | "medium" | "high";
   realtime: boolean;
   companyCode?: number;
+  /** true si el destino real del bus difiere del oficial (trayecto acortado, frecuente de madrugada) */
+  isShortened?: boolean;
+  /**
+   * @deprecated SRS NFR-6.3: no se puede verificar WiFi por bus individual.
+   * Mantenemos el campo para no romper consumidores existentes pero nunca lo setteamos.
+   */
+  hasWifi?: boolean;
+  /** true si el dato viene de horario programado (no GPS en vivo) */
+  isScheduled?: boolean;
+  /**
+   * Accesibilidad REAL por bus (dato oficial API IM).
+   * Valores típicos: "PISO BAJO", "PLATAFORMA ELEVADORA", "PISO ALTO", "COMÚN".
+   * Solo definido cuando la respuesta vino de la API autenticada nueva.
+   */
+  access?: string;
+  /** "Aire Acondicionado", "Sin datos", etc. */
+  thermalConfort?: string;
+  /** Paradas restantes hasta la parada destino (según GTFS). */
+  remainingStops?: number;
 }
 
 export interface VehiclePosition {
@@ -75,6 +99,10 @@ export interface VehiclePosition {
   timestamp: number;
   companyCode?: number;
   variantCode?: number;
+  /** Destino real reportado por el bus (puede diferir del oficial = trayecto acortado) */
+  destinoDesc?: string;
+  /** Sublínea descriptiva (ej: "PUNTA CARRETAS -- PEÑAROL") */
+  sublinea?: string;
 }
 
 export interface GeoAddress {
@@ -97,14 +125,19 @@ export async function getStopVariants(stopId: string | number): Promise<StopInfo
     if (!res.ok) return null;
     const data = await res.json();
 
-    // Estructura real: { descripcion, destinos: {code: name}, variantes: {lineCode: [destCodes]}, lineas: {code: name} }
+    // Estructura real de la API STM:
+    //   descripcion: "AV GRAL GARIBALDI y RIVADAVIA"
+    //   lineas: { "480": "76", "448": "329", "90": "187" }  ← variantCode → lineNumber
+    //   variantes: { "480": [4947, 4949, ...], "448": [...], "90": [...] }  ← variantCode → [destCodes]
+    //   destinos: { "4947": "PUNTA CARRETAS (POR PARQUE)", ... }  ← destCode → nombre
     const destinos: Record<string, string> = data.destinos || {};
-    const lineas: Record<string, string> = data.lineas || {};
-    const variantesRaw: Record<string, number[]> = data.variantes || {};
+    const lineasMap: Record<string, string> = data.lineas || {}; // variantCode → lineNumber real
+    const variantesRaw: Record<string, number[]> = data.variantes || {}; // variantCode → [destCodes]
 
-    const variants: StopVariant[] = Object.entries(variantesRaw).map(([lineCode, destCodes]) => ({
-      lineCode,
-      lineName: lineas[lineCode] || lineCode,
+    const variants: StopVariant[] = Object.entries(variantesRaw).map(([variantCode, destCodes]) => ({
+      lineCode: lineasMap[variantCode] || variantCode, // ← USAR el lineNumber real, no el variant code
+      lineName: lineasMap[variantCode] || variantCode,
+      variantCode, // guardamos el variant code original para nextETA
       destinations: destCodes.map((dc) => ({
         code: dc,
         name: destinos[String(dc)] || `Destino ${dc}`,
@@ -125,9 +158,18 @@ export async function getStopVariants(stopId: string | number): Promise<StopInfo
 // 2. ETAs EN TIEMPO REAL (nextETA)
 // ─────────────────────────────────────────────
 
-export async function getRealtimeArrivals(stopId: string | number, variantCodes: number[]): Promise<Arrival[]> {
+/**
+ * Llamada real al endpoint nextETA.
+ * Formato correcto descubierto experimentalmente (24/5/2026):
+ *   POST /stmonlineRest/nextETA
+ *   Body: { parada: <number>, linea: ["103", "174", ...] }   // ⚠ NÚMEROS DE LÍNEA, no variant codes
+ * Respuesta: GeoJSON FeatureCollection con buses próximos:
+ *   { codigoBus, codigoEmpresa, variante, eta (segundos), dist (metros), pos }
+ */
+export async function getRealtimeArrivals(stopId: string | number, lineCodes: string[]): Promise<Arrival[]> {
+  if (lineCodes.length === 0) return [];
   try {
-    const body = { parada: String(stopId), variante: variantCodes };
+    const body = { parada: Number(stopId), linea: lineCodes };
     const res = await fetch(`${MVD_HOST}/stmonlineRest/nextETA`, {
       method: "POST",
       headers: MVD_HEADERS,
@@ -136,19 +178,19 @@ export async function getRealtimeArrivals(stopId: string | number, variantCodes:
     });
     if (!res.ok) return [];
     const data = await res.json();
+    if (data.error) return [];
 
-    // GeoJSON FeatureCollection
     const features = data.features || [];
-    return features.map((f: any) => {
+    return features.map((f: { properties: Record<string, number>; geometry?: { coordinates: [number, number] } }) => {
       const p = f.properties;
-      const coords = f.geometry?.coordinates; // [lon, lat]
+      const coords = f.geometry?.coordinates;
       const etaSeconds = p.eta || 0;
       return {
-        lineId: String(p.variante || p.codigoBus || "?"),
-        lineName: String(p.variante || "?"),
-        destination: String(p.variante || ""),
+        lineId: "",          // se rellena al cruzar con variantMap (línea comercial)
+        lineName: "",        // idem
+        destination: "",     // se rellena con el destino de la variante
         destinationCode: p.variante || 0,
-        eta: Math.round(etaSeconds / 60),
+        eta: Math.max(0, Math.round(etaSeconds / 60)),
         etaSeconds,
         distance: p.dist,
         vehicleId: String(p.codigoBus),
@@ -165,82 +207,176 @@ export async function getRealtimeArrivals(stopId: string | number, variantCodes:
 
 // ─────────────────────────────────────────────
 // FUNCIÓN PRINCIPAL: llegadas completas de una parada
-// Combina variantes + ETAs reales + fallback inteligente
+// Combina variantes (cuáles líneas paran) + ETAs en vivo (nextETA) +
+// fallback con posiciones GPS (stm-online) cuando nextETA está vacío.
 // ─────────────────────────────────────────────
 
 export async function getArrivalsForStop(stopId: string): Promise<Arrival[]> {
-  // 1. Obtener variantes de la parada para saber qué líneas buscar
+  // 1. Variantes reales de la parada (líneas que paran ahí HOY, según API STM)
   const stopInfo = await getStopVariants(stopId);
-  if (!stopInfo) return getMockArrivals(stopId);
+  if (!stopInfo) return [];
 
-  // 2. Recolectar todos los códigos de variante/destino
-  const allVariantCodes = stopInfo.variants.flatMap((v) => v.destinations.map((d) => d.code));
+  const lineCodes = stopInfo.variants.map((v) => v.lineCode);
+  if (lineCodes.length === 0) return [];
 
-  if (allVariantCodes.length === 0) return getMockArrivals(stopId);
-
-  // 3. Obtener ETAs reales
-  const realArrivals = await getRealtimeArrivals(stopId, allVariantCodes);
-
-  if (realArrivals.length === 0) return getMockArrivals(stopId);
-
-  // 4. Enriquecer con info de línea (nombre, color)
-  const variantMap = new Map<number, { lineCode: string; lineName: string; destName: string }>();
+  // 2. Mapa de variantes → línea+destino comercial (lo usamos siempre)
+  const variantMap = new Map<number, { lineCode: string; destName: string }>();
   stopInfo.variants.forEach((v) => {
     v.destinations.forEach((d) => {
-      variantMap.set(d.code, { lineCode: v.lineCode, lineName: v.lineName, destName: d.name });
+      variantMap.set(d.code, { lineCode: v.lineCode, destName: d.name });
     });
   });
 
-  return realArrivals.map((a) => {
-    const meta = variantMap.get(a.destinationCode);
-    return {
-      ...a,
-      lineId: meta?.lineCode || a.lineId,
-      lineName: meta?.lineCode || a.lineName,
-      lineColor: lineColorFromCode(meta?.lineCode || ""),
-      destination: meta?.destName || a.destination,
-    };
-  }).sort((a, b) => a.eta - b.eta).slice(0, 8);
+  // 3. ETAs en vivo desde nextETA (la API oficial)
+  const realArrivals = await getRealtimeArrivals(stopId, lineCodes);
+
+  if (realArrivals.length > 0) {
+    // Enriquecer con metadata de línea/destino.
+    // SRS NFR-6.3 (honestidad): NO se asigna hasWifi — solo ~25% de la flota CUTCSA
+    // es eléctrica con WiFi, y no podemos saber por bus individual cuál es. Mostrar
+    // WiFi a todos los CUTCSA sería información falsa.
+    const enriched = realArrivals.map((a) => {
+      const meta = variantMap.get(a.destinationCode);
+      return {
+        ...a,
+        lineId: meta?.lineCode || String(a.destinationCode),
+        lineName: meta?.lineCode || String(a.destinationCode),
+        lineColor: lineColorFromCode(meta?.lineCode || ""),
+        destination: meta?.destName || `Variante ${a.destinationCode}`,
+      };
+    });
+    return enriched.sort((x, y) => x.eta - y.eta).slice(0, 30);
+  }
+
+  // 4. FALLBACK: nextETA vacío → calcular ETA aproximada desde stm-online (GPS en vivo)
+  return await arrivalsFromVehiclePositions(stopId, stopInfo, variantMap);
+}
+
+/**
+ * Fallback: cuando nextETA devuelve vacío, calculamos ETAs aproximadas
+ * usando las posiciones GPS de stm-online + distancia al stop + velocidad estimada.
+ */
+async function arrivalsFromVehiclePositions(
+  stopId: string,
+  stopInfo: StopInfo,
+  variantMap: Map<number, { lineCode: string; destName: string }>,
+): Promise<Arrival[]> {
+  // Necesitamos coordenadas de la parada para calcular distancia
+  // Las leemos del dataset cacheado (cliente o server)
+  const stops = getStopsForLookup();
+  const stop = stops.find((s) => s.stopId === stopId);
+  if (!stop) return [];
+
+  const lineCodes = stopInfo.variants.map((v) => v.lineCode);
+  const vehicles = await getVehiclePositions(undefined, lineCodes);
+  if (vehicles.length === 0) return [];
+
+  const AVG_SPEED_MS = 6.5; // ~23 km/h promedio urbano con paradas
+  const arrivals: Arrival[] = [];
+
+  // Construir índice lineCode → meta para matching rápido por nombre de línea
+  // Esto resuelve el caso donde variantCode del GPS (ej: 9221) no coincide con
+  // los códigos de destino en variantMap (ej: 4877, 4882) — pero la linea ("76") sí coincide.
+  const lineMetaIndex = new Map<string, { lineCode: string; destName: string }>();
+  for (const [, meta] of variantMap) {
+    if (!lineMetaIndex.has(meta.lineCode)) {
+      lineMetaIndex.set(meta.lineCode, meta);
+    }
+  }
+
+  for (const v of vehicles) {
+    // Matching: primero por variantCode exacto, luego por lineName comercial
+    const meta = variantMap.get(v.variantCode || -1) || lineMetaIndex.get(v.lineName);
+    if (!meta) continue;
+
+    const distanceM = haversineMeters(v.lat, v.lon, stop.stopLat, stop.stopLon);
+    if (distanceM > 8000) continue;
+
+    const etaSeconds = Math.round(distanceM / AVG_SPEED_MS);
+    const distanceToReport = distanceM;
+    // NOTA: el filtro upstream (FR-2) se aplica en /api/stm/arrivals con routes-server,
+    // no acá, para evitar que el bundler intente meter fs en el cliente.
+
+    // Detectar destino acortado (feedback Guille): si destinoDesc del GPS difiere del oficial
+    const officialDest = meta.destName;
+    const realDest = v.destinoDesc || officialDest;
+    const isShortened = !!(v.destinoDesc && v.destinoDesc !== officialDest && officialDest.length > 0);
+
+    arrivals.push({
+      lineId: meta.lineCode,
+      lineName: meta.lineCode,
+      lineColor: lineColorFromCode(meta.lineCode),
+      destination: isShortened ? `${realDest}` : officialDest,
+      destinationCode: v.variantCode || 0,
+      isShortened,
+      eta: Math.max(0, Math.round(etaSeconds / 60)),
+      etaSeconds,
+      distance: Math.round(distanceToReport),
+      vehicleId: v.vehicleId,
+      lat: v.lat,
+      lon: v.lon,
+      realtime: true,
+      companyCode: v.companyCode,
+    });
+  }
+
+  return arrivals.sort((a, b) => a.eta - b.eta).slice(0, 25);
+}
+
+/** Lookup compartido server/client — utiliza el helper interno */
+function getStopsForLookup(): BusStop[] {
+  // En cliente: getStopsSync(); en server: getStops() lo maneja via require diferido
+  return getStops();
 }
 
 // ─────────────────────────────────────────────
 // 3. POSICIONES GPS DE BUSES
 // ─────────────────────────────────────────────
 
-export async function getVehiclePositions(lineId?: string): Promise<VehiclePosition[]> {
+/**
+ * Posiciones GPS reales de buses (stm-online).
+ * Acepta filtro por una línea (string) o varias (array).
+ * Si no se filtra, devuelve TODOS los buses activos en el sistema.
+ */
+export async function getVehiclePositions(
+  lineId?: string,
+  lineIds?: string[],
+): Promise<VehiclePosition[]> {
   try {
-    const body: Record<string, unknown> = { parada: 0 };
+    const body: Record<string, unknown> = {};
     if (lineId) body.lineas = [lineId];
+    else if (lineIds && lineIds.length > 0) body.lineas = lineIds;
 
-    // La API de buses usa HTTP (no HTTPS) — llamamos via proxy de Next.js
     const res = await fetch(`${MVD_BUSES_HOST}/buses/rest/stm-online`, {
       method: "POST",
       headers: MVD_HEADERS,
       body: JSON.stringify(body),
       next: { revalidate: 0 },
     });
-    if (!res.ok) return getMockVehicles();
+    if (!res.ok) return [];
     const data = await res.json();
 
     const features = data.features || [];
-    return features.map((f: any) => {
+    return features.map((f: { properties: Record<string, string | number>; geometry?: { coordinates: [number, number] } }) => {
       const p = f.properties;
-      const coords = f.geometry?.coordinates; // [lon, lat]
+      const coords = f.geometry?.coordinates;
       return {
         vehicleId: String(p.codigoBus || p.id),
-        lineId: String(p.linea || p.variante || "?"),
+        lineId: String(p.linea || "?"),
         lineName: String(p.linea || "?"),
         lat: coords ? coords[1] : 0,
         lon: coords ? coords[0] : 0,
-        bearing: p.frecuencia || 0,
-        speed: 20, // no viene en la respuesta, estimamos
+        bearing: 0, // no viene
+        speed: Number(p.velocidad) || 0,
         timestamp: Date.now(),
-        companyCode: p.codigoEmpresa,
-        variantCode: p.variante,
+        companyCode: Number(p.codigoEmpresa) || undefined,
+        variantCode: Number(p.variante) || undefined,
+        destinoDesc: typeof p.destinoDesc === "string" ? p.destinoDesc : undefined,
+        sublinea: typeof p.sublinea === "string" ? p.sublinea : undefined,
       } as VehiclePosition;
     });
   } catch {
-    return getMockVehicles();
+    return [];
   }
 }
 
@@ -274,27 +410,44 @@ export async function geocodeAddress(query: string): Promise<GeoAddress[]> {
 // 5. PARADAS — Dataset externo + funciones de búsqueda
 // ─────────────────────────────────────────────
 
-export { STOPS_DATASET } from "@/lib/stops-dataset";
-import { STOPS_DATASET as _STOPS } from "@/lib/stops-dataset";
+export { STOPS_DATASET, loadStops, getStopsSync } from "@/lib/stops-dataset";
+import { getStopsSync } from "@/lib/stops-dataset";
 
-export function getNearbyStops(lat: number, lon: number, radiusM = 600): BusStop[] {
-  return _STOPS
+/**
+ * Helper para obtener el dataset cacheado. En cliente devuelve el cache
+ * (vacío hasta que `loadStops()` haya terminado). En server devuelve [] —
+ * las API routes que necesiten paradas deben leerlas via fetch o fs ellas mismas.
+ */
+function getStops(): BusStop[] {
+  return getStopsSync();
+}
+
+export function getNearbyStops(lat: number, lon: number, radiusM = 600, limit = 20): BusStop[] {
+  return getStops()
     .filter((s) => haversineMeters(lat, lon, s.stopLat, s.stopLon) <= radiusM)
     .sort((a, b) => haversineMeters(lat, lon, a.stopLat, a.stopLon) - haversineMeters(lat, lon, b.stopLat, b.stopLon))
-    .slice(0, 10);
+    .slice(0, limit);
+}
+
+/** Paradas dentro de un bounding box (para viewport del mapa) */
+export function getStopsInBounds(minLat: number, maxLat: number, minLon: number, maxLon: number, limit = 300): BusStop[] {
+  return getStops()
+    .filter((s) => s.stopLat >= minLat && s.stopLat <= maxLat && s.stopLon >= minLon && s.stopLon <= maxLon)
+    .slice(0, limit);
 }
 
 export function searchStops(query: string): BusStop[] {
+  const stops = getStops();
   const q = query.toLowerCase().trim();
-  if (!q) return _STOPS.slice(0, 8);
-  return _STOPS
+  if (!q) return stops.slice(0, 8);
+  return stops
     .filter(
       (s) =>
         s.stopName.toLowerCase().includes(q) ||
         s.stopCode.includes(q) ||
         s.lines.some((l) => l.toLowerCase().includes(q))
     )
-    .slice(0, 10);
+    .slice(0, 15);
 }
 
 // ─────────────────────────────────────────────
@@ -320,58 +473,5 @@ export function lineColorFromCode(lineCode: string): string {
   return map[lineCode] || `hsl(${(lineCode.split("").reduce((a, c) => a + c.charCodeAt(0), 0) * 47) % 360}, 70%, 55%)`;
 }
 
-// ─────────────────────────────────────────────
-// MOCK DATA — fallback cuando las APIs no responden
-// ─────────────────────────────────────────────
-
-const mockDestinations: Record<string, string> = {
-  "103": "Montevideo Shopping", "174": "Pocitos Rambla", "D1": "Aeropuerto",
-  "189": "Carrasco", "G": "Punta Carretas", "H": "Paso Molino",
-  "21": "Reducto", "121": "Pocitos Centro", "20": "La Teja",
-  "88": "Goes", "183": "Paso de la Arena", "102": "Carrasco Norte",
-  "427": "Ciudad Vieja", "456": "Buceo", "125": "Ciudadela",
-  "582": "Parque Rodó", "191": "Ciudadela", "M1": "Aeropuerto",
-};
-
-export function getMockArrivals(stopId: string): Arrival[] {
-  const stop = _STOPS.find((s: BusStop) => s.stopId === stopId);
-  const lines = stop?.lines || ["103", "174", "D1"];
-  const base = parseInt(stopId.slice(-1) || "0") % 3;
-
-  return lines.flatMap((line: string, i: number) => [
-    {
-      lineId: line, lineName: line,
-      destination: mockDestinations[line] || "Terminal",
-      destinationCode: i * 10,
-      eta: base + 3 + i * 5 + Math.floor(Math.random() * 3),
-      etaSeconds: (base + 3 + i * 5) * 60,
-      lineColor: lineColorFromCode(line),
-      realtime: i < 2,
-      occupancy: (["low", "medium", "high"] as const)[i % 3],
-      distance: 300 + i * 200,
-    },
-    {
-      lineId: line, lineName: line,
-      destination: mockDestinations[line] || "Terminal",
-      destinationCode: i * 10,
-      eta: base + 18 + i * 6,
-      etaSeconds: (base + 18 + i * 6) * 60,
-      lineColor: lineColorFromCode(line),
-      realtime: false,
-      distance: undefined,
-    },
-  ]).sort((a: Arrival, b: Arrival) => a.eta - b.eta).slice(0, 8);
-}
-
-export function getMockVehicles(): VehiclePosition[] {
-  return _STOPS.slice(0, 20).map((stop: BusStop, i: number) => ({
-    vehicleId: `v${String(i + 1).padStart(3, "0")}`,
-    lineId: stop.lines[0],
-    lineName: stop.lines[0],
-    lat: stop.stopLat + (Math.random() - 0.5) * 0.006,
-    lon: stop.stopLon + (Math.random() - 0.5) * 0.006,
-    bearing: Math.floor(Math.random() * 360),
-    speed: 15 + Math.floor(Math.random() * 25),
-    timestamp: Date.now(),
-  }));
-}
+// Mocks eliminados — la app NUNCA inventa datos. Si la API no responde,
+// se muestra estado vacío real al usuario.

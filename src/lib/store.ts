@@ -29,40 +29,15 @@ const DEFAULT_PREFS: UserPrefs = {
   theme: "dark",
 };
 
-// Rutas de ejemplo para primer uso
-export const DEMO_FAVORITES: FavoriteRoute[] = [
-  {
-    id: "demo_1",
-    name: "Casa → Trabajo",
-    fromStop: "stop_001",
-    fromName: "18 de Julio esq. Ejido",
-    toName: "Ciudad Vieja",
-    lines: ["103", "174"],
-    walkMinutes: 4,
-    emoji: "🏠",
-  },
-  {
-    id: "demo_2",
-    name: "Trabajo → Casa",
-    fromStop: "stop_002",
-    fromName: "18 de Julio esq. Río Branco",
-    toName: "Pocitos",
-    lines: ["174"],
-    walkMinutes: 2,
-    emoji: "💼",
-  },
-];
+// Sin rutas demo con IDs falsos — los favoritos empiezan vacíos.
+// El usuario los crea desde el flujo natural de la app (marcar parada como favorita).
+export const DEMO_FAVORITES: FavoriteRoute[] = [];
 
 export function getPrefs(): UserPrefs {
   if (typeof window === "undefined") return DEFAULT_PREFS;
   try {
     const raw = localStorage.getItem("ondas_prefs");
-    if (!raw) {
-      // Primera vez: cargamos rutas demo
-      const demo = { ...DEFAULT_PREFS, favoriteRoutes: DEMO_FAVORITES };
-      savePrefs(demo);
-      return demo;
-    }
+    if (!raw) return DEFAULT_PREFS;
     return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
   } catch {
     return DEFAULT_PREFS;

@@ -1,41 +1,54 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { STOPS_DATASET, lineColorFromCode, searchStops, type BusStop } from "@/lib/stm";
+import { useStopsDataset } from "@/hooks/useStopsDataset";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
+import { setSelectedPlace } from "@/lib/selected-place";
+import { setActiveTab } from "@/lib/active-tab";
 
 interface GeoResult {
-  id: number;
+  // string para POIs curados ("osm:way:123"), number para resultados de Nominatim
+  id: string | number;
   name: string;
   fullName: string;
   lat: number;
   lon: number;
   type: string;
+  class?: string;
+  icon?: string;
+  source?: "curated" | "nominatim";
 }
 
-// Paradas top para mostrar por defecto
+// Paradas top para mostrar por defecto (códigos de paradas populares)
 const TRENDING_IDS = ["4521", "3301", "3302", "2201", "5501", "1101", "9001", "3003", "7703", "1900"];
-const TRENDING_STOPS = TRENDING_IDS
-  .map((id) => STOPS_DATASET.find((s) => s.stopId === id))
-  .filter(Boolean) as BusStop[];
 
 type SearchMode = "idle" | "searching" | "stops" | "places" | "empty";
 
 export default function SearchScreen() {
+  const { ready: stopsReady } = useStopsDataset();
   const [query, setQuery] = useState("");
   const [stopResults, setStopResults] = useState<BusStop[]>([]);
   const [placeResults, setPlaceResults] = useState<GeoResult[]>([]);
   const [mode, setMode] = useState<SearchMode>("idle");
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [history, setHistory] = useState<BusStop[]>([]);
-  const [nearestToPlace, setNearestToPlace] = useState<{ place: GeoResult; stops: BusStop[] } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cargar historial
+  // Trending stops (se calcula cuando el dataset está listo)
+  const trendingStops = useMemo<BusStop[]>(() => {
+    if (!stopsReady) return [];
+    return TRENDING_IDS
+      .map((id) => STOPS_DATASET.find((s) => s.stopId === id))
+      .filter(Boolean) as BusStop[];
+  }, [stopsReady]);
+
+  // Cargar historial cuando dataset esté listo
   useEffect(() => {
+    if (!stopsReady) return;
     try {
       const raw = localStorage.getItem("ondas_stop_history");
       if (raw) {
@@ -44,7 +57,7 @@ export default function SearchScreen() {
       }
     } catch {}
     setTimeout(() => inputRef.current?.focus(), 300);
-  }, []);
+  }, [stopsReady]);
 
   // Búsqueda con debounce — paradas locales + lugares via Nominatim
   useEffect(() => {
@@ -97,13 +110,18 @@ export default function SearchScreen() {
   }
 
   function handleSelectPlace(place: GeoResult) {
-    // Mostrar paradas más cercanas a ese lugar
-    const sorted = STOPS_DATASET
-      .map((s) => ({ s, d: dist(place.lat, place.lon, s.stopLat, s.stopLon) }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, 5)
-      .map((x) => x.s);
-    setNearestToPlace({ place, stops: sorted });
+    // SRS FR-3.8: navegar al mapa con el lugar pineado.
+    // El mapa abre un sheet con paradas cercanas + sus llegadas en vivo.
+    setSelectedPlace({
+      id: place.id,
+      name: place.name,
+      fullName: place.fullName,
+      lat: place.lat,
+      lon: place.lon,
+      icon: place.icon,
+      category: place.class || place.type,
+    });
+    setActiveTab("map");
   }
 
   const showIdle = mode === "idle";
@@ -139,7 +157,7 @@ export default function SearchScreen() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                onClick={() => { setQuery(""); setNearestToPlace(null); }}
+                onClick={() => setQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
               >
                 <svg className="w-3 h-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
@@ -155,51 +173,8 @@ export default function SearchScreen() {
       <div className="flex-1 overflow-y-auto px-5 pb-6">
         <AnimatePresence mode="wait">
 
-          {/* ── PANEL "PARADAS CERCANAS A UN LUGAR" ── */}
-          {nearestToPlace && (
-            <motion.div key="near-place" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <button
-                onClick={() => setNearestToPlace(null)}
-                className="flex items-center gap-2 text-blue-400 text-sm font-medium mb-4"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="15 18 9 12 15 6" /></svg>
-                Volver
-              </button>
-
-              {/* Lugar encontrado */}
-              <div className="glass rounded-2xl px-4 py-3.5 mb-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-blue-600/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white">{nearestToPlace.place.name}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5 truncate">{nearestToPlace.place.fullName}</p>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
-                Paradas cercanas ({nearestToPlace.stops.length})
-              </p>
-              <div className="space-y-2">
-                {nearestToPlace.stops.map((stop, i) => (
-                  <motion.div key={stop.stopId} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                    <StopRow
-                      stop={stop}
-                      distanceM={Math.round(dist(nearestToPlace.place.lat, nearestToPlace.place.lon, stop.stopLat, stop.stopLon))}
-                      onTap={() => handleSelectStop(stop.stopId)}
-                    />
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
           {/* ── SPINNER ── */}
-          {!nearestToPlace && mode === "searching" && (
+          {mode === "searching" && (
             <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-3 py-4">
               <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
               <p className="text-slate-500 text-sm">Buscando…</p>
@@ -207,7 +182,7 @@ export default function SearchScreen() {
           )}
 
           {/* ── SIN RESULTADOS ── */}
-          {!nearestToPlace && mode === "empty" && (
+          {mode === "empty" && (
             <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-16 flex flex-col items-center gap-3">
               <div className="text-5xl">🔍</div>
               <p className="text-slate-400 text-sm font-semibold">Sin resultados para "{query}"</p>
@@ -216,26 +191,12 @@ export default function SearchScreen() {
           )}
 
           {/* ── RESULTADOS DE BÚSQUEDA ── */}
-          {!nearestToPlace && (mode === "stops" || mode === "places") && (
+          {/* SRS FR-3.7: Lugares ANTES que paradas. Cuando el usuario busca "nuevo centro"
+              o "facultad" quiere el lugar, no una parada. Las paradas son el medio. */}
+          {(mode === "stops" || mode === "places") && (
             <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
 
-              {/* Paradas STM */}
-              {stopResults.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
-                    Paradas ({stopResults.length})
-                  </p>
-                  <div className="space-y-2">
-                    {stopResults.map((stop, i) => (
-                      <motion.div key={stop.stopId} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.035 }}>
-                        <StopRow stop={stop} onTap={() => handleSelectStop(stop.stopId)} />
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Lugares geográficos */}
+              {/* Lugares geográficos (primero) */}
               {placeResults.length > 0 && (
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
@@ -243,18 +204,35 @@ export default function SearchScreen() {
                   </p>
                   <div className="space-y-2">
                     {placeResults.map((place, i) => (
-                      <motion.div key={place.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.035 }}>
+                      <motion.div key={place.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.035 }}>
                         <PlaceRow place={place} onTap={() => handleSelectPlace(place)} />
                       </motion.div>
                     ))}
                   </div>
                 </div>
               )}
+
+              {/* Paradas STM (después) */}
+              {stopResults.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
+                    Paradas ({stopResults.length})
+                  </p>
+                  <div className="space-y-2">
+                    {stopResults.map((stop, i) => (
+                      <motion.div key={stop.stopId} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.035 }}>
+                        <StopRow stop={stop} onTap={() => handleSelectStop(stop.stopId)} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </motion.div>
           )}
 
           {/* ── ESTADO INICIAL (sin query) ── */}
-          {!nearestToPlace && showIdle && (
+          {showIdle && (
             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
 
               {/* Historial */}
@@ -283,7 +261,7 @@ export default function SearchScreen() {
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">Paradas populares</p>
                 <div className="space-y-2">
-                  {TRENDING_STOPS.map((stop, i) => (
+                  {trendingStops.map((stop, i) => (
                     <motion.div key={stop.stopId} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
                       <StopRow stop={stop} onTap={() => handleSelectStop(stop.stopId)} />
                     </motion.div>
@@ -375,17 +353,15 @@ function StopRow({ stop, onTap, isHistory, distanceM }: {
 
 // ── PlaceRow ─────────────────────────────────────────────────────
 function PlaceRow({ place, onTap }: { place: GeoResult; onTap: () => void }) {
+  const icon = place.icon || "📍";
   return (
     <motion.button
       whileTap={{ scale: 0.98 }}
       onClick={onTap}
       className="w-full glass rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left"
     >
-      <div className="w-9 h-9 rounded-xl bg-blue-600/10 flex items-center justify-center flex-shrink-0">
-        <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
-          <circle cx="12" cy="10" r="3"/>
-        </svg>
+      <div className="w-9 h-9 rounded-xl bg-blue-600/10 flex items-center justify-center flex-shrink-0 text-lg">
+        {icon}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-white truncate">{place.name}</p>

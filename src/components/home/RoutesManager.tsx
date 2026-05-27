@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getPrefs, savePrefs, addFavorite, removeFavorite, type FavoriteRoute } from "@/lib/store";
 import { STOPS_DATASET, lineColorFromCode, searchStops, type BusStop } from "@/lib/stm";
+import { useStopsDataset } from "@/hooks/useStopsDataset";
 
 const EMOJIS = ["🏠", "💼", "🏫", "🏥", "🏋️", "🛒", "🎭", "🌊", "🏖️", "⚽", "🍕", "👨‍👩‍👧", "🎓", "🏦", "🌳"];
 
@@ -37,6 +38,7 @@ function newDraft(): DraftRoute {
 }
 
 export default function RoutesManager({ onClose, onChange }: RoutesManagerProps) {
+  const { ready: stopsReady } = useStopsDataset();
   const [routes, setRoutes] = useState<FavoriteRoute[]>([]);
   const [step, setStep] = useState<Step>("list");
   const [draft, setDraft] = useState<DraftRoute>(newDraft());
@@ -47,15 +49,15 @@ export default function RoutesManager({ onClose, onChange }: RoutesManagerProps)
     setRoutes(getPrefs().favoriteRoutes);
   }, []);
 
-  // Búsqueda de paradas al seleccionar
   useEffect(() => {
+    if (!stopsReady) return;
     const q = stopQuery.trim();
     if (!q) {
       setStopResults(STOPS_DATASET.slice(0, 8));
     } else {
       setStopResults(searchStops(q));
     }
-  }, [stopQuery]);
+  }, [stopQuery, stopsReady]);
 
   function handleDeleteRoute(id: string) {
     removeFavorite(id);

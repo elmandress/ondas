@@ -4,6 +4,20 @@
   --radius: 16px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
+
+  /* Apple Maps soft — paleta */
+  --bg: #0b1018;
+  --bg-elevated: #141a26;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #f5f6f8;
+  --text-secondary: #a3acc1;
+  --text-tertiary: #6b7691;
+  --text-quaternary: #475167;
+  --accent: #3b82f6;
+  --accent-soft: rgba(59, 130, 246, 0.14);
 }
 
 * {
@@ -18,11 +32,13 @@ html {
 
 body {
   height: 100%;
-  background-color: #080d1a;
-  color: #f1f5f9;
+  background-color: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
   overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro", system-ui, sans-serif;
 }
 
 ::-webkit-scrollbar {
@@ -30,25 +46,65 @@ body {
   background: transparent;
 }
 
+/* Tarjeta elevada — sin glassmorphism agresivo, solo borde + sombra sutil */
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.card-soft {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+/* Glass legacy — mantenido para compatibilidad pero más sutil */
 .glass {
-  background: rgba(30, 41, 59, 0.6);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(20, 26, 38, 0.85);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--border);
 }
 
 .glass-dark {
-  background: rgba(8, 13, 26, 0.85);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(11, 16, 24, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--border);
 }
 
 .glass-light {
-  background: rgba(248, 250, 252, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+/* Sombras suaves Apple-style */
+.shadow-soft {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.shadow-floating {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), 0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Botón estilo Apple */
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  border-radius: 12px;
+}
+.btn-primary:active {
+  background: #2563eb;
+  transform: scale(0.98);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  border-radius: 12px;
 }
 
 .gradient-brand {
@@ -57,10 +113,6 @@ body {
 
 .gradient-arrive {
   background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-}
-
-.gradient-warn {
-  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
 }
 
 @keyframes radar-ping {
@@ -89,34 +141,23 @@ body {
 .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(255,255,255,0.04) 25%,
-    rgba(255,255,255,0.08) 50%,
-    rgba(255,255,255,0.04) 75%
+    rgba(255,255,255,0.03) 25%,
+    rgba(255,255,255,0.07) 50%,
+    rgba(255,255,255,0.03) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
-.chip-arrive {
-  background: rgba(34, 197, 94, 0.15);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #4ade80;
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-
-.chip-soon {
-  background: rgba(249, 115, 22, 0.15);
-  border: 1px solid rgba(249, 115, 22, 0.3);
-  color: #fb923c;
-}
-
-.chip-far {
-  background: rgba(100, 116, 139, 0.15);
-  border: 1px solid rgba(100, 116, 139, 0.2);
-  color: #94a3b8;
-}
+.scrollbar-none::-webkit-scrollbar { display: none; }
 
 .leaflet-container {
-  background: #0f172a !important;
+  background: var(--bg) !important;
+  font-family: -apple-system, "Inter", system-ui, sans-serif !important;
 }
 
 .leaflet-control-attribution {
@@ -127,38 +168,29 @@ body {
 }
 
 .leaflet-popup-content-wrapper {
-  background: rgba(15, 23, 42, 0.95) !important;
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  border-radius: 16px !important;
-  color: #f1f5f9 !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5) !important;
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  color: var(--text) !important;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5) !important;
 }
 
 .leaflet-popup-tip {
-  background: rgba(15, 23, 42, 0.95) !important;
+  background: var(--bg-elevated) !important;
 }
 
 .tap-card {
   transition: transform 0.12s ease, opacity 0.12s ease;
 }
 .tap-card:active {
-  transform: scale(0.97);
-  opacity: 0.85;
+  transform: scale(0.98);
+  opacity: 0.9;
 }
 
 .time-display {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
-}
-
-@keyframes bus-move {
-  0%, 100% { transform: translateX(0px); }
-  50% { transform: translateX(3px); }
-}
-
-.bus-icon-animate {
-  animation: bus-move 2s ease-in-out infinite;
+  letter-spacing: -0.02em;
 }
 
 @keyframes countdown-pulse {
@@ -168,4 +200,47 @@ body {
 
 .countdown-urgent {
   animation: countdown-pulse 0.8s ease-in-out infinite;
+}
+
+/* Tipografías */
+.text-title-large {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.text-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.text-headline {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+}
+.text-body {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+}
+.text-caption {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  letter-spacing: 0;
+}
+.text-eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-tertiary);
+}
+
+/* Divider sutil */
+.divider {
+  height: 1px;
+  background: var(--border);
 }

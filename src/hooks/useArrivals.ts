@@ -32,8 +32,8 @@ export function useArrivals(stopId: string | null, intervalMs = 20000) {
       const data = await res.json();
       setArrivals(data.arrivals || []);
       setLastUpdated(new Date());
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
+    } catch (err) {
+      if (err instanceof Error && err.name !== "AbortError") {
         setError("No se pudieron cargar las llegadas");
       }
     } finally {

@@ -6,11 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@netlify/plugin-nextjs": "^5.15.11",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/leaflet": "^1.9.21",
+    "better-sqlite3": "^12.10.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
     "leaflet": "^1.9.4",
@@ -25,9 +29,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "adm-zip": "^0.5.17",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "shapefile": "^0.6.6",
+    "shpjs": "^6.2.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.7"
   }
 }
