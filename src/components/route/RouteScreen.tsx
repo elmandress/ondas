@@ -142,12 +142,11 @@ export default function RouteScreen() {
     setTo(tmp);
   }
 
-  // FR-4.6: validación origen/destino fuera del área metropolitana de MVD
-  const outOfArea = useMemo(() => {
-    const inArea = (p: Place | null) =>
-      !p || (p.lat <= -34.6 && p.lat >= -35.0 && p.lon <= -55.8 && p.lon >= -56.5);
-    return !inArea(from) || !inArea(to);
-  }, [from, to]);
+  // FR-4.6: validación origen/destino fuera del área de cobertura STM.
+  // Devuelve no solo si está fuera, sino CUÁL está fuera y dónde.
+  // Bbox amplio: MVD + Ciudad de la Costa + Las Piedras + La Paz + Pando + Atlántida.
+  const areaCheck = useMemo(() => classifyArea(from, to), [from, to]);
+  const outOfArea = areaCheck.kind !== "ok";
 
   // Heurística legacy como fallback rápido si el endpoint GTFS falla
   const heuristicRoutes = useMemo<RouteCandidate[]>(() => {
@@ -324,7 +323,7 @@ export default function RouteScreen() {
               {!from || !to ? (
                 <EmptyState />
               ) : outOfArea ? (
-                <OutOfAreaState />
+                <OutOfAreaState info={areaCheck} />
               ) : !stopsReady ? (
                 <p className="text-center text-slate-500 text-sm py-12">Cargando paradas…</p>
               ) : gtfsLoading ? (
@@ -901,21 +900,104 @@ function GtfsBusLegStep({
   );
 }
 
+// ── Clasificación de área (FR-4.6) ─────────────────────────────────
+// Bbox COBERTURA: MVD + Canelones cercano (Cdad de la Costa, Las Piedras,
+// La Paz, Pando, Atlántida hasta Salinas). STM no cubre fuera de esto.
+const COVERAGE_BBOX = { north: -34.5, south: -35.0, west: -56.5, east: -55.5 };
+// Bbox MVD estricto: lo que está dentro es "ok"; entre MVD y borde es "perimetral".
+const MVD_BBOX = { north: -34.7, south: -34.95, west: -56.4, east: -56.0 };
+
+function inBbox(p: { lat: number; lon: number }, b: typeof MVD_BBOX): boolean {
+  return p.lat <= b.north && p.lat >= b.south && p.lon >= b.west && p.lon <= b.east;
+}
+
+type AreaCheck =
+  | { kind: "ok" }
+  | { kind: "out-of-coverage"; which: "from" | "to" | "both" }
+  | { kind: "interdepartmental"; which: "from" | "to" | "both" };
+
+function classifyArea(from: Place | null, to: Place | null): AreaCheck {
+  const fromState = !from ? "ok" : inBbox(from, COVERAGE_BBOX) ? "ok" : "out";
+  const toState = !to ? "ok" : inBbox(to, COVERAGE_BBOX) ? "ok" : "out";
+  if (fromState === "ok" && toState === "ok") return { kind: "ok" };
+  // Si ambos están fuera y muy lejos: interdepartamental
+  const fromVeryFar = from && !inBbox(from, COVERAGE_BBOX) && distFromMvd(from) > 80;
+  const toVeryFar = to && !inBbox(to, COVERAGE_BBOX) && distFromMvd(to) > 80;
+  if (fromVeryFar || toVeryFar) {
+    const which: "from" | "to" | "both" =
+      fromVeryFar && toVeryFar ? "both" : fromVeryFar ? "from" : "to";
+    return { kind: "interdepartmental", which };
+  }
+  const which: "from" | "to" | "both" =
+    fromState === "out" && toState === "out" ? "both" :
+    fromState === "out" ? "from" : "to";
+  return { kind: "out-of-coverage", which };
+}
+
+function distFromMvd(p: { lat: number; lon: number }): number {
+  // Distancia aproximada en km a Plaza Independencia
+  const R = 6371;
+  const lat0 = -34.9058, lon0 = -56.1913;
+  const dLat = ((p.lat - lat0) * Math.PI) / 180;
+  const dLon = ((p.lon - lon0) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat0 * Math.PI) / 180) * Math.cos((p.lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ── OutOfAreaState (FR-4.6) ───────────────────────────────────────
-function OutOfAreaState() {
+function OutOfAreaState({ info }: { info: AreaCheck }) {
+  if (info.kind === "ok") return null;
+
+  const whichLabel = info.which === "from" ? "El origen" :
+                     info.which === "to" ? "El destino" : "Origen y destino";
+
+  const isInterdept = info.kind === "interdepartmental";
+  const title = isInterdept ? "Viaje interdepartamental" : "Fuera del área de cobertura";
+  const body = isInterdept ? (
+    <>
+      {whichLabel} {info.which === "both" ? "están" : "está"} a más de 80km de Montevideo.
+      Para viajes interdepartamentales usá COT, Copsa, Núñez u otra empresa del
+      <span className="text-slate-400"> Terminal Tres Cruces</span>.
+    </>
+  ) : (
+    <>
+      {whichLabel} {info.which === "both" ? "están" : "está"} fuera del área de cobertura de STM
+      (Montevideo + Ciudad de la Costa, Las Piedras, La Paz, Pando, Atlántida).
+      Probá moviendo el pin más cerca de la ciudad.
+    </>
+  );
+
   return (
-    <div className="flex flex-col items-center text-center py-12 px-6">
+    <div className="flex flex-col items-center text-center py-10 px-6">
       <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
-           style={{ background: "rgba(251,191,36,0.15)" }}>
-        <svg className="w-7 h-7 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
+           style={{ background: isInterdept ? "rgba(168,85,247,0.15)" : "rgba(251,191,36,0.15)" }}>
+        {isInterdept ? (
+          <svg className="w-7 h-7 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><circle cx="9" cy="15" r="1.5"/><circle cx="15" cy="15" r="1.5"/>
+          </svg>
+        ) : (
+          <svg className="w-7 h-7 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        )}
       </div>
-      <h3 className="text-headline mb-1">Fuera de Montevideo</h3>
-      <p className="text-body text-slate-500">
-        Por ahora solo planificamos viajes dentro del área metropolitana.
-        Canelones e interdepartamentales en una próxima versión.
-      </p>
+      <h3 className="text-headline mb-1.5">{title}</h3>
+      <p className="text-body text-slate-500 leading-relaxed max-w-sm">{body}</p>
+      {isInterdept && (
+        <a
+          href="https://www.trescruces.com.uy/horarios"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-purple-300"
+          style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}
+        >
+          Ver horarios Terminal Tres Cruces
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+            <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
+          </svg>
+        </a>
+      )}
     </div>
   );
 }

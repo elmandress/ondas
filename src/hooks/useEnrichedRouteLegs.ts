@@ -1,14 +1,18 @@
 /**
- * Enriquecimiento de los walk legs de una ruta con polylines reales por calles (OSRM).
+ * Enriquecimiento de los legs de una ruta:
+ *  - walk legs: cambia polyline=[origen,destino] por path OSRM real por calles.
+ *  - bus legs: cambia la polyline (paradas conectadas en línea recta) por el
+ *    trazo real del recorrido cortando la polyline de routes.json al tramo
+ *    entre fromStop y toStop.
  *
- * El planner GTFS devuelve walk legs con polyline = [origen, destino] (línea recta).
- * Este hook hace fetch a /api/walking para cada walk leg y reemplaza la polyline
- * con el camino REAL por calles. Mientras carga, mantiene la línea recta como placeholder.
+ * El render inicial usa los polylines del planner (líneas rectas) para que
+ * la UI no parpadee, y luego se sustituye cuando llegan los datos enriquecidos.
  *
- * Server-friendly: cache compartido en módulo, sin re-fetch si las mismas coords ya están.
+ * Cache compartido en módulo: si la misma ruta se vuelve a abrir, sin re-fetch.
  */
 import { useEffect, useState } from "react";
 import type { PlannedRouteDto, RouteLegDto } from "@/hooks/useRouteplanner";
+import { loadRoutesCache, type RoutesIndex } from "@/lib/routes-cache";
 
 interface WalkingApiResult {
   ok: boolean;
@@ -47,9 +51,6 @@ function polylineLengthM(coords: [number, number][]): number {
   }
   return total;
 }
-// Helper marcado como usado (sirve a fetchOneWay vía best-of-two)
-void haversineM;
-
 /**
  * Pide a OSRM las dos opciones: ida y vuelta, y nos quedamos con la MÁS CORTA.
  *
@@ -115,8 +116,58 @@ async function fetchWalkingPolyline(from: [number, number], to: [number, number]
 }
 
 /**
- * Devuelve los legs con polylines de walking enriquecidas por OSRM.
- * Los bus legs quedan sin cambios.
+ * Encuentra el índice en `polyline` más cercano al punto `p`.
+ * O(N), pero solo se llama 2 veces por bus leg sobre polylines de ~50-300 puntos.
+ */
+function nearestIndex(polyline: [number, number][], p: [number, number]): number {
+  let bestIdx = 0;
+  let bestDistSq = Infinity;
+  for (let i = 0; i < polyline.length; i++) {
+    const dlat = polyline[i][0] - p[0];
+    const dlon = polyline[i][1] - p[1];
+    const d = dlat * dlat + dlon * dlon;
+    if (d < bestDistSq) {
+      bestDistSq = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+/**
+ * Dada una polyline completa del recorrido de la línea y los puntos de
+ * subida/bajada, devuelve el TROZO real correspondiente.
+ *
+ * Si los puntos están al revés en la polyline (variante de vuelta vs ida),
+ * invierte el slice para mantener orientación origen→destino.
+ *
+ * Si la polyline no contiene los puntos (muy lejos), devuelve null y la UI
+ * mantiene las paradas conectadas.
+ */
+function sliceBusPolyline(
+  full: [number, number][],
+  from: [number, number],
+  to: [number, number],
+): [number, number][] | null {
+  if (!full || full.length < 2) return null;
+  const i = nearestIndex(full, from);
+  const j = nearestIndex(full, to);
+  // Distancia umbral aprox 200m: si el match es muy lejos, descartamos
+  // (la polyline no corresponde a esta variante).
+  const distI = haversineM(full[i], from);
+  const distJ = haversineM(full[j], to);
+  if (distI > 250 || distJ > 250) return null;
+  if (i === j) return [from, to];
+  const [a, b] = i < j ? [i, j] : [j, i];
+  let slice = full.slice(a, b + 1);
+  if (i > j) slice = slice.reverse();
+  // Reemplazar los extremos por los puntos exactos para que conecte con stops
+  return [from, ...slice.slice(1, -1), to];
+}
+
+/**
+ * Devuelve los legs con polylines enriquecidas: walks por OSRM real, bus
+ * legs cortando routes.json al tramo correspondiente.
  */
 export function useEnrichedRouteLegs(route: PlannedRouteDto | null): RouteLegDto[] | null {
   const [enrichedLegs, setEnrichedLegs] = useState<RouteLegDto[] | null>(null);
@@ -141,16 +192,36 @@ export function useEnrichedRouteLegs(route: PlannedRouteDto | null): RouteLegDto
       return { idx: i, polyline: newPoly };
     });
 
-    Promise.all(walkPromises).then((results) => {
+    // Para bus legs: cargar routes.json una vez y cortar la polyline al tramo.
+    // Mucho más rápido que walks (no hace fetch externo, solo lookup en memoria).
+    const busPromise = (async (): Promise<Array<{ idx: number; polyline: [number, number][] } | null>> => {
+      const busLegs = route.legs
+        .map((leg, idx) => ({ leg, idx }))
+        .filter(({ leg }) => leg.type === "bus" && leg.polyline && leg.polyline.length >= 2);
+      if (!busLegs.length) return [];
+      const routes: RoutesIndex = await loadRoutesCache();
+      return busLegs.map(({ leg, idx }) => {
+        const line = leg.lines?.[0];
+        if (!line || !leg.polyline) return null;
+        const full = routes[line];
+        if (!full || full.length < 5) return null;
+        const from = leg.polyline[0];
+        const to = leg.polyline[leg.polyline.length - 1];
+        const sliced = sliceBusPolyline(full, from, to);
+        if (!sliced || sliced.length < 3) return null;
+        return { idx, polyline: sliced };
+      });
+    })();
+
+    Promise.all([Promise.all(walkPromises), busPromise]).then(([walkResults, busResults]) => {
       if (cancelled) return;
-      // Aplicar todos los enriquecimientos sobre los legs originales
       const next = route.legs.map((l) => ({ ...l }));
       let changed = false;
-      for (const r of results) {
-        if (r) {
-          next[r.idx] = { ...next[r.idx], polyline: r.polyline };
-          changed = true;
-        }
+      for (const r of walkResults) {
+        if (r) { next[r.idx] = { ...next[r.idx], polyline: r.polyline }; changed = true; }
+      }
+      for (const r of busResults) {
+        if (r) { next[r.idx] = { ...next[r.idx], polyline: r.polyline }; changed = true; }
       }
       if (changed) setEnrichedLegs(next);
     });
