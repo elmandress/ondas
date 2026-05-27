@@ -35,6 +35,9 @@ const TRANSFER_WAIT_S = 240;           // 4 min de espera al transbordo
 const MAX_WALK_TO_STOP_M = 1500;
 /** Si origen y destino están a menos de esto, ofrecer caminar como opción. */
 const WALK_ONLY_MAX_M = 2500;
+/** Distancia máxima a pie para caminar entre paradas en un transbordo.
+ *  Más de esto deja de ser razonable (la gente prefiere otra ruta). */
+const MAX_TRANSFER_WALK_M = 350;
 
 export interface PlanOptions {
   walkRadiusM?: number;
@@ -136,6 +139,52 @@ function findStopsNear(point: { lat: number; lon: number }, radiusM: number, lim
   }
   results.sort((a, b) => a.walkM - b.walkM);
   return results.slice(0, limit);
+}
+
+/**
+ * Grid espacial para búsqueda rápida de paradas vecinas.
+ * Indexa por celda de ~500m (~0.005° lat, ~0.005° lon en MVD).
+ * Necesario porque en el loop de transbordos, buscar paradas a <300m
+ * de cada parada del bus 1 sería O(N) por iteración → O(N²) total.
+ */
+interface StopGrid {
+  cellSize: number; // grados
+  cells: Map<string, StopRecord[]>;
+}
+
+function buildStopGrid(stopsById: Map<string, StopRecord>, _radiusM: number): StopGrid {
+  // 0.005° ≈ 555m en lat, ~460m en lon a -34.9. Usamos celda 0.005°.
+  const cellSize = 0.005;
+  const cells = new Map<string, StopRecord[]>();
+  for (const s of stopsById.values()) {
+    const key = `${Math.floor(s.stopLat / cellSize)},${Math.floor(s.stopLon / cellSize)}`;
+    const arr = cells.get(key);
+    if (arr) arr.push(s); else cells.set(key, [s]);
+  }
+  return { cellSize, cells };
+}
+
+function nearbyStopsFromGrid(
+  grid: StopGrid,
+  origin: { stopLat: number; stopLon: number },
+  radiusM: number,
+): Array<{ stop: StopRecord; distM: number }> {
+  const { cellSize, cells } = grid;
+  const baseRow = Math.floor(origin.stopLat / cellSize);
+  const baseCol = Math.floor(origin.stopLon / cellSize);
+  const out: Array<{ stop: StopRecord; distM: number }> = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      const bucket = cells.get(`${baseRow + dr},${baseCol + dc}`);
+      if (!bucket) continue;
+      for (const s of bucket) {
+        const d = haversineM(origin.stopLat, origin.stopLon, s.stopLat, s.stopLon);
+        if (d <= radiusM) out.push({ stop: s, distM: d });
+      }
+    }
+  }
+  out.sort((a, b) => a.distM - b.distM);
+  return out;
 }
 
 /**
@@ -338,39 +387,55 @@ export function planRoutesGtfs(
 
   if (maxTransfers >= 1 && directLinesCount < 3) {
     let transfersFound = 0;
+    // Indexamos paradas por cuadrícula 0.005° (~500m) para buscar vecinas rápido.
+    // Sin esto, anidar findStopsNear dentro del loop es O(N²) sobre ~5000 paradas.
+    const stopGrid = buildStopGrid(allStopsById, MAX_TRANSFER_WALK_M);
+
     outer: for (const f of fromStops.slice(0, 6)) {
       const variantsAtFrom = getAllVariantsAtStop(f.stop.stopId);
       for (const v1 of variantsAtFrom) {
         if (!isLineOperating(v1.shortName)) continue;
         const v1Downstream = getDownstreamStops(v1.variantId, v1.sequence);
-        for (const transferStop of v1Downstream) {
-          const transferStopRecord = getStopsServerSync().find((s) => s.stopId === transferStop.stopId);
-          if (!transferStopRecord) continue;
+        for (const alightStop of v1Downstream) {
+          const alightStopRecord = allStopsById.get(alightStop.stopId);
+          if (!alightStopRecord) continue;
 
-          const distOrig = haversineM(origin.lat, origin.lon, transferStopRecord.stopLat, transferStopRecord.stopLon);
-          const distDest = haversineM(destination.lat, destination.lon, transferStopRecord.stopLat, transferStopRecord.stopLon);
+          const distOrig = haversineM(origin.lat, origin.lon, alightStopRecord.stopLat, alightStopRecord.stopLon);
+          const distDest = haversineM(destination.lat, destination.lon, alightStopRecord.stopLat, alightStopRecord.stopLon);
           if (distOrig < 500) continue;
           if (distDest < 500) continue;
 
-          const directsFromTransfer = findDirectVariants(transferStop.stopId, toStopIds);
-          for (const m2 of directsFromTransfer) {
-            if (m2.fromVariantId === v1.variantId) continue;
-            if (v1.shortName === m2.shortName) continue; // mismo nº de línea = no es transbordo real
-            if (!isLineOperating(m2.shortName)) continue;
-            const toNear = toStopById.get(m2.toStopId);
-            if (!toNear) continue;
+          // Paradas donde se puede tomar el bus 2 sin alejarse: la misma parada
+          // de bajada (walkM=0) + vecinas a ≤MAX_TRANSFER_WALK_M (caminata corta).
+          // Esto resuelve el caso "bajate del 187 acá, caminá 200m y tomate el 64".
+          const boardCandidates: Array<{ stopId: string; walkM: number; stopRecord: StopRecord }> = [
+            { stopId: alightStop.stopId, walkM: 0, stopRecord: alightStopRecord },
+          ];
+          for (const near of nearbyStopsFromGrid(stopGrid, alightStopRecord, MAX_TRANSFER_WALK_M)) {
+            if (near.stop.stopId === alightStop.stopId) continue;
+            boardCandidates.push({ stopId: near.stop.stopId, walkM: near.distM, stopRecord: near.stop });
+          }
 
-            const bus1Seconds = Math.max(60, transferStop.arrivalSeconds - v1.arrivalSeconds);
-            const bus2Seconds = Math.max(60, m2.toArrivalSeconds - m2.fromArrivalSeconds);
-            const totalSeconds = f.walkS + BUS_WAIT_DEFAULT_S + bus1Seconds + TRANSFER_WAIT_S + bus2Seconds + toNear.walkS;
+          for (const board of boardCandidates) {
+            const directsFromBoard = findDirectVariants(board.stopId, toStopIds);
+            for (const m2 of directsFromBoard) {
+              if (m2.fromVariantId === v1.variantId) continue;
+              if (v1.shortName === m2.shortName) continue;
+              if (!isLineOperating(m2.shortName)) continue;
+              const toNear = toStopById.get(m2.toStopId);
+              if (!toNear) continue;
 
-            const bus1Polyline = buildBusLegPolyline(v1.variantId, v1.sequence, transferStop.sequence, allStopsById);
-            const bus2Polyline = buildBusLegPolyline(m2.fromVariantId, m2.fromSeq, m2.toSeq, allStopsById);
-            const r: Omit<PlannedRoute, "signature"> = {
-              totalSeconds,
-              totalWalkM: f.walkM + toNear.walkM,
-              numTransfers: 1,
-              legs: [
+              const bus1Seconds = Math.max(60, alightStop.arrivalSeconds - v1.arrivalSeconds);
+              const bus2Seconds = Math.max(60, m2.toArrivalSeconds - m2.fromArrivalSeconds);
+              const transferWalkS = Math.round(board.walkM / WALK_SPEED_MS);
+              const totalSeconds =
+                f.walkS + BUS_WAIT_DEFAULT_S + bus1Seconds +
+                transferWalkS + TRANSFER_WAIT_S +
+                bus2Seconds + toNear.walkS;
+
+              const bus1Polyline = buildBusLegPolyline(v1.variantId, v1.sequence, alightStop.sequence, allStopsById);
+              const bus2Polyline = buildBusLegPolyline(m2.fromVariantId, m2.fromSeq, m2.toSeq, allStopsById);
+              const legs: RouteLeg[] = [
                 {
                   type: "walk",
                   durationS: f.walkS,
@@ -383,20 +448,38 @@ export function planRoutesGtfs(
                   type: "bus",
                   fromStopId: f.stop.stopId,
                   fromStopName: f.stop.stopName,
-                  toStopId: transferStop.stopId,
-                  toStopName: transferStopRecord.stopName,
+                  toStopId: alightStop.stopId,
+                  toStopName: alightStopRecord.stopName,
                   lines: [v1.shortName],
                   headsign: v1.headsign,
-                  numStops: transferStop.sequence - v1.sequence,
+                  numStops: alightStop.sequence - v1.sequence,
                   durationS: bus1Seconds + BUS_WAIT_DEFAULT_S,
-                  distanceM: (transferStop.sequence - v1.sequence) * 350,
+                  distanceM: (alightStop.sequence - v1.sequence) * 350,
                   variantId: v1.variantId,
                   polyline: bus1Polyline,
                 },
+              ];
+              // Tramo de caminata entre paradas (solo si efectivamente caminamos)
+              if (board.walkM > 0) {
+                legs.push({
+                  type: "walk",
+                  durationS: transferWalkS,
+                  distanceM: Math.round(board.walkM),
+                  fromStopId: alightStop.stopId,
+                  fromStopName: alightStopRecord.stopName,
+                  toStopId: board.stopId,
+                  toStopName: board.stopRecord.stopName,
+                  polyline: [
+                    [alightStopRecord.stopLat, alightStopRecord.stopLon],
+                    [board.stopRecord.stopLat, board.stopRecord.stopLon],
+                  ],
+                });
+              }
+              legs.push(
                 {
                   type: "bus",
-                  fromStopId: transferStop.stopId,
-                  fromStopName: transferStopRecord.stopName,
+                  fromStopId: board.stopId,
+                  fromStopName: board.stopRecord.stopName,
                   toStopId: m2.toStopId,
                   toStopName: toNear.stop.stopName,
                   lines: [m2.shortName],
@@ -415,11 +498,17 @@ export function planRoutesGtfs(
                   fromStopName: toNear.stop.stopName,
                   polyline: [[toNear.stop.stopLat, toNear.stop.stopLon], [destination.lat, destination.lon]],
                 },
-              ],
-            };
-            candidates.push({ ...r, signature: buildSignature(r) });
-            transfersFound++;
-            if (transfersFound > 30) break outer;
+              );
+              const r: Omit<PlannedRoute, "signature"> = {
+                totalSeconds,
+                totalWalkM: f.walkM + board.walkM + toNear.walkM,
+                numTransfers: 1,
+                legs,
+              };
+              candidates.push({ ...r, signature: buildSignature(r) });
+              transfersFound++;
+              if (transfersFound > 60) break outer;
+            }
           }
         }
       }
@@ -438,6 +527,22 @@ export function planRoutesGtfs(
   for (const [sig, route] of bySig) {
     const altCount = (countBySig.get(sig) ?? 1) - 1;
     if (altCount > 0) route.alternatives = altCount;
+  }
+
+  // ─── FILTRO DE DOMINANCIA ───
+  // Si tenemos al menos un directo, descartar transbordos que sean
+  // sustancialmente peores: >1.5× el tiempo del mejor directo. Los transbordos
+  // tienen sentido para abrir alternativas, no para mostrar siempre la peor opción.
+  const bestDirect = Array.from(bySig.values())
+    .filter((r) => r.numTransfers === 0 && r.signature !== "walk")
+    .reduce<PlannedRoute | null>((best, r) => (!best || r.totalSeconds < best.totalSeconds ? r : best), null);
+  if (bestDirect) {
+    const cap = bestDirect.totalSeconds * 1.5;
+    for (const [sig, route] of Array.from(bySig.entries())) {
+      if (route.numTransfers >= 1 && route.totalSeconds > cap) {
+        bySig.delete(sig);
+      }
+    }
   }
 
   // Ordenar resultados deduplicados por tiempo
