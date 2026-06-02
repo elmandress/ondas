@@ -1,45 +1,66 @@
 /**
- * Acceso al SQLite GTFS pre-procesado (data/gtfs.db).
+ * Acceso al GTFS pre-procesado (data/gtfs-v2.json).
  *
  * Permite responder con CERTEZA (no heurística):
  *   - ¿La parada P está en el recorrido de la línea L hacia destino D?
  *   - ¿Cuál es la posición ordinal (stop_sequence) de P en ese trip?
  *   - Lista ordenada de paradas de un trip → para calcular "paradas restantes"
  *
- * SRS FR-2.7+ (NUEVO): filtro upstream basado en GTFS oficial.
- * Reemplaza la proyección polyline de `bus-direction.ts` que era una heurística.
+ * SRS FR-2.7+: filtro upstream basado en GTFS oficial.
  *
- * Schema (data/gtfs.db ~3MB):
- *   variants(variant_id, short_name, headsign, long_name, direction_id)
- *   variant_stops(variant_id, stop_sequence, stop_id, arrival_seconds)
+ * IMPORTANTE (deploy): antes esto leía gtfs-v2.db con **better-sqlite3**, un módulo
+ * NATIVO de C++ que falla seguido en Netlify Functions (no compila / binario no carga
+ * / prebuilds rotos en 12.x). Eso hacía que en producción las PARADAS y POIs (JSON puro)
+ * anduvieran pero las RUTAS y recorridos NO. Ahora leemos `gtfs-v2.json` con fs como el
+ * resto de los datos → cero módulos nativos → las rutas funcionan en prod igual que local.
+ * El JSON se regenera con `scripts/export-gtfs-json.mjs` desde gtfs-v2.db.
+ *
+ * Estructura de gtfs-v2.json (índices precomputados, arrays compactos):
+ *   variantsByLine[shortName] = [ {variantId, shortName, headsign, allHeadsigns, directionId} ]
+ *   stopsByVariant[variantId] = [ [stopId, sequence, arrivalSeconds], ... ]  (ordenado)
+ *   variantsByStop[stopId]    = [ [variantId, sequence], ... ]
+ *   variantMeta[variantId]    = {variantId, shortName, headsign, allHeadsigns, directionId}
  *
  * Server-only. NO importar desde código cliente.
  */
+import path from "path";
+import fs from "fs";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const path = require("path") as typeof import("path");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fs = require("fs") as typeof import("fs");
+interface VariantMeta {
+  variantId: string;
+  shortName: string;
+  headsign: string;
+  allHeadsigns: string;
+  directionId: number | null;
+}
+interface GtfsIndex {
+  variantsByLine: Record<string, VariantMeta[]>;
+  stopsByVariant: Record<string, Array<[string, number, number]>>; // [stopId, seq, arrSec]
+  variantsByStop: Record<string, Array<[string, number]>>;          // [variantId, seq]
+  variantMeta: Record<string, VariantMeta>;
+}
 
-import type DatabaseType from "better-sqlite3";
+let _idx: GtfsIndex | null = null;
+let _loadFailed = false;
 
-let _db: DatabaseType.Database | null = null;
-
-function getDb() {
-  if (_db) return _db;
-  // Prefer gtfs-v2.db (newer build) if available, fall back to gtfs.db
-  const v2 = path.join(process.cwd(), "data", "gtfs-v2.db");
-  const v1 = path.join(process.cwd(), "data", "gtfs.db");
-  const DB_PATH = fs.existsSync(v2) ? v2 : fs.existsSync(v1) ? v1 : null;
-  if (!DB_PATH) {
-    console.warn("[gtfs-db] no gtfs.db found in data/");
+/** Carga el índice GTFS desde JSON (una vez). Devuelve null si no está (degrada). */
+function getIdx(): GtfsIndex | null {
+  if (_idx) return _idx;
+  if (_loadFailed) return null;
+  try {
+    const p = path.join(process.cwd(), "data", "gtfs-v2.json");
+    if (!fs.existsSync(p)) {
+      console.warn("[gtfs-db] no gtfs-v2.json found in data/");
+      _loadFailed = true;
+      return null;
+    }
+    _idx = JSON.parse(fs.readFileSync(p, "utf-8")) as GtfsIndex;
+    return _idx;
+  } catch (err) {
+    console.error("[gtfs-db] error cargando gtfs-v2.json:", err);
+    _loadFailed = true;
     return null;
   }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Database = require("better-sqlite3") as typeof DatabaseType;
-  _db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
-  console.log("[gtfs-db] using", path.basename(DB_PATH));
-  return _db;
 }
 
 /** Normaliza nombres para matching tolerante (acentos, mayúsculas, paréntesis). */
@@ -47,9 +68,9 @@ export function normalizeHeadsign(s: string): string {
   return s
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")        // quita acentos
-    .replace(/\(.*?\)/g, " ")     // quita "(POR PARQUE ...)"
-    .replace(/[^a-z0-9 ]/g, " ")  // simplifica símbolos
+    .replace(/[̀-ͯ]/g, "") // quita acentos
+    .replace(/\(.*?\)/g, " ")        // quita "(POR PARQUE ...)"
+    .replace(/[^a-z0-9 ]/g, " ")     // simplifica símbolos
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -65,10 +86,6 @@ interface VariantInfo {
  * Candidato de recorrido para una línea. A diferencia de VariantInfo (un solo
  * match), esto representa CADA recorrido distinto que tiene la línea, para que
  * el filtro de dirección (bus-direction-gtfs) elija el que mejor ajusta al GPS.
- *
- * `allHeadsigns`: en gtfs-v2.db la columna all_headsigns agrupa los letreros
- * vistos para esa variante (separados por "|"). En gtfs.db (v1) no existe, así
- * que cae a `headsign`.
  */
 export interface VariantCandidate {
   variantId: string;
@@ -79,55 +96,30 @@ export interface VariantCandidate {
   directionId: number | null;
 }
 
-/** ¿La base actual tiene la columna variants.all_headsigns? (v2 sí, v1 no). */
-let _hasAllHeadsigns: boolean | null = null;
-function hasAllHeadsignsColumn(db: DatabaseType.Database): boolean {
-  if (_hasAllHeadsigns !== null) return _hasAllHeadsigns;
-  try {
-    const cols = db.prepare("PRAGMA table_info(variants)").all() as { name: string }[];
-    _hasAllHeadsigns = cols.some((c) => c.name === "all_headsigns");
-  } catch {
-    _hasAllHeadsigns = false;
-  }
-  return _hasAllHeadsigns;
+/** Elimina sufijos de día ("76 Sd", "124 D", "405 N") para matchear el short_name GTFS. */
+function normalizeLineName(line: string): string {
+  return line.replace(/\s+(Sd|Sa|D|N)$/i, "").trim();
 }
 
 /**
  * Todos los recorridos (variantes) de una línea. Normaliza el sufijo de día
- * ("124 Sd" → "124") antes del WHERE, igual que findVariantForBus.
+ * ("124 Sd" → "124") antes de buscar, igual que findVariantForBus.
  *
  * Consumido por bus-direction-gtfs.ts: cada candidato se evalúa proyectando el
  * GPS del bus sobre sus paradas para elegir el recorrido físico real.
  */
 export function getVariantsForLine(line: string): VariantCandidate[] {
-  const db = getDb();
-  if (!db) return [];
-  try {
-    const normalizedLine = normalizeLineName(line);
-    const hasAll = hasAllHeadsignsColumn(db);
-    const cols = hasAll
-      ? "variant_id, short_name, headsign, all_headsigns, direction_id"
-      : "variant_id, short_name, headsign, direction_id";
-    const rows = db.prepare(
-      `SELECT ${cols} FROM variants WHERE short_name = ?`
-    ).all(normalizedLine) as Array<{
-      variant_id: string;
-      short_name: string;
-      headsign: string;
-      all_headsigns?: string;
-      direction_id: number | null;
-    }>;
-    return rows.map((r) => ({
-      variantId: r.variant_id,
-      shortName: r.short_name,
-      headsign: r.headsign,
-      allHeadsigns: r.all_headsigns || r.headsign || "",
-      directionId: r.direction_id,
-    }));
-  } catch (err) {
-    console.error("[gtfs-db] getVariantsForLine error:", err);
-    return [];
-  }
+  const idx = getIdx();
+  if (!idx) return [];
+  const normalizedLine = normalizeLineName(line);
+  const rows = idx.variantsByLine[normalizedLine] || [];
+  return rows.map((r) => ({
+    variantId: r.variantId,
+    shortName: r.shortName,
+    headsign: r.headsign,
+    allHeadsigns: r.allHeadsigns || r.headsign || "",
+    directionId: r.directionId,
+  }));
 }
 
 /**
@@ -136,73 +128,56 @@ export function getVariantsForLine(line: string): VariantCandidate[] {
  *
  * Devuelve null si la línea no existe en GTFS o no hay variante con headsign similar.
  */
-/** Elimina sufijos de día ("76 Sd", "124 D", "405 N") para matchear el short_name GTFS. */
-function normalizeLineName(line: string): string {
-  return line.replace(/\s+(Sd|Sa|D|N)$/i, "").trim();
-}
-
 export function findVariantForBus(line: string, destination: string): VariantInfo | null {
-  const db = getDb();
-  if (!db) return null;
-  try {
-    const normalizedLine = normalizeLineName(line);
-    const rows = db.prepare(
-      "SELECT variant_id, short_name, headsign, direction_id FROM variants WHERE short_name = ?"
-    ).all(normalizedLine) as { variant_id: string; short_name: string; headsign: string; direction_id: number | null }[];
+  const idx = getIdx();
+  if (!idx) return null;
+  const normalizedLine = normalizeLineName(line);
+  const rows = idx.variantsByLine[normalizedLine] || [];
+  if (rows.length === 0) return null;
 
-    if (rows.length === 0) return null;
+  const target = normalizeHeadsign(destination);
+  if (!target) return rows[0] ? toInfo(rows[0]) : null;
 
-    const target = normalizeHeadsign(destination);
-    if (!target) return rows[0] ? toInfo(rows[0]) : null;
-
-    // 1. Match exacto normalizado
-    let best = rows.find((r) => normalizeHeadsign(r.headsign) === target);
-    // 2. Match por inclusión (uno contiene al otro)
-    if (!best) {
-      best = rows.find((r) => {
-        const n = normalizeHeadsign(r.headsign);
-        return n.includes(target) || target.includes(n);
-      });
-    }
-    // 3. Match por primera palabra coincidente
-    if (!best) {
-      const firstWord = target.split(" ")[0];
-      best = rows.find((r) => normalizeHeadsign(r.headsign).startsWith(firstWord));
-    }
-    // 4. Fallback: cualquier variante de esa línea
-    if (!best) best = rows[0];
-    return toInfo(best);
-  } catch (err) {
-    console.error("[gtfs-db] findVariantForBus error:", err);
-    return null;
+  // 1. Match exacto normalizado
+  let best = rows.find((r) => normalizeHeadsign(r.headsign) === target);
+  // 2. Match por inclusión (uno contiene al otro)
+  if (!best) {
+    best = rows.find((r) => {
+      const n = normalizeHeadsign(r.headsign);
+      return n.includes(target) || target.includes(n);
+    });
   }
+  // 3. Match por primera palabra coincidente
+  if (!best) {
+    const firstWord = target.split(" ")[0];
+    best = rows.find((r) => normalizeHeadsign(r.headsign).startsWith(firstWord));
+  }
+  // 4. Fallback: cualquier variante de esa línea
+  if (!best) best = rows[0];
+  return toInfo(best);
 }
 
-function toInfo(r: { variant_id: string; short_name: string; headsign: string; direction_id: number | null }): VariantInfo {
+function toInfo(r: VariantMeta): VariantInfo {
   return {
-    variantId: r.variant_id,
-    shortName: r.short_name,
+    variantId: r.variantId,
+    shortName: r.shortName,
     headsign: r.headsign,
-    directionId: r.direction_id,
+    directionId: r.directionId,
   };
 }
-
 
 /**
  * Posición ordinal de una parada en una variante.
  * Devuelve null si la parada NO está en el recorrido (= bus va por otra ruta).
  */
 export function getStopSequence(variantId: string, stopId: string | number): number | null {
-  const db = getDb();
-  if (!db) return null;
-  try {
-    const row = db.prepare(
-      "SELECT stop_sequence FROM variant_stops WHERE variant_id = ? AND stop_id = ?"
-    ).get(variantId, String(stopId)) as { stop_sequence: number } | undefined;
-    return row?.stop_sequence ?? null;
-  } catch {
-    return null;
-  }
+  const idx = getIdx();
+  if (!idx) return null;
+  const stops = idx.stopsByVariant[variantId];
+  if (!stops) return null;
+  const sid = String(stopId);
+  for (const [s, seq] of stops) if (s === sid) return seq;
+  return null;
 }
 
 interface StopOfVariant {
@@ -213,20 +188,11 @@ interface StopOfVariant {
 
 /** Lista completa de paradas de una variante en orden de recorrido. */
 export function getStopsForVariant(variantId: string): StopOfVariant[] {
-  const db = getDb();
-  if (!db) return [];
-  try {
-    const rows = db.prepare(
-      "SELECT stop_sequence, stop_id, arrival_seconds FROM variant_stops WHERE variant_id = ? ORDER BY stop_sequence"
-    ).all(variantId) as { stop_sequence: number; stop_id: string; arrival_seconds: number }[];
-    return rows.map((r) => ({
-      stopId: r.stop_id,
-      sequence: r.stop_sequence,
-      arrivalSeconds: r.arrival_seconds,
-    }));
-  } catch {
-    return [];
-  }
+  const idx = getIdx();
+  if (!idx) return [];
+  const stops = idx.stopsByVariant[variantId];
+  if (!stops) return [];
+  return stops.map(([stopId, sequence, arrivalSeconds]) => ({ stopId, sequence, arrivalSeconds }));
 }
 
 /** ¿Esta variante pasa por esta parada? */
@@ -241,24 +207,18 @@ export function getServingVariants(stopId: string | number, shortName: string): 
   sequence: number;
   directionId: number | null;
 }> {
-  const db = getDb();
-  if (!db) return [];
-  try {
-    const rows = db.prepare(`
-      SELECT v.variant_id, v.headsign, vs.stop_sequence, v.direction_id
-      FROM variant_stops vs
-      JOIN variants v ON vs.variant_id = v.variant_id
-      WHERE vs.stop_id = ? AND v.short_name = ?
-    `).all(String(stopId), shortName) as { variant_id: string; headsign: string; stop_sequence: number; direction_id: number | null }[];
-    return rows.map((r) => ({
-      variantId: r.variant_id,
-      headsign: r.headsign,
-      sequence: r.stop_sequence,
-      directionId: r.direction_id,
-    }));
-  } catch {
-    return [];
+  const idx = getIdx();
+  if (!idx) return [];
+  const byStop = idx.variantsByStop[String(stopId)];
+  if (!byStop) return [];
+  const out: Array<{ variantId: string; headsign: string; sequence: number; directionId: number | null }> = [];
+  for (const [variantId, sequence] of byStop) {
+    const m = idx.variantMeta[variantId];
+    if (m && m.shortName === shortName) {
+      out.push({ variantId, headsign: m.headsign, sequence, directionId: m.directionId });
+    }
   }
+  return out;
 }
 
 /** TODAS las variantes que pasan por una parada (sin filtrar por línea). */
@@ -269,28 +229,21 @@ export function getAllVariantsAtStop(stopId: string | number): Array<{
   sequence: number;
   arrivalSeconds: number;
 }> {
-  const db = getDb();
-  if (!db) return [];
-  try {
-    const rows = db.prepare(`
-      SELECT v.variant_id, v.short_name, v.headsign, vs.stop_sequence, vs.arrival_seconds
-      FROM variant_stops vs
-      JOIN variants v ON vs.variant_id = v.variant_id
-      WHERE vs.stop_id = ?
-    `).all(String(stopId)) as {
-      variant_id: string; short_name: string; headsign: string;
-      stop_sequence: number; arrival_seconds: number;
-    }[];
-    return rows.map((r) => ({
-      variantId: r.variant_id,
-      shortName: r.short_name,
-      headsign: r.headsign,
-      sequence: r.stop_sequence,
-      arrivalSeconds: r.arrival_seconds,
-    }));
-  } catch {
-    return [];
+  const idx = getIdx();
+  if (!idx) return [];
+  const byStop = idx.variantsByStop[String(stopId)];
+  if (!byStop) return [];
+  const out: Array<{ variantId: string; shortName: string; headsign: string; sequence: number; arrivalSeconds: number }> = [];
+  for (const [variantId, sequence] of byStop) {
+    const m = idx.variantMeta[variantId];
+    if (!m) continue;
+    // arrival_seconds de ESTA parada en la variante (lookup en stopsByVariant).
+    let arrivalSeconds = 0;
+    const stops = idx.stopsByVariant[variantId];
+    if (stops) for (const [s, , arr] of stops) if (s === String(stopId)) { arrivalSeconds = arr; break; }
+    out.push({ variantId, shortName: m.shortName, headsign: m.headsign, sequence, arrivalSeconds });
   }
+  return out;
 }
 
 /** Paradas de una variante entre dos secuencias (inclusivo). Útil para polylines. */
@@ -299,50 +252,32 @@ export function getStopsBetween(
   fromSeq: number,
   toSeq: number
 ): Array<{ stopId: string; sequence: number; arrivalSeconds: number }> {
-  const db = getDb();
-  if (!db) return [];
-  try {
-    const rows = db.prepare(`
-      SELECT stop_id, stop_sequence, arrival_seconds
-      FROM variant_stops
-      WHERE variant_id = ? AND stop_sequence >= ? AND stop_sequence <= ?
-      ORDER BY stop_sequence
-    `).all(variantId, fromSeq, toSeq) as {
-      stop_id: string; stop_sequence: number; arrival_seconds: number;
-    }[];
-    return rows.map((r) => ({
-      stopId: r.stop_id,
-      sequence: r.stop_sequence,
-      arrivalSeconds: r.arrival_seconds,
-    }));
-  } catch {
-    return [];
+  const idx = getIdx();
+  if (!idx) return [];
+  const stops = idx.stopsByVariant[variantId];
+  if (!stops) return [];
+  const out: Array<{ stopId: string; sequence: number; arrivalSeconds: number }> = [];
+  for (const [stopId, sequence, arrivalSeconds] of stops) {
+    if (sequence >= fromSeq && sequence <= toSeq) out.push({ stopId, sequence, arrivalSeconds });
   }
+  out.sort((a, b) => a.sequence - b.sequence);
+  return out;
 }
 
-/** Una sola pasada por stop: devuelve los stops AGUAS ABAJO desde un stop dado en una variante. */
+/** Devuelve los stops AGUAS ABAJO desde un stop dado en una variante. */
 export function getDownstreamStops(variantId: string, fromSequence: number): Array<{
   stopId: string;
   sequence: number;
   arrivalSeconds: number;
 }> {
-  const db = getDb();
-  if (!db) return [];
-  try {
-    const rows = db.prepare(`
-      SELECT stop_id, stop_sequence, arrival_seconds
-      FROM variant_stops
-      WHERE variant_id = ? AND stop_sequence > ?
-      ORDER BY stop_sequence
-    `).all(variantId, fromSequence) as {
-      stop_id: string; stop_sequence: number; arrival_seconds: number;
-    }[];
-    return rows.map((r) => ({
-      stopId: r.stop_id,
-      sequence: r.stop_sequence,
-      arrivalSeconds: r.arrival_seconds,
-    }));
-  } catch {
-    return [];
+  const idx = getIdx();
+  if (!idx) return [];
+  const stops = idx.stopsByVariant[variantId];
+  if (!stops) return [];
+  const out: Array<{ stopId: string; sequence: number; arrivalSeconds: number }> = [];
+  for (const [stopId, sequence, arrivalSeconds] of stops) {
+    if (sequence > fromSequence) out.push({ stopId, sequence, arrivalSeconds });
   }
+  out.sort((a, b) => a.sequence - b.sequence);
+  return out;
 }

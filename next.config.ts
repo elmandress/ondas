@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
 
   outputFileTracingIncludes: {
     "/api/**": [
-      "./data/gtfs-v2.db",
+      "./data/gtfs-v2.json",
       "./data/line-hours.json",
       "./data/mvd-pois.json",
       "./data/variant_to_line.json",
