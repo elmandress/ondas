@@ -1,15 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { STOPS_DATASET, lineColorFromCode, searchStops, type BusStop } from "@/lib/stm";
+import { AnimatePresence } from "framer-motion";
+import { STOPS_DATASET, searchStops, type BusStop } from "@/lib/stm";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
 import { setSelectedPlace } from "@/lib/selected-place";
 import { setActiveTab } from "@/lib/active-tab";
+import { LogoLockup } from "@/components/brand/Logo";
+import { Icons } from "@/components/brand/Icons";
+import LineBadge from "@/components/ui/LineBadge";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
+import VoiceOverlay from "@/components/ui/VoiceOverlay";
+import { useMounted } from "@/hooks/useMounted";
 
 interface GeoResult {
-  // string para POIs curados ("osm:way:123"), number para resultados de Nominatim
   id: string | number;
   name: string;
   fullName: string;
@@ -21,7 +26,6 @@ interface GeoResult {
   source?: "curated" | "nominatim";
 }
 
-// Paradas top para mostrar por defecto (códigos de paradas populares)
 const TRENDING_IDS = ["4521", "3301", "3302", "2201", "5501", "1101", "9001", "3003", "7703", "1900"];
 
 type SearchMode = "idle" | "searching" | "stops" | "places" | "empty";
@@ -31,14 +35,23 @@ export default function SearchScreen() {
   const [query, setQuery] = useState("");
   const [stopResults, setStopResults] = useState<BusStop[]>([]);
   const [placeResults, setPlaceResults] = useState<GeoResult[]>([]);
+  // Buses EN VIVO que van al destino buscado ("a Pocitos") — lo que la gente ama.
+  const [liveToDest, setLiveToDest] = useState<{ count: number; lines: string[] }>({ count: 0, lines: [] });
   const [mode, setMode] = useState<SearchMode>("idle");
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [history, setHistory] = useState<BusStop[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const geocodeAbortRef = useRef<AbortController | null>(null);
 
-  // Trending stops (se calcula cuando el dataset está listo)
+  const mounted = useMounted();
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const voice = useVoiceInput({
+    onResult: (transcript) => { setQuery(transcript); setVoiceError(null); },
+    onError: (msg) => { setVoiceError(msg); setTimeout(() => setVoiceError(null), 3500); },
+  });
+
   const trendingStops = useMemo<BusStop[]>(() => {
     if (!stopsReady) return [];
     return TRENDING_IDS
@@ -46,7 +59,6 @@ export default function SearchScreen() {
       .filter(Boolean) as BusStop[];
   }, [stopsReady]);
 
-  // Cargar historial cuando dataset esté listo
   useEffect(() => {
     if (!stopsReady) return;
     try {
@@ -56,10 +68,8 @@ export default function SearchScreen() {
         setHistory(ids.map((id) => STOPS_DATASET.find((s) => s.stopId === id)).filter(Boolean) as BusStop[]);
       }
     } catch {}
-    setTimeout(() => inputRef.current?.focus(), 300);
   }, [stopsReady]);
 
-  // Búsqueda con debounce — paradas locales + lugares via Nominatim
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -68,34 +78,49 @@ export default function SearchScreen() {
       setMode("idle");
       setStopResults([]);
       setPlaceResults([]);
+      setLiveToDest({ count: 0, lines: [] });
       return;
     }
 
     setMode("searching");
 
     debounceRef.current = setTimeout(async () => {
-      // Búsqueda de paradas local (instantánea)
+      geocodeAbortRef.current?.abort();
+      const geocodeCtrl = new AbortController();
+      geocodeAbortRef.current = geocodeCtrl;
+
       const localStops = searchStops(q);
 
-      // Búsqueda de lugares via proxy Nominatim
       let places: GeoResult[] = [];
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, { signal: geocodeCtrl.signal });
         const data = await res.json();
         places = data.results || [];
-      } catch {}
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+      }
 
       setStopResults(localStops);
       setPlaceResults(places);
 
-      if (localStops.length === 0 && places.length === 0) {
-        setMode("empty");
-      } else if (localStops.length > 0 && places.length === 0) {
-        setMode("stops");
-      } else {
-        setMode("places");
-      }
+      // Buses EN VIVO que van a este destino (F2.3). En paralelo, sin bloquear.
+      fetch(`/api/stm/vehicles?dest=${encodeURIComponent(q)}`, { signal: geocodeCtrl.signal })
+        .then((r) => r.json())
+        .then((d) => {
+          const v = (d.vehicles || []) as { lineName: string }[];
+          const lines = [...new Set(v.map((x) => x.lineName))].sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
+          setLiveToDest({ count: v.length, lines });
+        })
+        .catch(() => setLiveToDest({ count: 0, lines: [] }));
+
+      if (localStops.length === 0 && places.length === 0) setMode("empty");
+      else if (localStops.length > 0 && places.length === 0) setMode("stops");
+      else setMode("places");
     }, 320);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [query]);
 
   function handleSelectStop(stopId: string) {
@@ -110,8 +135,6 @@ export default function SearchScreen() {
   }
 
   function handleSelectPlace(place: GeoResult) {
-    // SRS FR-3.8: navegar al mapa con el lugar pineado.
-    // El mapa abre un sheet con paradas cercanas + sus llegadas en vivo.
     setSelectedPlace({
       id: place.id,
       name: place.name,
@@ -124,263 +147,189 @@ export default function SearchScreen() {
     setActiveTab("map");
   }
 
-  const showIdle = mode === "idle";
-  const showSearch = mode !== "idle";
-
   return (
-    <div className="flex flex-col h-full">
-
-      {/* ── HEADER ── */}
-      <div className="px-5 pt-14 pb-4 flex-shrink-0">
-        <h1 className="text-2xl font-black text-white tracking-tight mb-4">Buscar</h1>
-
-        <div className="relative">
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
-            <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </div>
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nuevo Centro, Isla de Gorriti, línea 103…"
-            className="w-full glass rounded-2xl pl-11 pr-10 py-3.5 text-sm text-white placeholder:text-slate-600 outline-none focus:border-blue-500/40 transition-all border border-transparent"
-            autoComplete="off"
-            spellCheck={false}
-            inputMode="search"
-          />
-          <AnimatePresence>
-            {query && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                onClick={() => setQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
-              >
-                <svg className="w-3 h-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </motion.button>
-            )}
-          </AnimatePresence>
+    <div className="screen-search" style={{ paddingTop: "max(env(safe-area-inset-top), 8px)" }}>
+      {/* Header mobile */}
+      <div className="app-header mobile-only">
+        <LogoLockup size={24} ring="var(--text)" dot="var(--accent)" />
+      </div>
+      {/* Header desktop */}
+      <div className="desktop-header desktop-only">
+        <div>
+          <h1>Buscar</h1>
+          <div className="subhead">Encontrá cualquier parada por nombre, número o dirección</div>
         </div>
       </div>
 
-      {/* ── CONTENIDO ── */}
-      <div className="flex-1 overflow-y-auto px-5 pb-6">
-        <AnimatePresence mode="wait">
-
-          {/* ── SPINNER ── */}
-          {mode === "searching" && (
-            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-3 py-4">
-              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-              <p className="text-slate-500 text-sm">Buscando…</p>
-            </motion.div>
+      <div className="search-input-wrap">
+        <span className="lead"><Icons.Search size={18} /></span>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Nuevo Centro, Isla de Gorriti, línea 103…"
+          autoComplete="off"
+          spellCheck={false}
+          inputMode="search"
+        />
+        <div className="right-actions">
+          {query && (
+            <button className="clear" onClick={() => setQuery("")} aria-label="Limpiar">
+              <Icons.Close size={14} />
+            </button>
           )}
-
-          {/* ── SIN RESULTADOS ── */}
-          {mode === "empty" && (
-            <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-16 flex flex-col items-center gap-3">
-              <div className="text-5xl">🔍</div>
-              <p className="text-slate-400 text-sm font-semibold">Sin resultados para "{query}"</p>
-              <p className="text-slate-600 text-xs text-center max-w-[220px]">Probá con otro nombre, dirección o número de línea</p>
-            </motion.div>
+          {mounted && (
+            <button
+              className="mic"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!voice.supported) {
+                  setVoiceError("Tu navegador bloquea la búsqueda por voz. Probá en Chrome 🙏");
+                  setTimeout(() => setVoiceError(null), 4500);
+                  return;
+                }
+                if (voice.state === "listening") voice.stop(); else voice.start();
+              }}
+              aria-label="Buscar por voz"
+              style={voice.state === "listening" ? { background: "var(--accent-soft)", color: "var(--accent)" } : undefined}
+            >
+              <Icons.Mic size={16} />
+            </button>
           )}
-
-          {/* ── RESULTADOS DE BÚSQUEDA ── */}
-          {/* SRS FR-3.7: Lugares ANTES que paradas. Cuando el usuario busca "nuevo centro"
-              o "facultad" quiere el lugar, no una parada. Las paradas son el medio. */}
-          {(mode === "stops" || mode === "places") && (
-            <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
-
-              {/* Lugares geográficos (primero) */}
-              {placeResults.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
-                    Lugares ({placeResults.length})
-                  </p>
-                  <div className="space-y-2">
-                    {placeResults.map((place, i) => (
-                      <motion.div key={place.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.035 }}>
-                        <PlaceRow place={place} onTap={() => handleSelectPlace(place)} />
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Paradas STM (después) */}
-              {stopResults.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
-                    Paradas ({stopResults.length})
-                  </p>
-                  <div className="space-y-2">
-                    {stopResults.map((stop, i) => (
-                      <motion.div key={stop.stopId} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.035 }}>
-                        <StopRow stop={stop} onTap={() => handleSelectStop(stop.stopId)} />
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-            </motion.div>
-          )}
-
-          {/* ── ESTADO INICIAL (sin query) ── */}
-          {showIdle && (
-            <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-5">
-
-              {/* Historial */}
-              {history.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-2.5">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Recientes</p>
-                    <button
-                      onClick={() => { setHistory([]); localStorage.removeItem("ondas_stop_history"); }}
-                      className="text-[10px] text-slate-600 font-medium"
-                    >
-                      Borrar
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {history.map((stop, i) => (
-                      <motion.div key={stop.stopId} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}>
-                        <StopRow stop={stop} onTap={() => handleSelectStop(stop.stopId)} isHistory />
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Populares */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">Paradas populares</p>
-                <div className="space-y-2">
-                  {trendingStops.map((stop, i) => (
-                    <motion.div key={stop.stopId} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                      <StopRow stop={stop} onTap={() => handleSelectStop(stop.stopId)} />
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Todas */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
-                  Todas las paradas ({STOPS_DATASET.length})
-                </p>
-                <div className="space-y-2">
-                  {STOPS_DATASET.slice(0, 10).map((stop, i) => (
-                    <motion.div key={stop.stopId} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.035 }}>
-                      <StopRow stop={stop} onTap={() => handleSelectStop(stop.stopId)} />
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-        </AnimatePresence>
+        </div>
       </div>
 
-      {/* ── SHEET DE LLEGADAS ── */}
+      {voiceError && (
+        <p style={{ font: "var(--font-small)", color: "var(--warn)", marginTop: 8 }}>{voiceError}</p>
+      )}
+
+      <VoiceOverlay open={voice.state === "listening"} onCancel={() => voice.stop()} />
+
+      {/* Spinner */}
+      {mode === "searching" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 0" }}>
+          <span style={{ display: "grid", color: "var(--accent)", animation: "spin 1s linear infinite" }}><Icons.Refresh size={16} /></span>
+          <p style={{ font: "var(--font-small)", color: "var(--text-2)" }}>Buscando…</p>
+        </div>
+      )}
+
+      {/* Sin resultados */}
+      {mode === "empty" && (
+        <div className="search-empty">
+          <div className="big">No encontramos “{query}”</div>
+          Probá con el número de parada o un nombre más corto.
+        </div>
+      )}
+
+      {/* Buses EN VIVO que van al destino buscado (F2.3) — lo que la gente ama. */}
+      {(mode === "stops" || mode === "places") && liveToDest.count > 0 && (
+        <button
+          className="live-to-dest"
+          onClick={() => placeResults[0] ? handleSelectPlace(placeResults[0]) : undefined}
+        >
+          <span className="ltd-pulse"><span className="ltd-dot" /></span>
+          <div className="ltd-body">
+            <div className="ltd-title">{liveToDest.count} {liveToDest.count === 1 ? "bus va" : "buses van"} a “{query}” ahora</div>
+            <div className="ltd-lines">{liveToDest.lines.slice(0, 8).join(" · ")}{liveToDest.lines.length > 8 ? "…" : ""}</div>
+          </div>
+          <Icons.Chevron size={16} />
+        </button>
+      )}
+
+      {/* Resultados — FR-3.7: lugares antes que paradas */}
+      {(mode === "stops" || mode === "places") && (
+        <>
+          {placeResults.length > 0 && (
+            <>
+              <div className="search-section-title">Lugares</div>
+              {placeResults.map((place) => (
+                <PlaceRow key={place.id} place={place} onTap={() => handleSelectPlace(place)} />
+              ))}
+            </>
+          )}
+          {stopResults.length > 0 && (
+            <>
+              <div className="search-section-title">Paradas</div>
+              {stopResults.map((stop) => (
+                <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} query={query} />
+              ))}
+            </>
+          )}
+        </>
+      )}
+
+      {/* Estado inicial */}
+      {mode === "idle" && (
+        <>
+          {history.length > 0 && (
+            <>
+              <div className="search-section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Recientes</span>
+                <button onClick={() => { setHistory([]); localStorage.removeItem("ondas_stop_history"); }} style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Borrar</button>
+              </div>
+              {history.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} isHistory />)}
+            </>
+          )}
+
+          <div className="search-section-title">Populares en Montevideo</div>
+          {trendingStops.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} />)}
+
+          <div className="search-section-title">Explorá</div>
+          {STOPS_DATASET.slice(0, 10).map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} />)}
+        </>
+      )}
+
+      <div style={{ height: 40 }} />
+
       <AnimatePresence>
-        {selectedStopId && (
-          <StopArrivalSheet
-            stopId={selectedStopId}
-            onClose={() => setSelectedStopId(null)}
-          />
-        )}
+        {selectedStopId && <StopArrivalSheet stopId={selectedStopId} onClose={() => setSelectedStopId(null)} />}
       </AnimatePresence>
     </div>
   );
 }
 
-// ── StopRow ──────────────────────────────────────────────────────
-function StopRow({ stop, onTap, isHistory, distanceM }: {
-  stop: BusStop;
-  onTap: () => void;
-  isHistory?: boolean;
-  distanceM?: number;
-}) {
+function Highlight({ text, q }: { text: string; q?: string }) {
+  if (!q) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return <>{text}</>;
   return (
-    <motion.button
-      whileTap={{ scale: 0.98 }}
-      onClick={onTap}
-      className="w-full glass rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left"
-    >
-      <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-        {isHistory ? (
-          <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-          </svg>
-        ) : (
-          <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="6" width="20" height="12" rx="2"/>
-            <path d="M22 10H2"/>
-            <circle cx="7" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/>
-          </svg>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-white truncate">{stop.stopName}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          <p className="text-[10px] text-slate-600">#{stop.stopCode}</p>
-          {distanceM !== undefined && (
-            <p className="text-[10px] text-blue-400 font-medium">
-              {distanceM < 1000 ? `${distanceM}m` : `${(distanceM / 1000).toFixed(1)}km`}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-1 mt-1.5 flex-wrap">
-          {stop.lines.slice(0, 6).map((l) => (
-            <span key={l} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-white" style={{ backgroundColor: lineColorFromCode(l) + "40" }}>{l}</span>
-          ))}
-          {stop.lines.length > 6 && <span className="text-[9px] text-slate-600">+{stop.lines.length - 6}</span>}
-        </div>
-      </div>
-      <svg className="w-4 h-4 text-slate-700 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
-    </motion.button>
+    <>
+      {text.slice(0, idx)}
+      <b style={{ color: "var(--accent)" }}>{text.slice(idx, idx + q.length)}</b>
+      {text.slice(idx + q.length)}
+    </>
   );
 }
 
-// ── PlaceRow ─────────────────────────────────────────────────────
+function StopRow({ stop, onTap, isHistory, query }: { stop: BusStop; onTap: () => void; isHistory?: boolean; query?: string }) {
+  return (
+    <button className="search-result stop" onClick={onTap}>
+      <div className="icon">{isHistory ? <Icons.Clock size={16} /> : <Icons.Bus size={16} />}</div>
+      <div className="body">
+        <div className="name"><Highlight text={stop.stopName} q={query} /></div>
+        <div className="meta" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <span>#{stop.stopCode}</span>
+          {stop.lines.slice(0, 6).map((l) => <LineBadge key={l} num={l} size="xs" />)}
+          {stop.lines.length > 6 && <span>+{stop.lines.length - 6}</span>}
+        </div>
+      </div>
+      <Icons.Chevron size={16} />
+    </button>
+  );
+}
+
 function PlaceRow({ place, onTap }: { place: GeoResult; onTap: () => void }) {
-  const icon = place.icon || "📍";
   return (
-    <motion.button
-      whileTap={{ scale: 0.98 }}
-      onClick={onTap}
-      className="w-full glass rounded-2xl px-4 py-3.5 flex items-center gap-3 text-left"
-    >
-      <div className="w-9 h-9 rounded-xl bg-blue-600/10 flex items-center justify-center flex-shrink-0 text-lg">
-        {icon}
+    <button className="search-result place" onClick={onTap}>
+      <div className="icon" style={{ fontSize: 18 }}>{place.icon || "📍"}</div>
+      <div className="body">
+        <div className="name">{place.name}</div>
+        <div className="meta">{place.fullName.split(",").slice(0, 3).join(",")}</div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-white truncate">{place.name}</p>
-        <p className="text-[10px] text-slate-600 truncate mt-0.5">{place.fullName.split(",").slice(0, 3).join(",")}</p>
-      </div>
-      <div className="flex items-center gap-1 text-[10px] text-blue-400 font-medium flex-shrink-0">
-        <span>Paradas</span>
-        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
-    </motion.button>
+      <span className="distance" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent)" }}>
+        Paradas <Icons.Chevron size={12} />
+      </span>
+    </button>
   );
-}
-
-function dist(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

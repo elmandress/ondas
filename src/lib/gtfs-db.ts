@@ -21,18 +21,24 @@ const path = require("path") as typeof import("path");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require("fs") as typeof import("fs");
 
-let _db: any = null;
+import type DatabaseType from "better-sqlite3";
+
+let _db: DatabaseType.Database | null = null;
 
 function getDb() {
   if (_db) return _db;
-  const DB_PATH = path.join(process.cwd(), "data", "gtfs.db");
-  if (!fs.existsSync(DB_PATH)) {
-    console.warn("[gtfs-db] gtfs.db not found at", DB_PATH);
+  // Prefer gtfs-v2.db (newer build) if available, fall back to gtfs.db
+  const v2 = path.join(process.cwd(), "data", "gtfs-v2.db");
+  const v1 = path.join(process.cwd(), "data", "gtfs.db");
+  const DB_PATH = fs.existsSync(v2) ? v2 : fs.existsSync(v1) ? v1 : null;
+  if (!DB_PATH) {
+    console.warn("[gtfs-db] no gtfs.db found in data/");
     return null;
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Database = require("better-sqlite3");
+  const Database = require("better-sqlite3") as typeof DatabaseType;
   _db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
+  console.log("[gtfs-db] using", path.basename(DB_PATH));
   return _db;
 }
 
@@ -56,18 +62,93 @@ interface VariantInfo {
 }
 
 /**
+ * Candidato de recorrido para una línea. A diferencia de VariantInfo (un solo
+ * match), esto representa CADA recorrido distinto que tiene la línea, para que
+ * el filtro de dirección (bus-direction-gtfs) elija el que mejor ajusta al GPS.
+ *
+ * `allHeadsigns`: en gtfs-v2.db la columna all_headsigns agrupa los letreros
+ * vistos para esa variante (separados por "|"). En gtfs.db (v1) no existe, así
+ * que cae a `headsign`.
+ */
+export interface VariantCandidate {
+  variantId: string;
+  shortName: string;
+  headsign: string;
+  /** Headsigns alternativos separados por "|" (al menos contiene `headsign`). */
+  allHeadsigns: string;
+  directionId: number | null;
+}
+
+/** ¿La base actual tiene la columna variants.all_headsigns? (v2 sí, v1 no). */
+let _hasAllHeadsigns: boolean | null = null;
+function hasAllHeadsignsColumn(db: DatabaseType.Database): boolean {
+  if (_hasAllHeadsigns !== null) return _hasAllHeadsigns;
+  try {
+    const cols = db.prepare("PRAGMA table_info(variants)").all() as { name: string }[];
+    _hasAllHeadsigns = cols.some((c) => c.name === "all_headsigns");
+  } catch {
+    _hasAllHeadsigns = false;
+  }
+  return _hasAllHeadsigns;
+}
+
+/**
+ * Todos los recorridos (variantes) de una línea. Normaliza el sufijo de día
+ * ("124 Sd" → "124") antes del WHERE, igual que findVariantForBus.
+ *
+ * Consumido por bus-direction-gtfs.ts: cada candidato se evalúa proyectando el
+ * GPS del bus sobre sus paradas para elegir el recorrido físico real.
+ */
+export function getVariantsForLine(line: string): VariantCandidate[] {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    const normalizedLine = normalizeLineName(line);
+    const hasAll = hasAllHeadsignsColumn(db);
+    const cols = hasAll
+      ? "variant_id, short_name, headsign, all_headsigns, direction_id"
+      : "variant_id, short_name, headsign, direction_id";
+    const rows = db.prepare(
+      `SELECT ${cols} FROM variants WHERE short_name = ?`
+    ).all(normalizedLine) as Array<{
+      variant_id: string;
+      short_name: string;
+      headsign: string;
+      all_headsigns?: string;
+      direction_id: number | null;
+    }>;
+    return rows.map((r) => ({
+      variantId: r.variant_id,
+      shortName: r.short_name,
+      headsign: r.headsign,
+      allHeadsigns: r.all_headsigns || r.headsign || "",
+      directionId: r.direction_id,
+    }));
+  } catch (err) {
+    console.error("[gtfs-db] getVariantsForLine error:", err);
+    return [];
+  }
+}
+
+/**
  * Encuentra el variant_id que mejor corresponde al bus en vivo.
  * Match por (short_name exacto) + (headsign normalizado más cercano).
  *
  * Devuelve null si la línea no existe en GTFS o no hay variante con headsign similar.
  */
+/** Elimina sufijos de día ("76 Sd", "124 D", "405 N") para matchear el short_name GTFS. */
+function normalizeLineName(line: string): string {
+  return line.replace(/\s+(Sd|Sa|D|N)$/i, "").trim();
+}
+
 export function findVariantForBus(line: string, destination: string): VariantInfo | null {
   const db = getDb();
   if (!db) return null;
   try {
+    const normalizedLine = normalizeLineName(line);
     const rows = db.prepare(
       "SELECT variant_id, short_name, headsign, direction_id FROM variants WHERE short_name = ?"
-    ).all(line) as { variant_id: string; short_name: string; headsign: string; direction_id: number | null }[];
+    ).all(normalizedLine) as { variant_id: string; short_name: string; headsign: string; direction_id: number | null }[];
 
     if (rows.length === 0) return null;
 
@@ -105,6 +186,7 @@ function toInfo(r: { variant_id: string; short_name: string; headsign: string; d
     directionId: r.direction_id,
   };
 }
+
 
 /**
  * Posición ordinal de una parada en una variante.

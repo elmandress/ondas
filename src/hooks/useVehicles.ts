@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type { VehiclePosition } from "@/lib/stm";
+import { adaptInterval } from "@/lib/network";
 
 /**
  * Hook de buses en vivo (stm-online).
@@ -15,7 +16,7 @@ export function useVehicles(
   const { enabled = false, lineIds, stopId } = options;
   const [vehicles, setVehicles] = useState<VehiclePosition[]>([]);
   const [loading, setLoading] = useState(false);
-  const lastUpdateRef = useRef<Date | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Key estable para el effect (evita re-render por nuevo array con mismos elementos)
   const filterKey = lineIds && lineIds.length > 0 ? [...lineIds].sort().join(",") : "";
@@ -41,7 +42,7 @@ export function useVehicles(
         .then((d) => {
           if (cancelled) return;
           setVehicles(d.vehicles || []);
-          lastUpdateRef.current = new Date();
+          setLastUpdated(new Date());
         })
         .catch(() => {})
         .finally(() => {
@@ -49,13 +50,29 @@ export function useVehicles(
         });
     };
 
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer) clearInterval(timer);
+      // Buses en vivo es el polling más pesado: en celular/Data Saver lo espaciamos.
+      timer = setInterval(load, adaptInterval(intervalMs));
+    };
+    const stopTimer = () => { if (timer) { clearInterval(timer); timer = null; } };
+
+    // Pausar cuando la app no está visible (no quemar datos de fondo); al volver, refrescar.
+    const onVisibility = () => {
+      if (document.hidden) stopTimer();
+      else { load(); start(); }
+    };
+
     load();
-    const id = setInterval(load, intervalMs);
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stopTimer();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [enabled, intervalMs, filterKey, stopId]);
 
-  return { vehicles, loading, lastUpdated: lastUpdateRef.current };
+  return { vehicles, loading, lastUpdated };
 }

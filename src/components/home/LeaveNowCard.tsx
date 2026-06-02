@@ -13,7 +13,7 @@ interface LeaveNowCardProps {
 }
 
 export default function LeaveNowCard({ arrivals, walkMinutes, stopName, onTap }: LeaveNowCardProps) {
-  const [first, second, third] = arrivals;
+  const [first, second] = arrivals;
   const leaveIn = walkToLeaveTime(walkMinutes, first?.eta ?? 99);
   const urgency = leaveNowUrgency(leaveIn);
 

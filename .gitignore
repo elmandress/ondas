@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# …pero .env.example SÍ se sube: documenta qué variables hacen falta (sin valores).
+!.env.example
 
 # vercel
 .vercel
@@ -47,3 +49,28 @@ next-env.d.ts
 
 # Datos crudos GTFS (se regeneran con scripts/, no subir)
 /data/gtfs_raw/
+interior-stops-raw.json
+
+# Intermedios / regenerables del pipeline (NO subir — se reconstruyen con scripts/):
+#  - gtfs-metro.db: se fusiona dentro de gtfs-v2.db (que SÍ va)
+#  - gtfs.db / .bak: legacy v1, gtfs-v2.db lo reemplaza
+#  - interior-edges.json: acumulador del recolector
+/data/gtfs-metro.db
+/data/gtfs.db
+/data/gtfs.db.bak
+/data/interior-edges.json
+
+# Locks/journals temporales de SQLite (nunca subir)
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Carpetas de trabajo temporales de los scripts de investigación
+/tmp_gtfs/
+/tmp_nac/
+/tmp_work/
+/tmp_inspect/
+
+# Carpeta de diseño (vive fuera de ondas/, pero por las dudas)
+*Cuándo - Design*
+*Cuando - Design*

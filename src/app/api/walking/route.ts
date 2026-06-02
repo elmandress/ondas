@@ -19,8 +19,11 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const OSRM_URL = process.env.OSRM_URL || "https://router.project-osrm.org";
-const TIMEOUT_MS = 2500;
+// Router PEATONAL real (perfil foot — ignora sentidos de calle). El OSRM público
+// (router.project-osrm.org) solo hace AUTO y hacía rodear la manzana.
+const OSRM_URL = process.env.OSRM_URL || "https://routing.openstreetmap.de/routed-foot";
+const OSRM_PROFILE = process.env.OSRM_URL ? "walking" : "foot";
+const TIMEOUT_MS = 3000;
 
 // Velocidad caminata para fallback haversine (4.5 km/h)
 const WALK_SPEED_MS = 1.25;
@@ -49,8 +52,7 @@ type OsrmRoute = { distance: number; legs?: { steps?: OsrmStep[] }[] };
 type OsrmResp = { code: string; routes?: OsrmRoute[] };
 
 async function fetchOsrm(from: [number, number], to: [number, number], signal: AbortSignal): Promise<OsrmRoute | null> {
-  // perfil `walking` (más permisivo con oneway que `foot`)
-  const url = `${OSRM_URL}/route/v1/walking/${from[1]},${from[0]};${to[1]},${to[0]}?steps=true&overview=false`;
+  const url = `${OSRM_URL}/route/v1/${OSRM_PROFILE}/${from[1]},${from[0]};${to[1]},${to[0]}?steps=true&overview=false`;
   try {
     const res = await fetch(url, { signal });
     if (!res.ok) return null;

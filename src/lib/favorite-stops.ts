@@ -85,12 +85,16 @@ export function addFavoriteStop(stop: Omit<FavoriteStop, "addedAt">): void {
   items.unshift({ ...stop, addedAt: Date.now() });
   writeToStorage(items);
   notify();
+  // Replicar a la nube si hay sesión (best-effort, no bloquea). Import dinámico
+  // para no acoplar el store base a Supabase ni cargarlo si no hace falta.
+  void import("@/lib/sync-favorites").then((m) => m.pushFavoriteToCloud(stop.stopId, stop.alias)).catch(() => {});
 }
 
 export function removeFavoriteStop(stopId: string): void {
   const items = getCache().filter((f) => f.stopId !== stopId);
   writeToStorage(items);
   notify();
+  void import("@/lib/sync-favorites").then((m) => m.removeFavoriteFromCloud(stopId)).catch(() => {});
 }
 
 export function toggleFavoriteStop(stop: Omit<FavoriteStop, "addedAt">): boolean {
@@ -103,10 +107,32 @@ export function toggleFavoriteStop(stop: Omit<FavoriteStop, "addedAt">): boolean
 }
 
 export function setFavoriteAlias(stopId: string, alias: string | undefined): void {
+  const clean = alias?.trim() || undefined;
   const items = getCache().map((f) =>
-    f.stopId === stopId ? { ...f, alias: alias?.trim() || undefined } : f
+    f.stopId === stopId ? { ...f, alias: clean } : f
   );
   writeToStorage(items);
+  notify();
+  void import("@/lib/sync-favorites").then((m) => m.pushFavoriteToCloud(stopId, clean)).catch(() => {});
+}
+
+// ── Helpers internos para la sincronización con la nube (sync-favorites.ts) ──
+// Prefijo "_" = no son API pública del store, solo los usa la capa de sync.
+
+/** Snapshot crudo de los favoritos locales (sin reactividad). */
+export function _getAllFavoritesRaw(): FavoriteStop[] {
+  return getCache();
+}
+
+/** Fusiona favoritos venidos de la nube en local SIN re-empujarlos a la nube
+ *  (evita el loop). Conserva los locales; agrega los que falten. */
+export function _mergeFavoritesFromCloud(fromCloud: FavoriteStop[]): void {
+  const existing = getCache();
+  const haveIds = new Set(existing.map((f) => f.stopId));
+  const merged = [...existing];
+  for (const f of fromCloud) if (!haveIds.has(f.stopId)) merged.push(f);
+  merged.sort((a, b) => b.addedAt - a.addedAt);
+  writeToStorage(merged);
   notify();
 }
 

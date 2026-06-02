@@ -19,12 +19,25 @@ let loading: Promise<StopRecord[]> | null = null;
 export async function loadStops(): Promise<StopRecord[]> {
   if (cache) return cache;
   if (loading) return loading;
-  loading = fetch("/stops.json")
-    .then((r) => r.json())
-    .then((data: StopRecord[]) => {
-      cache = data;
+  // STM/metropolitano (stops.json) + paradas del INTERIOR inferidas del GPS en vivo
+  // (interior-stops.json, ver scripts/collect-interior-stops). Así el home, la búsqueda
+  // y el mapa muestran paradas también en Maldonado/Paysandú/etc., no solo en MVD.
+  loading = Promise.all([
+    fetch("/stops.json").then((r) => r.json()).catch(() => [] as StopRecord[]),
+    fetch("/interior-stops.json").then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
+  ])
+    .then(([stm, interiorRaw]: [StopRecord[], Record<string, { zona: string; code: string; name: string; lat: number; lon: number; lines?: string[] }>]) => {
+      const interior: StopRecord[] = Object.values(interiorRaw || {}).map((s) => ({
+        stopId: `int-${s.zona}-${s.code}`,
+        stopCode: s.code,
+        stopName: s.name || "Parada",
+        stopLat: s.lat,
+        stopLon: s.lon,
+        lines: s.lines || [],
+      }));
+      cache = [...stm, ...interior];
       loading = null;
-      return data;
+      return cache;
     })
     .catch((err) => {
       loading = null;

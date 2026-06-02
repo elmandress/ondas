@@ -24,9 +24,19 @@ export function useLocation() {
       setStatus("unavailable");
       return;
     }
+    setStatus("pending");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setLocation({ ...MVD_CENTER, isReal: false });
+      setStatus("unavailable");
+      return;
+    }
 
     setStatus("pending");
-    navigator.geolocation.getCurrentPosition(
+
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setLocation({
           lat: pos.coords.latitude,
@@ -37,20 +47,16 @@ export function useLocation() {
         setStatus("ok");
       },
       (err) => {
-        // Mostramos el centro como fallback PERO marcado como isReal=false
-        // para que la UI no muestre distancias mentirosas.
         setLocation({ ...MVD_CENTER, isReal: false });
         if (err.code === err.PERMISSION_DENIED) setStatus("denied");
         else if (err.code === err.TIMEOUT) setStatus("timeout");
         else setStatus("unavailable");
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
     );
-  }, []);
 
-  useEffect(() => {
-    request();
-  }, [request]);
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
 
   return {
     location,

@@ -10,12 +10,19 @@ import { walkingMinutes, distanceTo } from "@/lib/utils";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
 import { useSelectedPlace, setSelectedPlace } from "@/lib/selected-place";
 import { useWalkingSteps } from "@/hooks/useWalkingSteps";
-import { useRoutePlanner, type PlannedRouteDto } from "@/hooks/useRouteplanner";
+import { useRoutePlanner, type PlannedRouteDto, type RouteLegDto } from "@/hooks/useRouteplanner";
 import { setSelectedRoute } from "@/lib/selected-route";
 import { setActiveTab } from "@/lib/active-tab";
+import { shareTrip } from "@/lib/share-trip";
 import { useRouteInput, setRouteInput } from "@/lib/route-input";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+import { LogoLockup } from "@/components/brand/Logo";
+import { Icons } from "@/components/brand/Icons";
+import VoiceOverlay from "@/components/ui/VoiceOverlay";
+import LineBadge from "@/components/ui/LineBadge";
+import MixedTripOption from "@/components/route/MixedTripOption";
+import { useMounted } from "@/hooks/useMounted";
 
 interface Place { name: string; subtitle?: string; lat: number; lon: number; icon?: string; }
 
@@ -28,13 +35,16 @@ export default function RouteScreen() {
   const selectedPlace = useSelectedPlace();
   const [from, setFrom] = useState<Place | null>(null);
   const [to, setTo] = useState<Place | null>(null);
-  const [activeInput, setActiveInput] = useState<"from" | "to" | null>(null);
+  // Paradas intermedias (hasta 3). El input activo de un waypoint se identifica como `wp-${i}`.
+  const [waypoints, setWaypoints] = useState<Place[]>([]);
+  const [activeInput, setActiveInput] = useState<"from" | "to" | `wp-${number}` | null>(null);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Place[]>([]);
   const [searching, setSearching] = useState(false);
   const [sheetStopId, setSheetStopId] = useState<string | null>(null);
   const [history, setHistory] = useState<Place[]>([]);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const mounted = useMounted();
   const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const voice = useVoiceInput({
@@ -84,15 +94,29 @@ export default function RouteScreen() {
     }
   }, [selectedPlace]);
 
-  // FR-4.1: si el usuario llegó acá desde long-press en el mapa, pre-cargar el slot
+  // FR-4.1: pre-cargar desde el mapa (slot único) o desde una ruta guardada (from+to)
   const routeInput = useRouteInput();
   useEffect(() => {
     if (!routeInput) return;
-    const place = { name: routeInput.point.name || "Punto en el mapa", lat: routeInput.point.lat, lon: routeInput.point.lon };
-    if (routeInput.slot === "from") setFrom(place);
-    else setTo(place);
+    // Modo ruta completa (Mis rutas guardadas): origen + destino a la vez.
+    if (routeInput.from || routeInput.to || routeInput.fromCurrentLocation) {
+      if (routeInput.fromCurrentLocation && location) {
+        setFrom({ name: "Mi ubicación", subtitle: "Posición actual", lat: location.lat, lon: location.lon });
+      } else if (routeInput.from) {
+        setFrom({ name: routeInput.from.name || "Origen", lat: routeInput.from.lat, lon: routeInput.from.lon });
+      }
+      if (routeInput.to) setTo({ name: routeInput.to.name || "Destino", lat: routeInput.to.lat, lon: routeInput.to.lon });
+      setRouteInput(null);
+      return;
+    }
+    // Modo single-slot (long-press del mapa).
+    if (routeInput.point) {
+      const place = { name: routeInput.point.name || "Punto en el mapa", lat: routeInput.point.lat, lon: routeInput.point.lon };
+      if (routeInput.slot === "from") setFrom(place);
+      else setTo(place);
+    }
     setRouteInput(null);
-  }, [routeInput]);
+  }, [routeInput, location]);
 
   // Búsqueda de lugares + paradas
   useEffect(() => {
@@ -143,11 +167,32 @@ export default function RouteScreen() {
   function pickPlace(place: Place) {
     if (activeInput === "from") setFrom(place);
     else if (activeInput === "to") setTo(place);
+    else if (typeof activeInput === "string" && activeInput.startsWith("wp-")) {
+      const i = Number(activeInput.slice(3));
+      setWaypoints((ws) => ws.map((w, idx) => (idx === i ? place : w)));
+    }
     saveToHistory(place);
     setActiveInput(null);
     setQuery("");
     setSuggestions([]);
   }
+
+  function addWaypoint() {
+    if (waypoints.length >= 3) return;
+    const i = waypoints.length;
+    // Placeholder vacío que el usuario completa; abrimos su búsqueda enseguida.
+    setWaypoints((ws) => [...ws, { name: "", lat: 0, lon: 0 }]);
+    setActiveInput(`wp-${i}`);
+    setQuery("");
+  }
+
+  function removeWaypoint(i: number) {
+    setWaypoints((ws) => ws.filter((_, idx) => idx !== i));
+    if (activeInput === `wp-${i}`) { setActiveInput(null); setQuery(""); }
+  }
+
+  // Solo los waypoints con coordenadas reales (completados) van al planner.
+  const validWaypoints = waypoints.filter((w) => w.lat !== 0 || w.lon !== 0);
 
   function swap() {
     const tmp = from;
@@ -161,59 +206,104 @@ export default function RouteScreen() {
   const areaCheck = useMemo(() => classifyArea(from, to), [from, to]);
   const outOfArea = areaCheck.kind !== "ok";
 
-  // Heurística legacy como fallback rápido si el endpoint GTFS falla
-  const heuristicRoutes = useMemo<RouteCandidate[]>(() => {
-    if (!from || !to || !stopsReady || outOfArea) return [];
-    return planRoutes(STOPS_DATASET, from, to, { walkRadiusM: 1500, maxCandidates: 6 });
-  }, [from, to, stopsReady, outOfArea]);
+  // Hora de salida: null = "salir ahora". Si el usuario elige una hora, planificamos
+  // las ETAs/esperas respecto a esa hora futura (schedule-aware).
+  const [departAt, setDepartAt] = useState<string | null>(null);
 
   // Router GTFS (server) — fuente principal
-  const { routes: gtfsRoutes, loading: gtfsLoading } = useRoutePlanner(from, to, !!from && !!to && !outOfArea);
-
-  // Usar GTFS si dio resultados, sino fallback heurístico
+  const { routes: gtfsRoutes, loading: gtfsLoading } = useRoutePlanner(
+    from, to, !!from && !!to && !outOfArea, departAt,
+    validWaypoints.map((w) => ({ lat: w.lat, lon: w.lon, name: w.name }))
+  );
   const usingGtfs = gtfsRoutes.length > 0;
-  const routes = usingGtfs ? [] : heuristicRoutes; // legacy renderiza solo si no hay GTFS
+
+  // "Optimizar para" — re-rankea las rutas REALES que ya devolvió el motor (cliente,
+  // instantáneo). maprab confesó que sus optimizaciones no andaban; las nuestras sí.
+  const [optimize, setOptimize] = useState<"fast" | "transfers" | "walk">("fast");
+  const sortedRoutes = useMemo(() => {
+    const walkS = (r: PlannedRouteDto) => r.legs.reduce((s, l) => s + (l.type === "walk" ? l.durationS : 0), 0);
+    const arr = [...gtfsRoutes];
+    if (optimize === "transfers") arr.sort((a, b) => a.numTransfers - b.numTransfers || a.totalSeconds - b.totalSeconds);
+    else if (optimize === "walk") arr.sort((a, b) => walkS(a) - walkS(b) || a.totalSeconds - b.totalSeconds);
+    else arr.sort((a, b) => a.totalSeconds - b.totalSeconds);
+    return arr;
+  }, [gtfsRoutes, optimize]);
+
+  // Heurística legacy SOLO como fallback cuando GTFS terminó y no devolvió nada.
+  // CLAVE: planRoutes itera ~5000 paradas de forma SÍNCRONA y bloquea el hilo principal.
+  // Si la computábamos siempre (incluso en el camino feliz con GTFS), la UI se "trancaba"
+  // al elegir destino. Ahora solo corre cuando de verdad hace falta.
+  const needHeuristic = !!from && !!to && stopsReady && !outOfArea && !gtfsLoading && gtfsRoutes.length === 0;
+  const heuristicRoutes = useMemo<RouteCandidate[]>(() => {
+    if (!needHeuristic) return [];
+    return planRoutes(STOPS_DATASET, from!, to!, { walkRadiusM: 1500, maxCandidates: 6 });
+  }, [needHeuristic, from, to]);
+
+  const routes = usingGtfs ? [] : heuristicRoutes;
 
   const showSuggestions = activeInput !== null;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "var(--bg)" }}>
-      {/* Header */}
-      <header className="px-4 pt-[max(env(safe-area-inset-top),14px)] pb-3 flex-shrink-0">
-        <h1 className="text-title-large mt-2 mb-4">Cómo llegar</h1>
+    <div className="flex flex-col h-full" style={{ background: "var(--bg)", paddingTop: "max(env(safe-area-inset-top), 8px)" }}>
+      {/* Header mobile */}
+      <div className="app-header mobile-only" style={{ paddingLeft: 0, paddingRight: 0 }}>
+        <LogoLockup size={24} ring="var(--text)" dot="var(--accent)" />
+        <span className="gps-dot" aria-label="GPS activo" />
+      </div>
+      {/* Header desktop */}
+      <div className="desktop-header desktop-only">
+        <div>
+          <h1>Rutas</h1>
+          <div className="subhead">Encontrá la forma más rápida de llegar a cualquier lugar</div>
+        </div>
+      </div>
 
-        {/* Inputs origen / destino */}
-        <div className="card p-3 space-y-2">
+      {/* Inputs origen / destino */}
+      <header className="flex-shrink-0">
+        <div className="input-card">
           <PlaceInput
             label="Desde"
             place={from}
             active={activeInput === "from"}
-            dotColor="#10b981"
+            kind="from"
             onFocus={() => { setActiveInput("from"); setQuery(""); }}
             onClear={() => setFrom(null)}
           />
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <button onClick={swap} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "var(--surface)" }}>
-              <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path d="M7 10l5-5 5 5"/><path d="M7 14l5 5 5-5"/>
-              </svg>
-            </button>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-          </div>
+          {waypoints.map((w, i) => (
+            <PlaceInput
+              key={`wp-${i}`}
+              label={`Pasar por ${waypoints.length > 1 ? i + 1 : ""}`.trim()}
+              place={w.lat !== 0 || w.lon !== 0 ? w : null}
+              active={activeInput === `wp-${i}`}
+              kind="waypoint"
+              onFocus={() => { setActiveInput(`wp-${i}`); setQuery(""); }}
+              onClear={() => removeWaypoint(i)}
+            />
+          ))}
           <PlaceInput
             label="Hacia"
             place={to}
             active={activeInput === "to"}
-            dotColor="#ef4444"
+            kind="to"
             onFocus={() => { setActiveInput("to"); setQuery(""); }}
             onClear={() => setTo(null)}
           />
+          <button className="swap-btn" onClick={swap} aria-label="Invertir origen y destino">
+            <Icons.Swap size={14} />
+          </button>
         </div>
+
+        <DepartTimePicker value={departAt} onChange={setDepartAt}>
+          {waypoints.length < 3 && (
+            <button className="depart-chip" onClick={addWaypoint} aria-label="Agregar parada intermedia">
+              <Icons.Plus size={14} /> Parada
+            </button>
+          )}
+        </DepartTimePicker>
       </header>
 
       {/* Suggestions o resultados */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto pb-4 scrollbar-none" style={{ marginTop: 16 }}>
         <AnimatePresence mode="wait">
           {showSuggestions ? (
             <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
@@ -228,9 +318,17 @@ export default function RouteScreen() {
                   placeholder={activeInput === "from" ? "Desde dónde…" : "A dónde vas…"}
                   className="flex-1 bg-transparent outline-none text-body text-white placeholder:text-slate-600"
                 />
-                {voice.supported && (
+                {mounted && (
                   <button
-                    onClick={() => voice.state === "listening" ? voice.stop() : voice.start()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!voice.supported) {
+                        setVoiceError("Tu navegador bloquea la voz. Probá en Chrome 🙏");
+                        setTimeout(() => setVoiceError(null), 4500);
+                        return;
+                      }
+                      if (voice.state === "listening") voice.stop(); else voice.start();
+                    }}
                     className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
                     style={{
                       background: voice.state === "listening"
@@ -253,7 +351,7 @@ export default function RouteScreen() {
                     )}
                   </button>
                 )}
-                <button onClick={() => { setActiveInput(null); setQuery(""); voice.stop(); }} className="text-xs text-blue-400 font-semibold flex-shrink-0">Cancelar</button>
+                <button onClick={() => { setActiveInput(null); setQuery(""); voice.stop(); }} className="text-xs text-amber-400 font-semibold flex-shrink-0">Cancelar</button>
               </div>
               {/* Toast de error de voz */}
               <AnimatePresence>
@@ -276,7 +374,7 @@ export default function RouteScreen() {
                   className="w-full card-soft px-3 py-3 flex items-center gap-3 text-left"
                 >
                   <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "var(--accent-soft)" }}>
-                    <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
                     </svg>
                   </div>
@@ -310,26 +408,19 @@ export default function RouteScreen() {
 
               {/* Historial */}
               {!query && history.length > 0 && (
-                <div>
-                  <p className="text-eyebrow mb-2">Recientes</p>
-                  <div className="space-y-1.5">
-                    {history.map((h, i) => (
-                      <button
-                        key={i}
-                        onClick={() => pickPlace(h)}
-                        className="w-full card-soft px-3 py-2.5 flex items-center gap-3 text-left"
-                      >
-                        <svg className="w-4 h-4 text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                        </svg>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-white truncate">{h.name}</p>
-                          {h.subtitle && <p className="text-[11px] text-slate-500 truncate">{h.subtitle}</p>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <>
+                  <div className="search-section-title">Recientes</div>
+                  {history.map((h, i) => (
+                    <button key={i} onClick={() => pickPlace(h)} className="search-result">
+                      <div className="icon"><Icons.Clock size={16} /></div>
+                      <div className="body">
+                        <div className="name">{h.name}</div>
+                        {h.subtitle && <div className="meta">{h.subtitle}</div>}
+                      </div>
+                      <Icons.Chevron size={16} />
+                    </button>
+                  ))}
+                </>
               )}
 
               {/* Resultados de búsqueda */}
@@ -340,41 +431,33 @@ export default function RouteScreen() {
                 <p className="text-xs text-slate-500 text-center py-6">Sin resultados</p>
               )}
               {suggestions.length > 0 && (
-                <div className="space-y-1.5">
-                  {suggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      onClick={() => pickPlace(s)}
-                      className="w-full card-soft px-3 py-2.5 flex items-center gap-3 text-left"
-                    >
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm" style={{ background: "var(--surface)" }}>
-                        {s.icon ? (
-                          <span>{s.icon}</span>
-                        ) : (
-                          <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            {s.subtitle?.startsWith("Parada") ? (
-                              <><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M22 9H2"/></>
-                            ) : (
-                              <><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 6 8 12 8 12s8-6 8-12a8 8 0 00-8-8z"/></>
-                            )}
-                          </svg>
-                        )}
+                <>
+                  {suggestions.map((s, i) => {
+                    const isStop = s.subtitle?.startsWith("Parada");
+                    return (
+                    <button key={i} onClick={() => pickPlace(s)} className={`search-result ${isStop ? "stop" : "place"}`}>
+                      <div className="icon">{s.icon ? <span style={{ fontSize: 18 }}>{s.icon}</span> : isStop ? <Icons.Bus size={16} /> : <Icons.Pin size={16} />}</div>
+                      <div className="body">
+                        <div className="name">{s.name}</div>
+                        {s.subtitle && <div className="meta">{s.subtitle}</div>}
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-white truncate">{s.name}</p>
-                        {s.subtitle && <p className="text-[11px] text-slate-500 truncate">{s.subtitle}</p>}
-                      </div>
+                      <Icons.Chevron size={16} />
                     </button>
-                  ))}
-                </div>
+                    );
+                  })}
+                </>
               )}
             </motion.div>
           ) : (
-            <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+            <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               {!from || !to ? (
                 <EmptyState />
               ) : outOfArea ? (
-                <OutOfAreaState info={areaCheck} />
+                <OutOfAreaState
+                  info={areaCheck}
+                  destName={to?.name}
+                  onPlanToTerminal={() => setTo({ name: "Terminal Tres Cruces", subtitle: "Bv. Artigas y Av. Italia", lat: -34.8941, lon: -56.1640 })}
+                />
               ) : !stopsReady ? (
                 <p className="text-center text-slate-500 text-sm py-12">Cargando paradas…</p>
               ) : gtfsLoading ? (
@@ -384,10 +467,20 @@ export default function RouteScreen() {
                   <p className="text-eyebrow mt-1">
                     {gtfsRoutes.length} {gtfsRoutes.length === 1 ? "opción" : "opciones"} · datos oficiales STM
                   </p>
-                  {gtfsRoutes.map((r, i) => (
+                  {gtfsRoutes.length > 1 && (
+                    <div className="opt-row">
+                      {([["fast", "Más rápido"], ["transfers", "Menos transbordos"], ["walk", "Menos caminata"]] as const).map(([k, label]) => (
+                        <button key={k} className={`opt-chip ${optimize === k ? "on" : ""}`} onClick={() => setOptimize(k)} aria-pressed={optimize === k}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {sortedRoutes.map((r, i) => (
                     <GtfsRouteCard
                       key={r.signature || i}
                       route={r}
+                      destinationName={to?.name}
                       onTapStop={(id) => setSheetStopId(id)}
                       onShowOnMap={() => {
                         if (!from || !to) return;
@@ -437,43 +530,44 @@ export default function RouteScreen() {
           <StopArrivalSheet stopId={sheetStopId} onClose={() => setSheetStopId(null)} />
         )}
       </AnimatePresence>
+
+      <VoiceOverlay open={voice.state === "listening"} onCancel={() => voice.stop()} hint='Decí, por ejemplo, "Llevame a Pocitos"' />
     </div>
   );
 }
 
 function PlaceInput({
-  label, place, active, dotColor, onFocus, onClear,
-}: { label: string; place: Place | null; active: boolean; dotColor: string; onFocus: () => void; onClear: () => void; }) {
+  label, place, active, kind, onFocus, onClear,
+}: { label: string; place: Place | null; active: boolean; kind: "from" | "to" | "waypoint"; onFocus: () => void; onClear: () => void; }) {
+  const lead = kind === "from" ? <Icons.Crosshair size={16} /> : kind === "waypoint" ? <Icons.Clock size={15} /> : <Icons.Pin size={16} />;
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onFocus}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onFocus(); }}
-      className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl"
-      style={{
-        background: active ? "var(--accent-soft)" : "transparent",
-      }}
+      className={`input-row ${kind}`}
+      style={active ? { background: "var(--accent-soft)", borderRadius: 12, marginInline: -8, paddingInline: 8 } : undefined}
     >
-      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor }} />
-      <div className="flex-1 min-w-0 text-left">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">{label}</p>
+      <span className="lead">{lead}</span>
+      <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+        <div className="eyebrow" style={{ marginBottom: 1 }}>{label || "Pasar por"}</div>
         {place ? (
-          <p className="text-sm font-semibold text-white truncate">{place.name}</p>
+          <p style={{ font: "600 16px/1.2 var(--ff)", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{place.name}</p>
         ) : (
-          <p className="text-sm text-slate-500">Tocá para elegir</p>
+          <p style={{ font: "500 15px/1.2 var(--ff)", color: "var(--text-3)" }}>{kind === "waypoint" ? "Elegí una parada intermedia" : "Tocá para elegir"}</p>
         )}
       </div>
+      {/* Pista de que es editable: lápiz cuando hay valor (tocá para cambiar). */}
       {place && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onClear(); }}
-          className="w-6 h-6 rounded-full flex items-center justify-center"
-          style={{ background: "var(--surface)" }}
-        >
-          <svg className="w-3 h-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        <span className="edit-hint" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
           </svg>
-        </button>
+        </span>
+      )}
+      {(place || kind === "waypoint") && (
+        <button className="clear" onClick={(e) => { e.stopPropagation(); onClear(); }} aria-label={kind === "waypoint" ? "Quitar parada" : "Limpiar"}>×</button>
       )}
     </div>
   );
@@ -483,7 +577,7 @@ function EmptyState() {
   return (
     <div className="flex flex-col items-center text-center py-16 px-6">
       <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "var(--accent-soft)" }}>
-        <svg className="w-8 h-8 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <svg className="w-8 h-8 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
           <polyline points="3 11 22 2 13 21 11 13 3 11" />
         </svg>
       </div>
@@ -543,7 +637,7 @@ function NoRoutesState({ from, to }: { from: Place; to: Place }) {
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
                      <span key={l} className="text-[10px] font-black px-1.5 py-0.5 rounded text-white"
-                     style={{ background: "var(--accent)" }}>{l}</span>
+                     style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
                   ))}
                   {s.lines.length > 3 && <span className="text-[10px] text-slate-500">+{s.lines.length - 3}</span>}
                 </div>
@@ -566,7 +660,7 @@ function NoRoutesState({ from, to }: { from: Place; to: Place }) {
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
                      <span key={l} className="text-[10px] font-black px-1.5 py-0.5 rounded text-white"
-                     style={{ background: "var(--accent)" }}>{l}</span>
+                     style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
                   ))}
                   {s.lines.length > 3 && <span className="text-[10px] text-slate-500">+{s.lines.length - 3}</span>}
                 </div>
@@ -636,7 +730,7 @@ function RouteCard({
             <div className="flex gap-1 flex-wrap justify-end max-w-[60%]">
               {route.sharedLines.slice(0, 4).map((l) => (
                 <span key={l} className="text-[11px] font-black px-2 py-1 rounded-md text-white"
-                  style={{ background: "var(--accent)", letterSpacing: "-0.02em" }}>
+                  style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)", letterSpacing: "-0.02em" }}>
                   {l}
                 </span>
               ))}
@@ -647,9 +741,9 @@ function RouteCard({
           )}
           {isTransfer && (
             <div className="flex items-center gap-1.5 justify-end">
-              <span className="text-[11px] font-black px-2 py-1 rounded-md text-white" style={{ background: "var(--accent)" }}>{route.transferLine1}</span>
+              <span className="text-[11px] font-black px-2 py-1 rounded-md text-white" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{route.transferLine1}</span>
               <svg className="w-3 h-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="9 18 15 12 9 6" /></svg>
-              <span className="text-[11px] font-black px-2 py-1 rounded-md text-white" style={{ background: "var(--accent)" }}>{route.transferLine2}</span>
+              <span className="text-[11px] font-black px-2 py-1 rounded-md text-white" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{route.transferLine2}</span>
             </div>
           )}
         </div>
@@ -694,7 +788,7 @@ function RouteCard({
         {!expanded && !isWalk && (
           <button
             onClick={() => setExpanded(true)}
-            className="text-xs text-blue-400 font-semibold pt-1 hover:underline"
+            className="text-xs text-amber-400 font-semibold pt-1 hover:underline"
           >
             Ver caminata paso a paso ↓
           </button>
@@ -739,7 +833,7 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
       <circle cx="12" cy="5" r="1" /><path d="M9 20l3-9" /><path d="M13 13l2 4" /><path d="M7 20h3" /><path d="M16 20h-2" /><path d="M15 10l2-2-2-1" />
     </svg>
   ) : icon === "bus" ? (
-    <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="4" width="20" height="14" rx="2"/><path d="M22 9H2"/><circle cx="7" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>
     </svg>
   ) : (
@@ -754,11 +848,11 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
         {iconEl}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-white truncate">{main}</p>
-        <p className="text-[11px] text-slate-500 truncate">{sub}</p>
+        <p className="text-[15px] font-semibold text-white truncate">{main}</p>
+        <p className="text-xs text-slate-500 truncate mt-0.5">{sub}</p>
       </div>
       {action && (
-        <span className="text-[10px] text-blue-400 font-semibold flex items-center gap-0.5 flex-shrink-0">
+        <span className="text-[10px] text-amber-400 font-semibold flex items-center gap-0.5 flex-shrink-0">
           {action}
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
             <polyline points="9 18 15 12 9 6" />
@@ -772,22 +866,54 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
 // ─── GtfsRouteCard ──────────────────────────────────────────────────
 // Tarjeta para rutas planificadas con GTFS oficial (FR-4 motor real).
 function GtfsRouteCard({
-  route, onTapStop, onShowOnMap,
+  route, onTapStop, onShowOnMap, destinationName,
 }: {
   route: PlannedRouteDto;
   onTapStop: (id: string) => void;
   onShowOnMap?: () => void;
+  destinationName?: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
   const totalMin = Math.max(1, Math.round(route.totalSeconds / 60));
+  // Ruta metropolitana (Canelones): usa al menos una variante del GTFS metro (prefijo
+  // "M-"). Esas líneas son por HORARIO oficial — no tenemos GPS en vivo de las empresas
+  // suburbanas. Lo decimos derecho (honestidad #1).
+  const usesMetro = route.legs.some((l) => l.type === "bus" && l.variantId?.startsWith("M-"));
   const isWalkOnly = route.signature === "walk";
-  const busLegs = route.legs.filter((l) => l.type === "bus");
-  const lineBadges = busLegs.flatMap((l) => l.lines || []);
+  // Continuación de la misma línea (183→183): el recorrido cambia, no es "otra línea".
+  const contLine = route.sameLineContinuation
+    ? (route.legs.find((l) => l.type === "bus")?.lines?.[0] ?? null)
+    : null;
 
+  const via = route.viaWaypoints?.length ? route.viaWaypoints : null;
   const headerLabel = isWalkOnly
     ? "Caminando"
+    : via
+    ? `Vía ${via.join(" · ")}`
+    : contLine
+    ? `Seguís en el ${contLine}`
     : route.numTransfers === 0
     ? "Directa"
     : `${route.numTransfers} transbordo${route.numTransfers > 1 ? "s" : ""}`;
+
+  // Secuencia compacta de tramos (estilo Google Maps): 🚶 → [línea] → 🚶
+  const seq: React.ReactNode[] = [];
+  route.legs.forEach((leg, i) => {
+    if (i > 0) seq.push(<span key={`s${i}`} style={{ color: "var(--text-3)" }}>›</span>);
+    if (leg.type === "walk") {
+      const m = Math.max(1, Math.round(leg.durationS / 60));
+      seq.push(
+        <span key={`l${i}`} style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--text-2)", font: "var(--font-small)" }}>
+          <Icons.Walk size={15} />{m}
+        </span>
+      );
+    } else {
+      const lns = leg.lines && leg.lines.length ? leg.lines : ["?"];
+      lns.slice(0, 3).forEach((ln, k) => seq.push(<LineBadge key={`l${i}-${k}`} num={ln} size="sm" />));
+      if (lns.length > 3) seq.push(<span key={`l${i}m`} style={{ color: "var(--text-3)", font: "var(--font-small)" }}>+{lns.length - 3}</span>);
+    }
+  });
 
   return (
     <motion.div
@@ -795,170 +921,207 @@ function GtfsRouteCard({
       animate={{ opacity: 1, y: 0 }}
       className="card overflow-hidden"
     >
-      <div className="px-4 pt-3.5 pb-3 flex items-center justify-between">
-        <div>
-          <p className="text-eyebrow mb-0.5">{headerLabel}</p>
-          <p className="text-headline">{totalMin} min</p>
-          {!!route.alternatives && route.alternatives > 0 && (
-            <p className="text-[10px] text-slate-500 mt-0.5">
-              {route.alternatives === 1
-                ? "1 parada alternativa cercana"
-                : `${route.alternatives} alternativas cercanas`}
-            </p>
-          )}
+      {/* RESUMEN compacto — tocar para ver el paso a paso */}
+      <button onClick={() => setExpanded((e) => !e)} className="w-full text-left flex items-center gap-3 px-4 py-3.5">
+        <div className="flex-shrink-0">
+          <p style={{ font: "800 24px/1 var(--ff)", letterSpacing: "-0.02em" }}>
+            {totalMin}<span style={{ font: "600 13px/1 var(--ff)", color: "var(--text-2)" }}> min</span>
+          </p>
+          <p className="text-eyebrow" style={{ marginTop: 4 }}>{headerLabel}</p>
         </div>
-        {isWalkOnly ? (
-          <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
-            <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <circle cx="12" cy="5" r="1"/><path d="M9 20l3-9"/><path d="M13 13l2 4"/><path d="M7 20h3"/>
-            </svg>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 justify-end max-w-[60%] flex-wrap">
-            {lineBadges.map((l, i) => (
-              <span key={i} className="text-[11px] font-black px-2 py-1 rounded-md text-white"
-                style={{ background: "var(--accent)" }}>{l}</span>
-            ))}
-          </div>
-        )}
-      </div>
+        <div className="flex-1 flex items-center gap-1.5 flex-wrap justify-end">
+          {seq}
+        </div>
+        <span style={{ color: "var(--text-3)", transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.18s", display: "inline-flex" }}>
+          <Icons.Chevron size={18} />
+        </span>
+      </button>
 
+      {!expanded && (
+        <div className="px-4 pb-3 -mt-1" style={{ font: "var(--font-small)", color: "var(--text-3)" }}>
+          {route.alternatives && route.alternatives > 0
+            ? `${route.alternatives} ${route.alternatives === 1 ? "alternativa" : "alternativas"} cercana${route.alternatives === 1 ? "" : "s"} · tocá para ver`
+            : "Tocá para ver el paso a paso"}
+        </div>
+      )}
+
+      {expanded && <>
       <div className="divider" />
 
-      <div className="px-4 py-3 space-y-2.5">
-        {route.legs.map((leg, i) => {
-          if (leg.type === "walk") {
+      <div className="px-4 py-5">
+        {usesMetro && (
+          <div className="metro-note" style={{ marginBottom: 16 }}>
+            <Icons.Bus size={15} />
+            <span>Viaje <b>metropolitano</b> (Canelones). Estos horarios son los <b>oficiales programados</b> del MTOP — todavía no tenemos GPS en vivo de las empresas suburbanas, así que mostramos el horario, no la posición real.</span>
+          </div>
+        )}
+        {contLine && (
+          <div className="cont-note" style={{ marginBottom: 16 }}>
+            <Icons.Warn size={15} />
+            <span>El <b>{contLine}</b> cambia de recorrido en el camino. Seguís en un <b>{contLine}</b> desde la misma parada — puede ser el mismo coche o el próximo de la línea. Te lo decimos derecho, sin inventar.</span>
+          </div>
+        )}
+
+        {/* Timeline vertical: queda CLARO que caminás a la parada, ahí esperás y
+            tomás el bondi, te bajás, y caminás al destino. */}
+        <ol className="trip-timeline">
+          {/* Nodo ORIGEN */}
+          <li className="tl-node">
+            <span className="tl-dot tl-dot-origin" />
+            <div className="tl-body">
+              <p className="tl-main">Tu ubicación</p>
+              <p className="tl-sub">Empezás acá</p>
+            </div>
+          </li>
+
+          {route.legs.map((leg, i) => {
             const minutes = Math.max(1, Math.round(leg.durationS / 60));
             const isLast = i === route.legs.length - 1;
-            const target = leg.toStopName || (isLast ? "el destino" : "la parada");
+            if (leg.type === "walk") {
+              return (
+                <li className="tl-node" key={i}>
+                  <span className="tl-line tl-line-walk" />
+                  <span className="tl-icon"><Icons.Walk size={15} /></span>
+                  <div className="tl-body">
+                    <p className="tl-main">Caminá {minutes} min{isWalkOnly ? " hasta el destino" : ""}</p>
+                    <p className="tl-sub">
+                      {leg.distanceM}m{!isWalkOnly && leg.toStopName ? <> · llegás a <b>{leg.toStopName}</b></> : isWalkOnly ? "" : ""}
+                    </p>
+                  </div>
+                </li>
+              );
+            }
+            // BUS: nodo de PARADA con badge de la línea — "acá te tomás el bondi".
             return (
-              <Step
+              <BusTimelineLeg
                 key={i}
-                icon="walk"
-                main={isWalkOnly ? `Caminá ${minutes} min hasta el destino` : `Caminá ${minutes} min`}
-                sub={`${leg.distanceM}m${isWalkOnly ? "" : ` hasta ${target}`}`}
+                leg={leg}
+                minutes={minutes}
+                onTapStop={onTapStop}
               />
             );
-          }
-          // bus
-          const minutes = Math.max(1, Math.round(leg.durationS / 60));
-          const line = leg.lines?.[0] || "?";
-          return (
-            <GtfsBusLegStep
-              key={i}
-              line={line}
-              headsign={leg.headsign || ""}
-              fromStopId={leg.fromStopId}
-              fromStopName={leg.fromStopName}
-              numStops={leg.numStops}
-              minutes={minutes}
-              closingSoon={leg.closingSoon}
-              endOfServiceMin={leg.endOfServiceMin}
-              onTap={() => leg.fromStopId && onTapStop(leg.fromStopId)}
-            />
-          );
-        })}
+          })}
 
-        {/* Botón "Ver en el mapa" — solo para rutas con bus (caminar ya es trivial) */}
-        {onShowOnMap && !isWalkOnly && (
-          <button
-            onClick={onShowOnMap}
-            className="mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-blue-300"
-            style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)" }}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <polygon points="3 11 22 2 13 21 11 13 3 11"/>
-            </svg>
-            Ver en el mapa
-          </button>
+          {/* Nodo DESTINO */}
+          {!isWalkOnly && (
+            <li className="tl-node">
+              <span className="tl-line tl-line-walk" />
+              <span className="tl-dot tl-dot-dest" />
+              <div className="tl-body">
+                <p className="tl-main">{destinationName || "Destino"}</p>
+                <p className="tl-sub">Llegaste 🎉</p>
+              </div>
+            </li>
+          )}
+        </ol>
+
+        {/* Viaje mixto: taxi/Uber para el último tramo (de noche o si la caminata es larga) */}
+        <MixedTripOption route={route} destinationName={destinationName} />
+
+        {/* Acciones: ver en el mapa + compartir — solo para rutas con bus. */}
+        {!isWalkOnly && (
+          <div className="mt-2 flex gap-2">
+            {onShowOnMap && (
+              <button
+                onClick={onShowOnMap}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-2)" }}
+              >
+                <Icons.Map size={16} />
+                Ver en el mapa
+              </button>
+            )}
+            {/* Compartir el viaje (Web Share API → portapapeles). "Te aviso por dónde voy". */}
+            <button
+              onClick={async () => {
+                const r = await shareTrip(route, destinationName);
+                if (r === "copied") { setShareMsg("Copiado ✓"); setTimeout(() => setShareMsg(null), 1800); }
+                else if (r === "error") { setShareMsg("No se pudo compartir"); setTimeout(() => setShareMsg(null), 1800); }
+              }}
+              aria-label="Compartir viaje"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-2)", minWidth: shareMsg ? undefined : 48 }}
+            >
+              {shareMsg ? (
+                <span style={{ font: "600 12px/1 var(--ff)" }}>{shareMsg}</span>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+              )}
+            </button>
+          </div>
         )}
       </div>
+      </>}
     </motion.div>
   );
 }
 
-// ── GtfsBusLegStep ─────────────────────────────────────────────────
-// Paso de bus con ETA en vivo (FR-4.4) integrado en el Cómo Llegar.
-function GtfsBusLegStep({
-  line, headsign, fromStopId, fromStopName, numStops, minutes,
-  closingSoon, endOfServiceMin, onTap,
+// ── BusTimelineLeg ─────────────────────────────────────────────────
+// Nodo de bus en el timeline: deja CLARO que te subís a la línea en una parada
+// concreta, esperás el próximo, y te bajás N paradas después. La parada es el nodo.
+function BusTimelineLeg({
+  leg, minutes, onTapStop,
 }: {
-  line: string;
-  headsign: string;
-  fromStopId?: string;
-  fromStopName?: string;
-  numStops?: number;
+  leg: RouteLegDto;
   minutes: number;
-  closingSoon?: boolean;
-  endOfServiceMin?: number;
-  onTap: () => void;
+  onTapStop: (id: string) => void;
 }) {
-  const { etaMin, realtime, loading } = useNextArrivalForLine(fromStopId, line);
+  const lines = leg.lines && leg.lines.length ? leg.lines : ["?"];
+  const lineList = lines.length > 1
+    ? `${lines.slice(0, -1).join(", ")} o ${lines[lines.length - 1]}`
+    : lines[0];
+  const dest = (leg.headsign || "").split(" ").slice(0, 4).join(" ");
+  const { etaMin, realtime, loading } = useNextArrivalForLine(leg.fromStopId, lines[0]);
 
-  // Mensaje del próximo bus
-  let nextLabel = "";
-  let nextColor = "";
-  if (loading) {
-    nextLabel = "Buscando próximo…";
-    nextColor = "text-slate-600";
-  } else if (etaMin !== null) {
-    const prefix = realtime ? "● Próximo" : "○ Próximo (horario)";
-    nextLabel = `${prefix} en ${etaMin === 0 ? "<1" : etaMin} min`;
-    nextColor = etaMin <= 3
-      ? "text-emerald-400"
-      : etaMin <= 10
-      ? "text-amber-400"
-      : "text-blue-400";
+  let nextLabel = "", nextClass = "";
+  if (loading) { nextLabel = "Buscando próximo…"; nextClass = "tl-next-muted"; }
+  else if (etaMin !== null) {
+    nextLabel = `${realtime ? "● en vivo" : "○ horario"} · próximo en ${etaMin === 0 ? "<1" : etaMin} min`;
+    nextClass = etaMin <= 3 ? "tl-next-soon" : "tl-next";
   }
 
   return (
-    <button onClick={onTap} className="w-full text-left">
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-             style={{ background: "var(--surface)" }}>
-          <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="4" width="20" height="14" rx="2"/><path d="M22 9H2"/>
-            <circle cx="7" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>
-          </svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white truncate">
-            Tomá el {line} hacia {headsign.split(" ").slice(0, 4).join(" ")}
+    <li className="tl-node tl-node-bus">
+      <span className="tl-line tl-line-bus" />
+      {/* El nodo es la PARADA donde te subís (círculo con el badge de la línea). */}
+      <button
+        className="tl-stop-dot"
+        onClick={() => leg.fromStopId && onTapStop(leg.fromStopId)}
+        aria-label="Ver llegadas de esta parada"
+      >
+        <LineBadge num={lines[0]} size="sm" />
+      </button>
+      <div className="tl-body">
+        <button className="tl-bus-head" onClick={() => leg.fromStopId && onTapStop(leg.fromStopId)}>
+          <p className="tl-main">
+            Tomá el <b>{lineList}</b>{dest && <> hacia {dest}</>}
           </p>
-          <p className="text-[11px] text-slate-500 truncate">
-            Desde {fromStopName} · {numStops} paradas · {minutes} min
+          <span className="tl-llegadas">Llegadas <Icons.Chevron size={12} /></span>
+        </button>
+        <p className="tl-sub">
+          En <b>{leg.fromStopName || "la parada"}</b> · {leg.numStops ?? "?"} paradas · {minutes} min
+        </p>
+        {nextLabel && <p className={`tl-nextline ${nextClass}`}>{nextLabel}</p>}
+        {leg.closingSoon && typeof leg.endOfServiceMin === "number" && (
+          <p className="tl-closing">
+            <Icons.Clock size={12} /> Última corrida ~{String(Math.floor(leg.endOfServiceMin / 60) % 24).padStart(2, "0")}:{String(leg.endOfServiceMin % 60).padStart(2, "0")}
           </p>
-          {nextLabel && (
-            <p className={`text-[11px] font-bold mt-0.5 ${nextColor}`}>{nextLabel}</p>
-          )}
-          {closingSoon && typeof endOfServiceMin === "number" && (
-            <p className="text-[11px] font-bold mt-0.5 text-amber-400 flex items-center gap-1">
-              <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-              </svg>
-              Última corrida ~{String(Math.floor(endOfServiceMin / 60) % 24).padStart(2, "0")}:{String(endOfServiceMin % 60).padStart(2, "0")}
-            </p>
-          )}
-        </div>
-        <span className="text-[10px] text-blue-400 font-semibold flex items-center gap-0.5 flex-shrink-0">
-          Llegadas
-          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-        </span>
+        )}
       </div>
-    </button>
+    </li>
   );
 }
+
 
 // ── Clasificación de área (FR-4.6) ─────────────────────────────────
 // Bbox COBERTURA: MVD + Canelones cercano (Cdad de la Costa, Las Piedras,
 // La Paz, Pando, Atlántida hasta Salinas). STM no cubre fuera de esto.
 const COVERAGE_BBOX = { north: -34.5, south: -35.0, west: -56.5, east: -55.5 };
-// Bbox MVD estricto: lo que está dentro es "ok"; entre MVD y borde es "perimetral".
-const MVD_BBOX = { north: -34.7, south: -34.95, west: -56.4, east: -56.0 };
 
-function inBbox(p: { lat: number; lon: number }, b: typeof MVD_BBOX): boolean {
+function inBbox(p: { lat: number; lon: number }, b: typeof COVERAGE_BBOX): boolean {
   return p.lat <= b.north && p.lat >= b.south && p.lon >= b.west && p.lon <= b.east;
 }
 
@@ -997,27 +1160,29 @@ function distFromMvd(p: { lat: number; lon: number }): number {
 }
 
 // ── OutOfAreaState (FR-4.6) ───────────────────────────────────────
-function OutOfAreaState({ info }: { info: AreaCheck }) {
+interface InterdeptSalida { empresa: string; salida: string; llegada: string; dias: string }
+interface InterdeptResp { found: boolean; ciudad?: string; depto?: string; totalDiarias?: number; empresas?: string[]; terminal?: string; salidas: InterdeptSalida[]; fuente?: string }
+
+function OutOfAreaState({ info, destName, onPlanToTerminal }: { info: AreaCheck; destName?: string; onPlanToTerminal?: () => void }) {
+  const isInterdept = info.kind === "interdepartmental";
+  // Para viajes interdepartamentales, traemos las próximas salidas oficiales del MTOP.
+  const [inter, setInter] = useState<InterdeptResp | null>(null);
+  useEffect(() => {
+    if (!isInterdept || !destName) { setInter(null); return; }
+    let cancelled = false;
+    fetch(`/api/interdept?dest=${encodeURIComponent(destName)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setInter(d); })
+      .catch(() => { if (!cancelled) setInter(null); });
+    return () => { cancelled = true; };
+  }, [isInterdept, destName]);
+
   if (info.kind === "ok") return null;
 
   const whichLabel = info.which === "from" ? "El origen" :
                      info.which === "to" ? "El destino" : "Origen y destino";
 
-  const isInterdept = info.kind === "interdepartmental";
   const title = isInterdept ? "Viaje interdepartamental" : "Fuera del área de cobertura";
-  const body = isInterdept ? (
-    <>
-      {whichLabel} {info.which === "both" ? "están" : "está"} a más de 80km de Montevideo.
-      Para viajes interdepartamentales usá COT, Copsa, Núñez u otra empresa del
-      <span className="text-slate-400"> Terminal Tres Cruces</span>.
-    </>
-  ) : (
-    <>
-      {whichLabel} {info.which === "both" ? "están" : "está"} fuera del área de cobertura de STM
-      (Montevideo + Ciudad de la Costa, Las Piedras, La Paz, Pando, Atlántida).
-      Probá moviendo el pin más cerca de la ciudad.
-    </>
-  );
 
   return (
     <div className="flex flex-col items-center text-center py-10 px-6">
@@ -1034,21 +1199,139 @@ function OutOfAreaState({ info }: { info: AreaCheck }) {
         )}
       </div>
       <h3 className="text-headline mb-1.5">{title}</h3>
-      <p className="text-body text-slate-500 leading-relaxed max-w-sm">{body}</p>
-      {isInterdept && (
-        <a
-          href="https://www.trescruces.com.uy/horarios"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-purple-300"
-          style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}
-        >
-          Ver horarios Terminal Tres Cruces
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
-          </svg>
-        </a>
+
+      {/* Salidas interdepartamentales reales (horario oficial MTOP). */}
+      {isInterdept && inter?.found && inter.salidas.length > 0 ? (
+        <div className="w-full max-w-sm mt-1">
+          {/* A dónde ir y por qué */}
+          {inter.terminal && (
+            <div className="interdept-where">
+              <Icons.Pin size={15} />
+              <span>Estos servicios salen de la <b>{inter.terminal}</b>. Es de larga distancia: comprás el pasaje ahí o por la empresa.</span>
+            </div>
+          )}
+          {inter.empresas && inter.empresas.length > 0 && (
+            <p className="text-[12px] text-slate-500 mb-2">
+              {inter.empresas.length === 1 ? "Compañía: " : `${inter.empresas.length} compañías: `}
+              <span className="text-slate-300">{inter.empresas.join(" · ")}</span>
+            </p>
+          )}
+          <p className="text-body text-slate-500 mb-3">
+            Próximas salidas desde Montevideo hacia <b className="text-slate-300">{inter.ciudad}</b>:
+          </p>
+          <div className="interdept-list">
+            {inter.salidas.map((s, i) => (
+              <div key={i} className="interdept-row">
+                <span className="id-time tnum">{s.salida}</span>
+                <div className="id-body">
+                  <span className="id-emp">{s.empresa}</span>
+                  <span className="id-sub">llega {s.llegada || "—"}</span>
+                </div>
+                <span className="id-tag">horario</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-600 mt-2.5">
+            {inter.totalDiarias} salidas hoy · datos oficiales MTOP (programados)
+          </p>
+          <div className="flex flex-col gap-2 mt-3">
+            {/* Cómo llegar a la terminal en bus desde donde estás. */}
+            {onPlanToTerminal && (
+              <button
+                onClick={onPlanToTerminal}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold"
+                style={{ background: "var(--accent)", color: "#1a1206" }}
+              >
+                <Icons.Bus size={16} /> Cómo llegar a la Terminal Tres Cruces
+              </button>
+            )}
+            <a
+              href="https://www.trescruces.com.uy/horarios" target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-purple-300"
+              style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}
+            >
+              Comprar pasaje / más horarios
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
+              </svg>
+            </a>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-body text-slate-500 leading-relaxed max-w-sm">
+            {isInterdept ? (
+              <>{whichLabel} {info.which === "both" ? "están" : "está"} a más de 80km de Montevideo. Es un viaje interdepartamental — salís desde el Terminal Tres Cruces.</>
+            ) : (
+              <>{whichLabel} {info.which === "both" ? "están" : "está"} fuera del área de cobertura (Montevideo + Canelones metropolitano). Probá moviendo el pin más cerca de la ciudad.</>
+            )}
+          </p>
+          {isInterdept && (
+            <a
+              href="https://www.trescruces.com.uy/horarios" target="_blank" rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-purple-300"
+              style={{ background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.25)" }}
+            >
+              Ver horarios Terminal Tres Cruces
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
+              </svg>
+            </a>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+// ── DepartTimePicker ───────────────────────────────────────────────
+// "Salir ahora" / "Salir a las HH:MM". Cuando hay hora, construye un ISO para hoy;
+// si la hora ya pasó hoy, asume mañana (planificás el primer viaje de mañana).
+function DepartTimePicker({ value, onChange, children }: { value: string | null; onChange: (iso: string | null) => void; children?: React.ReactNode }) {
+  const [editing, setEditing] = useState(false);
+
+  // value (ISO) → "HH:MM" para mostrar y para el <input type=time>.
+  const hhmm = value ? new Date(value).toTimeString().slice(0, 5) : "";
+
+  const setFromHHMM = (t: string) => {
+    if (!t) { onChange(null); return; }
+    const [h, m] = t.split(":").map(Number);
+    const d = new Date();
+    d.setSeconds(0, 0);
+    d.setHours(h, m, 0, 0);
+    // Si la hora elegida ya pasó hoy, planificamos para mañana.
+    if (d.getTime() < Date.now() - 60_000) d.setDate(d.getDate() + 1);
+    onChange(d.toISOString());
+  };
+
+  return (
+    <div className="depart-row">
+      <button
+        className={`depart-chip ${!value ? "on" : ""}`}
+        onClick={() => { onChange(null); setEditing(false); }}
+        aria-pressed={!value}
+      >
+        <Icons.Clock size={14} /> Salir ahora
+      </button>
+
+      {value && !editing ? (
+        <button className="depart-chip on" onClick={() => setEditing(true)} aria-label="Cambiar hora de salida">
+          Salida {hhmm}
+          {new Date(value).getDate() !== new Date().getDate() && <span className="depart-day"> mañana</span>}
+        </button>
+      ) : (
+        <label className={`depart-chip ${value ? "on" : ""}`}>
+          {!value && <span style={{ opacity: 0.85 }}>Más tarde</span>}
+          <input
+            type="time"
+            value={hhmm}
+            onChange={(e) => { setFromHHMM(e.target.value); setEditing(false); }}
+            className="depart-time-input"
+            aria-label="Hora de salida"
+          />
+        </label>
+      )}
+      {children}
     </div>
   );
 }

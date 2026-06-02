@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type * as L from "leaflet";
 import type { VehiclePosition, BusStop } from "@/lib/stm";
 import { loadRoutesCache } from "@/lib/routes-cache";
+import { getNetInfo } from "@/lib/network";
 
 // Unified bus icon — white bus silhouette on a dark pill, with line number below
 /** Color determinístico para una línea (hash → HSL). Igual que lineColorFromCode pero local. */
@@ -72,6 +74,10 @@ interface LeafletMapProps {
     type: "walk" | "bus";
     polyline?: [number, number][];
     lines?: string[];
+    fromStopName?: string;
+    toStopName?: string;
+    durationS?: number;
+    distanceM?: number;
   }> | null;
   /** Origen y destino de la ruta planificada (para marcadores especiales). */
   routeEndpoints?: { origin: [number, number]; destination: [number, number] } | null;
@@ -112,10 +118,10 @@ export default function LeafletMap({
   const onLongPressRef = useRef(onMapLongPress);
   onLongPressRef.current = onMapLongPress;
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<{ map: any; L: any } | null>(null);
-  const vehicleMarkersRef = useRef<Map<string, any>>(new Map());
-  const stopMarkersRef = useRef<Map<string, any>>(new Map());
-  const userMarkerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<{ map: L.Map; L: typeof import("leaflet") } | null>(null);
+  const vehicleMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const stopMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const userMarkerRef = useRef<L.Marker | null>(null);
   const initializedRef = useRef(false);
 
   // Inicialización del mapa — solo una vez
@@ -125,7 +131,7 @@ export default function LeafletMap({
 
     import("leaflet").then((L) => {
       // Fix para Next.js / webpack
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 
       if (!document.getElementById("leaflet-css")) {
         const link = document.createElement("link");
@@ -145,21 +151,32 @@ export default function LeafletMap({
         preferCanvas: true, // mejor performance para muchos marcadores
       });
 
-      // Tiles CartoDB Dark Matter — sin labels molestos
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
-        {
+      // Tiles CARTO según TEMA (oscuro = dark matter, claro = positron) y RED:
+      //  - celular/Data Saver: 1 sola capa con labels + tiles 1x (la mitad de tiles, sin @2x).
+      //  - WiFi: base sin labels + capa de labels (look más limpio) y retina.
+      const net = getNetInfo();
+      const lite = net.cellular || net.saveData || net.slow;
+      const r = lite ? "" : "{r}"; // {r} = @2x en pantallas retina
+      const light = (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light");
+      const base = light ? "light" : "dark";
+      if (lite) {
+        L.tileLayer(`https://{s}.basemaps.cartocdn.com/${base}_all/{z}/{x}/{y}${r}.png`, {
           attribution: '&copy; <a href="https://carto.com">CARTO</a> &copy; OSM',
           subdomains: "abcd",
           maxZoom: 19,
-        }
-      ).addTo(map);
-
-      // Labels layer encima (separado para mayor control visual)
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
-        { subdomains: "abcd", maxZoom: 19, opacity: 0.7 }
-      ).addTo(map);
+        }).addTo(map);
+      } else {
+        L.tileLayer(`https://{s}.basemaps.cartocdn.com/${base}_nolabels/{z}/{x}/{y}${r}.png`, {
+          attribution: '&copy; <a href="https://carto.com">CARTO</a> &copy; OSM',
+          subdomains: "abcd",
+          maxZoom: 19,
+        }).addTo(map);
+        L.tileLayer(`https://{s}.basemaps.cartocdn.com/${base}_only_labels/{z}/{x}/{y}${r}.png`, {
+          subdomains: "abcd",
+          maxZoom: 19,
+          opacity: 0.7,
+        }).addTo(map);
+      }
 
       // Controles de zoom en posición no molesta
       L.control.zoom({ position: "bottomright" }).addTo(map);
@@ -173,8 +190,9 @@ export default function LeafletMap({
       let pressStart: { lat: number; lon: number } | null = null;
       const LONG_PRESS_MS = 600;
 
-      const startPress = (e: any) => {
-        pressStart = { lat: e.latlng.lat, lon: e.latlng.lng };
+      const startPress = (e: L.LeafletEvent) => {
+        const { latlng } = e as L.LeafletMouseEvent;
+        pressStart = { lat: latlng.lat, lon: latlng.lng };
         pressTimer = setTimeout(() => {
           if (pressStart && onLongPressRef.current) {
             onLongPressRef.current(pressStart.lat, pressStart.lon);
@@ -267,7 +285,7 @@ export default function LeafletMap({
   }, [center]);
 
   // Pin para lugar buscado (FR-3.8) — marker rojo destacado encima de todo
-  const placeMarkerRef = useRef<any>(null);
+  const placeMarkerRef = useRef<L.Marker | null>(null);
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const { map, L } = mapInstanceRef.current;
@@ -330,11 +348,11 @@ export default function LeafletMap({
         html: `
           <div style="
             width:${sz}px;height:${sz}px;
-            background:${isSelected ? "rgba(59,130,246,0.9)" : "rgba(18,24,38,0.88)"};
+            background:${isSelected ? "rgba(240,160,32,0.92)" : "rgba(18,24,38,0.88)"};
             border:${isSelected ? "2px solid rgba(255,255,255,0.9)" : "1.5px solid rgba(148,163,184,0.35)"};
             border-radius:${isSelected ? "50%" : "8px"};
             display:flex;align-items:center;justify-content:center;
-            box-shadow:${isSelected ? "0 0 0 5px rgba(59,130,246,0.25),0 4px 16px rgba(0,0,0,0.5)" : "0 2px 8px rgba(0,0,0,0.4)"};
+            box-shadow:${isSelected ? "0 0 0 5px rgba(240,160,32,0.28),0 4px 16px rgba(0,0,0,0.5)" : "0 2px 8px rgba(0,0,0,0.4)"};
             cursor:pointer;
             backdrop-filter:blur(6px);
           ">
@@ -359,7 +377,7 @@ export default function LeafletMap({
           zIndexOffset: isSelected ? 500 : 100,
         })
           .addTo(map)
-          .on("click", (e: any) => {
+          .on("click", (e: L.LeafletMouseEvent) => {
             L.DomEvent.stopPropagation(e);
             onStopSelect(stop.stopId);
           });
@@ -412,7 +430,7 @@ export default function LeafletMap({
           zIndexOffset: isSelected ? 1000 : 200,
         })
           .addTo(map)
-          .on("click", (e: any) => {
+          .on("click", (e: L.LeafletMouseEvent) => {
             L.DomEvent.stopPropagation(e);
             onVehicleSelect(vehicle.vehicleId === selectedVehicleId ? null : vehicle.vehicleId);
           });
@@ -424,7 +442,7 @@ export default function LeafletMap({
 
   // Dibujar recorrido del bus seleccionado (polyline)
   // routes.json se cachea a nivel módulo para no re-descargarlo en cada click.
-  const polylineRef = useRef<any>(null);
+  const polylineRef = useRef<L.Polyline | null>(null);
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const { map, L } = mapInstanceRef.current;
@@ -462,7 +480,7 @@ export default function LeafletMap({
   }, [selectedVehicleId, vehicles]);
 
   // SRS FR-5.4: dibujar puntos de TODAS las paradas del trip del bondi seleccionado
-  const variantStopsLayerRef = useRef<any>(null);
+  const variantStopsLayerRef = useRef<L.LayerGroup | null>(null);
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const { map, L } = mapInstanceRef.current;
@@ -521,7 +539,7 @@ export default function LeafletMap({
   }, [selectedVehicleId, vehicles]);
 
   // SRS FR-4: dibujar polylines de la ruta planificada en Cómo Llegar
-  const routeLayerRef = useRef<any>(null);
+  const routeLayerRef = useRef<L.LayerGroup | null>(null);
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const { map, L } = mapInstanceRef.current;
@@ -534,6 +552,9 @@ export default function LeafletMap({
 
     if (!routeLegs || routeLegs.length === 0) return;
 
+    // Renderer SVG dedicado para la ruta (el mapa usa preferCanvas para los buses).
+    // Las polylines llevan noClip:true y smoothFactor:0 — ver nota en cada polyline.
+    const svgRenderer = L.svg({ padding: 0.5 });
     const layer = L.layerGroup();
     const allCoords: [number, number][] = [];
 
@@ -546,8 +567,16 @@ export default function LeafletMap({
       allCoords.push(...leg.polyline);
 
       if (leg.type === "walk") {
-        // Caminar: línea verde punteada
+        // Caminar: línea verde punteada.
+        // noClip:true → NO recortar al viewport. Si Leaflet clippeaba la polyline al
+        // área visible en el momento de añadirla (antes del fitBounds final), el trazo
+        // real de ~50 puntos quedaba reducido a una RECTA de 3-5 vértices (bug que el
+        // usuario veía: "rutas bugeadas, marcan mal"). smoothFactor:0 → no simplificar
+        // vértices, así el recorrido sigue las calles exactas del GTFS oficial.
         const line = L.polyline(leg.polyline, {
+          renderer: svgRenderer,
+          noClip: true,
+          smoothFactor: 0,
           color: "#10b981",
           weight: 4,
           opacity: 0.9,
@@ -555,12 +584,35 @@ export default function LeafletMap({
           lineCap: "round",
         });
         layer.addLayer(line);
+
+        // Etiqueta "🚶 N min" en el medio del tramo a pie — deja CLARO dónde y cuánto se
+        // camina (queja del usuario: "dónde hay que caminar tampoco" se entendía).
+        const walkMin = leg.durationS ? Math.max(1, Math.round(leg.durationS / 60)) : null;
+        if (walkMin && leg.polyline.length >= 2) {
+          const mid = leg.polyline[Math.floor(leg.polyline.length / 2)];
+          const walkIcon = L.divIcon({
+            className: "",
+            html: `
+              <div style="display:flex;align-items:center;gap:5px;background:rgba(16,185,129,0.95);
+                color:white;font-weight:800;font-size:10.5px;line-height:1;padding:4px 8px;border-radius:999px;
+                box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="1"/><path d="m9 20 3-6 1-2"/><path d="m5 9 3 3 4-2 2 4"/><path d="M14 16l-2-2"/></svg>
+                ${walkMin} min
+              </div>`,
+            iconSize: [60, 18],
+            iconAnchor: [30, 9],
+          });
+          layer.addLayer(L.marker(mid, { icon: walkIcon, zIndexOffset: 1550, interactive: false }));
+        }
       } else {
         // Bus: línea sólida coloreada
         const color = busColors[busLegIdx % busColors.length];
         busLegIdx++;
         // halo blanco delgado para legibilidad sobre tiles oscuros
         const halo = L.polyline(leg.polyline, {
+          renderer: svgRenderer,
+          noClip: true,
+          smoothFactor: 0,
           color: "white",
           weight: 8,
           opacity: 0.25,
@@ -568,6 +620,9 @@ export default function LeafletMap({
           lineJoin: "round",
         });
         const line = L.polyline(leg.polyline, {
+          renderer: svgRenderer,
+          noClip: true,
+          smoothFactor: 0,
           color,
           weight: 5,
           opacity: 0.95,
@@ -577,57 +632,88 @@ export default function LeafletMap({
         layer.addLayer(halo);
         layer.addLayer(line);
 
-        // Marcador en parada de subida y bajada
+        // Marcadores de PARADA (no del bus): un círculo en la parada física donde el
+        // pasajero SE SUBE / SE BAJA, con una etiqueta clara al lado. La gente camina a
+        // la parada y ahí toma el bondi — el mapa debe comunicar eso, no un bus suelto.
         const lineLabel = leg.lines?.[0] || "?";
+        const boardName = leg.fromStopName ? String(leg.fromStopName) : "";
+        const alightName = leg.toStopName ? String(leg.toStopName) : "";
+
+        // Punto de SUBIDA: círculo-parada + etiqueta "Subís · 100"
         if (leg.polyline.length > 0) {
           const start = leg.polyline[0];
-          const startIcon = L.divIcon({
+          const boardIcon = L.divIcon({
             className: "",
             html: `
-              <div style="background:${color};color:white;font-weight:900;font-size:10px;
-                padding:4px 6px;border-radius:8px;border:2px solid white;
-                box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">
-                ⇧ ${lineLabel}
+              <div style="display:flex;align-items:center;gap:0;">
+                <div style="width:18px;height:18px;border-radius:50%;background:white;
+                  border:4px solid ${color};box-shadow:0 2px 6px rgba(0,0,0,0.45);flex:none;"></div>
+                <div style="margin-left:-2px;background:${color};color:white;font-weight:800;
+                  font-size:11px;line-height:1;padding:5px 8px 5px 10px;border-radius:0 8px 8px 0;
+                  box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">
+                  Subís · ${lineLabel}
+                </div>
               </div>`,
-            iconSize: [40, 22],
-            iconAnchor: [20, 11],
+            iconSize: [80, 22],
+            iconAnchor: [9, 11], // ancla en el centro del círculo (la parada)
           });
-          layer.addLayer(L.marker(start, { icon: startIcon, zIndexOffset: 1500 }));
+          const m = L.marker(start, { icon: boardIcon, zIndexOffset: 1700 });
+          if (boardName) m.bindTooltip(`Parada: ${boardName}`, { direction: "top", offset: [0, -10] });
+          layer.addLayer(m);
         }
+
+        // Punto de BAJADA: círculo-parada hueco + etiqueta "Bajás · 100"
         if (leg.polyline.length > 1) {
           const end = leg.polyline[leg.polyline.length - 1];
-          const endIcon = L.divIcon({
+          const alightIcon = L.divIcon({
             className: "",
             html: `
-              <div style="background:rgba(15,23,42,0.95);color:${color};font-weight:900;font-size:10px;
-                padding:4px 6px;border-radius:8px;border:2px solid ${color};
-                box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">
-                ⇩ ${lineLabel}
+              <div style="display:flex;align-items:center;gap:0;">
+                <div style="width:16px;height:16px;border-radius:50%;background:${color};
+                  border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.45);flex:none;"></div>
+                <div style="margin-left:-2px;background:rgba(15,23,42,0.96);color:${color};font-weight:800;
+                  font-size:11px;line-height:1;padding:5px 8px 5px 10px;border-radius:0 8px 8px 0;
+                  border:1.5px solid ${color};box-shadow:0 2px 6px rgba(0,0,0,0.4);white-space:nowrap;">
+                  Bajás · ${lineLabel}
+                </div>
               </div>`,
-            iconSize: [40, 22],
-            iconAnchor: [20, 11],
+            iconSize: [80, 22],
+            iconAnchor: [8, 11],
           });
-          layer.addLayer(L.marker(end, { icon: endIcon, zIndexOffset: 1500 }));
+          const m = L.marker(end, { icon: alightIcon, zIndexOffset: 1650 });
+          if (alightName) m.bindTooltip(`Parada: ${alightName}`, { direction: "top", offset: [0, -10] });
+          layer.addLayer(m);
         }
       }
     }
 
-    // Marcadores de origen (verde) y destino (rojo)
+    // Marcadores de origen ("Salís", verde) y destino ("Llegás", rojo) — con etiqueta
+    // para que se entienda de un vistazo dónde empieza y termina el viaje.
     if (routeEndpoints) {
       const originIcon = L.divIcon({
         className: "",
         html: `
-          <div style="width:18px;height:18px;border-radius:50%;background:#10b981;
-            border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5);"></div>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
+          <div style="display:flex;align-items:center;gap:0;">
+            <div style="width:16px;height:16px;border-radius:50%;background:#10b981;
+              border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5);flex:none;"></div>
+            <div style="margin-left:-2px;background:#10b981;color:white;font-weight:800;font-size:10px;
+              line-height:1;padding:4px 7px 4px 9px;border-radius:0 7px 7px 0;box-shadow:0 2px 6px rgba(0,0,0,0.4);
+              white-space:nowrap;">Salís</div>
+          </div>`,
+        iconSize: [60, 16],
+        iconAnchor: [8, 8],
       });
       const destIcon = L.divIcon({
         className: "",
         html: `
-          <div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#ef4444;
-            transform:rotate(-45deg);border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5);"></div>`,
-        iconSize: [22, 22],
+          <div style="display:flex;align-items:flex-end;gap:0;">
+            <div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#ef4444;
+              transform:rotate(-45deg);border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5);flex:none;"></div>
+            <div style="margin-left:3px;margin-bottom:2px;background:#ef4444;color:white;font-weight:800;font-size:10px;
+              line-height:1;padding:4px 8px;border-radius:7px;box-shadow:0 2px 6px rgba(0,0,0,0.4);
+              white-space:nowrap;">Llegás</div>
+          </div>`,
+        iconSize: [70, 24],
         iconAnchor: [11, 22],
       });
       layer.addLayer(L.marker(routeEndpoints.origin, { icon: originIcon, zIndexOffset: 1600 }));
@@ -635,14 +721,19 @@ export default function LeafletMap({
       allCoords.push(routeEndpoints.origin, routeEndpoints.destination);
     }
 
-    layer.addTo(map);
-    routeLayerRef.current = layer;
-
-    // Auto-fit del mapa a la ruta completa
+    // Auto-fit del mapa a la ruta ANTES de pintar las polylines. Clave: Leaflet recorta
+    // (clip) cada polyline al viewport actual al añadirla. Si añadíamos primero y hacíamos
+    // fitBounds después, el path SVG quedaba clippeado al zoom/centro viejo (zoom 14
+    // centrado en otra zona) → se veía como una RECTA de pocos vértices aunque la
+    // polyline real tuviera 49 puntos siguiendo las calles. Posicionando el mapa primero,
+    // el clip se hace contra el viewport correcto y el trazo se ve completo.
     if (allCoords.length > 0) {
       const bounds = L.latLngBounds(allCoords);
-      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16, animate: false });
     }
+
+    layer.addTo(map);
+    routeLayerRef.current = layer;
   }, [routeLegs, routeEndpoints]);
 
   return (

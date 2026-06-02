@@ -7,10 +7,19 @@
  */
 import { useSyncExternalStore } from "react";
 
+export interface RoutePoint { lat: number; lon: number; name?: string }
+
 export interface RouteInputState {
-  /** Tipo de input que se está pre-cargando: origen o destino */
-  slot: "from" | "to";
-  point: { lat: number; lon: number; name?: string };
+  /** Modo single-slot (long-press del mapa): pre-carga origen O destino. */
+  slot?: "from" | "to";
+  point?: RoutePoint;
+  /**
+   * Modo ruta completa (abrir una ruta guardada de "Mis rutas"): pre-carga ambos.
+   * Si `fromCurrentLocation` es true, el origen se toma del GPS al abrir.
+   */
+  from?: RoutePoint;
+  to?: RoutePoint;
+  fromCurrentLocation?: boolean;
 }
 
 let _state: RouteInputState | null = null;

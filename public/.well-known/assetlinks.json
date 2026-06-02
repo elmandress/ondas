@@ -3,9 +3,9 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "uy.ondas.app",
+      "package_name": "uy.cuando.app",
       "sha256_cert_fingerprints": [
-        "REEMPLAZAR_CON_SHA256_DEL_KEYSTORE_GENERADO_POR_BUBBLEWRAP"
+        "PEGAR_SHA256_DEL_KEYSTORE (lo da PWABuilder/Bubblewrap al generar el AAB, o Play Console -> Integridad de la app)"
       ]
     }
   }

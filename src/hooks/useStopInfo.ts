@@ -37,10 +37,17 @@ function fetchStopInfo(stopId: string): Promise<StopInfo | null> {
 }
 
 export function useStopInfo(stopId: string | null) {
-  const cachedNow = stopId ? cache.get(stopId) : undefined;
-  const initialInfo = cachedNow && Date.now() - cachedNow.ts < TTL_MS ? cachedNow.info : null;
-  const [info, setInfo] = useState<StopInfo | null>(initialInfo);
-  const [loading, setLoading] = useState(!initialInfo && !!stopId);
+  // Inicializadores lazy: leen la caché una sola vez al montar, no en cada render
+  // (evita llamar Date.now() durante el render, que react-hooks marca como impuro).
+  const [info, setInfo] = useState<StopInfo | null>(() => {
+    const cachedNow = stopId ? cache.get(stopId) : undefined;
+    return cachedNow && Date.now() - cachedNow.ts < TTL_MS ? cachedNow.info : null;
+  });
+  const [loading, setLoading] = useState(() => {
+    const cachedNow = stopId ? cache.get(stopId) : undefined;
+    const hasInitial = cachedNow && Date.now() - cachedNow.ts < TTL_MS;
+    return !hasInitial && !!stopId;
+  });
 
   useEffect(() => {
     if (!stopId) {

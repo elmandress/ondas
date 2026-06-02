@@ -60,20 +60,45 @@ interface UseVoiceInputOptions {
 export function useVoiceInput({ onResult, onError, lang = "es-UY" }: UseVoiceInputOptions) {
   const [state, setState] = useState<VoiceState>("idle");
   const recRef = useRef<SpeechRecognitionInstance | null>(null);
+  const netRetriedRef = useRef(false); // un reintento silencioso ante error "network"
+  // Mantenemos onResult/onError en refs para que start/stop sean estables y no se
+  // recreen en cada render (evita reinicios raros del reconocimiento).
+  const onResultRef = useRef(onResult);
+  const onErrorRef = useRef(onError);
+  onResultRef.current = onResult;
+  onErrorRef.current = onError;
+  // Bandera: ya entregamos un resultado (no reportar el "end" como error).
+  const gotResultRef = useRef(false);
 
-  const supported = !!getSpeechRecognition();
+  // Requiere contexto seguro (HTTPS o localhost). En http://IP-de-LAN el navegador
+  // bloquea Web Speech → por eso "no anda" al probar desde el celular por IP.
+  const secure = typeof window !== "undefined" && (window.isSecureContext ?? true);
+  const supported = !!getSpeechRecognition() && secure;
 
   const stop = useCallback(() => {
-    recRef.current?.stop();
+    const rec = recRef.current;
     recRef.current = null;
+    try { rec?.stop(); } catch {}
     setState("idle");
   }, []);
 
   const start = useCallback(() => {
     const SpeechRecognition = getSpeechRecognition();
-    if (!SpeechRecognition) return;
-    stop();
+    if (!SpeechRecognition) {
+      onErrorRef.current?.("Tu navegador no soporta búsqueda por voz");
+      return;
+    }
+    if (!secure) {
+      onErrorRef.current?.("La voz necesita HTTPS (o abrir en localhost)");
+      return;
+    }
+    // Cerrar instancia previa sin disparar onerror/onend de la vieja.
+    const prev = recRef.current;
+    recRef.current = null;
+    if (prev) { prev.onerror = null; prev.onend = null; prev.onresult = null; try { prev.stop(); } catch {} }
 
+    gotResultRef.current = false;
+    netRetriedRef.current = false;
     const rec = new SpeechRecognition();
     rec.lang = lang;
     rec.interimResults = false;
@@ -83,28 +108,47 @@ export function useVoiceInput({ onResult, onError, lang = "es-UY" }: UseVoiceInp
     rec.onstart = () => setState("listening");
 
     rec.onresult = (event: SpeechRecognitionEvent) => {
-      setState("processing");
+      gotResultRef.current = true;
       const transcript = event.results[0]?.[0]?.transcript?.trim() ?? "";
-      if (transcript) onResult(transcript);
-      else onError?.("No se entendió nada, intentá de nuevo");
       setState("idle");
+      if (transcript) onResultRef.current(transcript);
+      else onErrorRef.current?.("No se entendió nada, intentá de nuevo");
     };
 
     rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // "aborted" / "no-speech" son transitorios y comunes; no los gritamos como error duro.
+      if (event.error === "aborted") { setState("idle"); return; }
+      // "network": Chrome procesa la voz en SUS servidores; este error es del servicio
+      // del navegador (frecuente en localhost), NO de la conexión del usuario. Reintentamos
+      // UNA vez en silencio antes de avisar (suele ser transitorio).
+      if (event.error === "network" && !netRetriedRef.current) {
+        netRetriedRef.current = true;
+        try { rec.stop(); } catch {}
+        setTimeout(() => { try { rec.start(); } catch {} }, 250);
+        return;
+      }
       const msg =
-        event.error === "not-allowed" ? "Permiso de micrófono denegado" :
-        event.error === "no-speech" ? "No se detectó voz" :
-        "Error de reconocimiento de voz";
-      onError?.(msg);
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "Permiso de micrófono denegado"
+          : event.error === "no-speech" ? "No te escuché, probá de nuevo"
+          : event.error === "audio-capture" ? "No se detectó micrófono"
+          : event.error === "network" ? "La voz no respondió (la procesa tu navegador). Probá de nuevo o escribí 🙏"
+          : `Error de voz (${event.error})`;
+      onErrorRef.current?.(msg);
       setState("error");
-      setTimeout(() => setState("idle"), 2000);
+      setTimeout(() => setState("idle"), 2200);
     };
 
-    rec.onend = () => setState((s) => s === "processing" ? s : "idle");
+    rec.onend = () => setState((s) => (s === "listening" ? "idle" : s));
 
     recRef.current = rec;
-    rec.start();
-  }, [lang, onResult, onError, stop]);
+    try {
+      rec.start();
+    } catch (err) {
+      onErrorRef.current?.("No se pudo iniciar el micrófono");
+      setState("idle");
+    }
+  }, [lang, secure]);
 
   // Limpiar al desmontar
   useEffect(() => () => { recRef.current?.stop(); }, []);

@@ -1,123 +1,126 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
+import { AnimatePresence } from "framer-motion";
+import dynamic from "next/dynamic";
 import HomeScreen from "@/components/home/HomeScreen";
-import MapScreen from "@/components/map/MapScreen";
-import SearchScreen from "@/components/SearchScreen";
-import RouteScreen from "@/components/route/RouteScreen";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
 import { useActiveTab, type Tab } from "@/lib/active-tab";
+import { isOnboardingDone } from "@/lib/store";
+import { LogoMark } from "@/components/brand/Logo";
+import { Icons, type IconName } from "@/components/brand/Icons";
 
-const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  {
-    id: "home",
-    label: "Inicio",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
-        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-      </svg>
-    ),
-  },
-  {
-    id: "route",
-    label: "Cómo llegar",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
-        <circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/>
-        <path d="M6 8v4a4 4 0 004 4h4"/>
-      </svg>
-    ),
-  },
-  {
-    id: "map",
-    label: "Mapa",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
-        <polygon points="3 11 22 2 13 21 11 13 3 11" />
-      </svg>
-    ),
-  },
-  {
-    id: "search",
-    label: "Buscar",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      </svg>
-    ),
-  },
+const OnboardingFlow = dynamic(() => import("@/components/onboarding/OnboardingFlow"), { ssr: false });
+
+// Home es el landing → import estático. El resto se carga SOLO al visitarse por
+// primera vez (code-splitting): el bundle inicial baja Home + lo compartido, no las
+// 3 pantallas extra. Menos JS de arranque = más rápido y menos datos.
+const MapScreen = dynamic(() => import("@/components/map/MapScreen"), { ssr: false });
+const RouteScreen = dynamic(() => import("@/components/route/RouteScreen"), { ssr: false });
+const SearchScreen = dynamic(() => import("@/components/SearchScreen"), { ssr: false });
+
+// Orden de navegación según el diseño Cuándo: Inicio · Mapa · Rutas · Buscar.
+const NAV: { id: Tab; label: string; icon: IconName }[] = [
+  { id: "home", label: "Inicio", icon: "Home" },
+  { id: "map", label: "Mapa", icon: "Map" },
+  { id: "route", label: "Rutas", icon: "Route" },
+  { id: "search", label: "Buscar", icon: "Search" },
 ];
 
-const screenVariants = {
-  enter: { opacity: 0, y: 6 },
-  center: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -6 },
-};
+const SCREEN_ORDER: Tab[] = ["home", "route", "map", "search"];
+
+// Las pantallas se mantienen montadas para preservar estado (mapa Leaflet, scroll,
+// inputs). La visibilidad se conmuta por opacidad — nunca conditional render.
 
 export default function AppShell() {
   const [activeTab, setActiveTab] = useActiveTab();
-  // Disparar carga global del dataset
+  // Disparar carga global del dataset de paradas.
   useStopsDataset();
 
-  return (
-    <div className="flex flex-col h-full w-full max-w-md mx-auto relative" style={{ background: "var(--bg)" }}>
-      <main className="flex-1 relative overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            variants={screenVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="absolute inset-0"
-          >
-            {activeTab === "home" && <HomeScreen onTabChange={setActiveTab} />}
-            {activeTab === "route" && <RouteScreen />}
-            {activeTab === "map" && <MapScreen />}
-            {activeTab === "search" && <SearchScreen />}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+  // Keep-alive: una pantalla se monta al visitarse por primera vez y queda montada
+  // (preserva estado: mapa, scroll, inputs). Las no visitadas no cargan su JS.
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([activeTab]));
+  useEffect(() => {
+    setVisited((v) => (v.has(activeTab) ? v : new Set(v).add(activeTab)));
+  }, [activeTab]);
 
-      {/* Bottom Navigation — estilo Apple, plano */}
-      <nav
-        className="relative z-50 nav-safe"
-        style={{
-          background: "rgba(11, 16, 24, 0.92)",
-          backdropFilter: "blur(28px) saturate(180%)",
-          borderTop: "1px solid var(--border)",
-        }}
+  // Onboarding de primer uso (client-only para no romper SSR).
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  useEffect(() => {
+    if (!isOnboardingDone()) setShowOnboarding(true);
+  }, []);
+
+  const NavButton = ({ id, label, icon }: { id: Tab; label: string; icon: IconName }) => {
+    const Icon = Icons[icon];
+    return (
+      <button
+        className={`nav-item ${activeTab === id ? "active" : ""}`}
+        onClick={() => setActiveTab(id)}
+        aria-label={label}
       >
-        <div className="flex items-center justify-around px-3 pt-2 pb-1">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
+        <Icon size={20} />
+        <span className="nlabel">{label}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="app-shell">
+      {/* Sidebar — tablet (72px) / desktop (220px). CSS la oculta en mobile. */}
+      <aside className="sidebar">
+        <div className="brand" style={{ marginBottom: 28 }}>
+          <LogoMark size={28} ring="var(--text)" dot="var(--accent)" />
+          <span className="brand-word">Cuándo</span>
+        </div>
+        <nav>
+          {NAV.map((n) => (
+            <NavButton key={n.id} {...n} />
+          ))}
+        </nav>
+        <div className="footer-meta">
+          <span className="v">v0.8 · build STM</span>
+          Datos STM Montevideo
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main className="main">
+        <div className="content-col" style={{ position: "relative", height: "100%", overflow: "hidden" }}>
+          {SCREEN_ORDER.map((tab) => {
+            const active = activeTab === tab;
             return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className="flex flex-col items-center gap-0.5 px-3 py-1.5 relative"
-                aria-label={tab.label}
+              // Opacidad CSS pura (sin transform de framer): así los `position: fixed`
+              // de los sheets/modales escapan al viewport en vez de quedar atrapados.
+              <div
+                key={tab}
+                className={`screen-layer scrollbar-none ${tab === "map" ? "map" : ""}`}
+                style={{
+                  opacity: active ? 1 : 0,
+                  transition: "opacity 0.18s ease-out",
+                  pointerEvents: active ? "auto" : "none",
+                  zIndex: active ? 1 : 0,
+                }}
               >
-                <motion.div
-                  animate={{ scale: isActive ? 1.05 : 1 }}
-                  transition={{ duration: 0.15 }}
-                  style={{ color: isActive ? "#60a5fa" : "#6b7691" }}
-                >
-                  {tab.icon}
-                </motion.div>
-                <span
-                  className="text-[10px] font-semibold tracking-tight"
-                  style={{ color: isActive ? "#93c5fd" : "#475167" }}
-                >
-                  {tab.label}
-                </span>
-              </button>
+                {/* Solo se monta (y carga su JS) si la pestaña fue visitada. */}
+                {visited.has(tab) && tab === "home" && <HomeScreen onTabChange={setActiveTab} />}
+                {visited.has(tab) && tab === "route" && <RouteScreen />}
+                {visited.has(tab) && tab === "map" && <MapScreen />}
+                {visited.has(tab) && tab === "search" && <SearchScreen />}
+              </div>
             );
           })}
         </div>
+      </main>
+
+      <AnimatePresence>
+        {showOnboarding && <OnboardingFlow onDone={() => setShowOnboarding(false)} />}
+      </AnimatePresence>
+
+      {/* Bottom nav — mobile. CSS la oculta en tablet/desktop. */}
+      <nav className="bottom-nav">
+        {NAV.map((n) => (
+          <NavButton key={n.id} {...n} />
+        ))}
       </nav>
     </div>
   );

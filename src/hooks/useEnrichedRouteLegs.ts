@@ -14,10 +14,19 @@ import { useEffect, useState } from "react";
 import type { PlannedRouteDto, RouteLegDto } from "@/hooks/useRouteplanner";
 import { loadRoutesCache, type RoutesIndex } from "@/lib/routes-cache";
 
-interface WalkingApiResult {
-  ok: boolean;
-  steps?: { distanceM: number; durationS: number; instruction: string }[];
-  source?: string;
+// line-shapes.json: línea comercial → [cod_variantes que tienen shape en routes.json].
+// Necesario porque el variantId del motor ("181-0-1") no es la key de routes.json
+// (cod_variante numérico "8389"). Cacheado a nivel módulo.
+let _lineShapes: Record<string, string[]> | null = null;
+let _lineShapesPromise: Promise<Record<string, string[]>> | null = null;
+function loadLineShapes(): Promise<Record<string, string[]>> {
+  if (_lineShapes) return Promise.resolve(_lineShapes);
+  if (_lineShapesPromise) return _lineShapesPromise;
+  _lineShapesPromise = fetch("/line-shapes.json")
+    .then((r) => r.json())
+    .then((d: Record<string, string[]>) => { _lineShapes = d; _lineShapesPromise = null; return d; })
+    .catch(() => { _lineShapesPromise = null; return {}; });
+  return _lineShapesPromise;
 }
 
 const cache = new Map<string, [number, number][]>();
@@ -66,16 +75,29 @@ function polylineLengthM(coords: [number, number][]): number {
  *
  * El path elegido se invierte si era B→A para mantener orientación coherente.
  */
-async function fetchOneWay(from: [number, number], to: [number, number]): Promise<[number, number][] | null> {
-  // Coords OSRM: lon,lat. Usamos `walking` (más permisivo que `foot` con oneway).
-  const url = `https://router.project-osrm.org/route/v1/walking/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+// Router PEATONAL real de OSM (perfil foot — ignora sentidos de calle, como debe ser
+// para una persona caminando). El OSRM público solo hace AUTO (respeta one-way) y por eso
+// hacía "dar la vuelta a la manzana".
+const FOOT_OSRM = "https://routing.openstreetmap.de/routed-foot/route/v1/foot";
+
+async function fetchFootRoute(from: [number, number], to: [number, number]): Promise<[number, number][] | null> {
+  const url = `${FOOT_OSRM}/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
   try {
-    const r = await fetch(url);
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3500);
+    const r = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
     if (!r.ok) return null;
     const data = await r.json() as { routes?: { geometry: { coordinates: [number, number][] } }[] };
     const geo = data.routes?.[0]?.geometry?.coordinates;
-    if (!geo) return null;
-    return geo.map(([lon, lat]) => [lat, lon]);
+    if (!geo || geo.length < 2) return null;
+    const path = geo.map(([lon, lat]) => [lat, lon] as [number, number]);
+    // OSRM snapea los extremos a la calle (~10m). Fijamos el primer y último
+    // punto al origen/parada EXACTOS para que la línea toque la parada real
+    // (si no, la parada se ve "minimamente movida" respecto al trazo).
+    path[0] = from;
+    path[path.length - 1] = to;
+    return path;
   } catch {
     return null;
   }
@@ -87,28 +109,16 @@ async function fetchWalkingPolyline(from: [number, number], to: [number, number]
   if (inflight.has(key)) return inflight.get(key)!;
 
   const p = (async () => {
-    const [forward, reverse] = await Promise.all([
-      fetchOneWay(from, to),
-      fetchOneWay(to, from),
-    ]);
-    let best: [number, number][] | null = null;
-    let bestLen = Infinity;
-    if (forward) {
-      const len = polylineLengthM(forward);
-      if (len < bestLen) { best = forward; bestLen = len; }
-    }
-    if (reverse) {
-      const len = polylineLengthM(reverse);
-      if (len < bestLen) {
-        // Invertimos para que vaya de `from` a `to`
-        best = [...reverse].reverse();
-        bestLen = len;
-      }
-    }
+    const poly = await fetchFootRoute(from, to);
     inflight.delete(key);
-    if (!best) return null;
-    cache.set(key, best);
-    return best;
+    if (!poly || poly.length < 2) return null;
+    // Control de cordura MUY laxo: el perfil foot ya ignora el sentido, así que un
+    // desvío peatonal es real (no hay paso directo) y SE DEBE mostrar. Solo
+    // descartamos respuestas claramente rotas (>3.5x la recta = ruteó a otro lado).
+    const straight = haversineM(from, to);
+    if (polylineLengthM(poly) > Math.max(400, straight * 3.5)) return null;
+    cache.set(key, poly);
+    return poly;
   })();
 
   inflight.set(key, p);
@@ -116,53 +126,88 @@ async function fetchWalkingPolyline(from: [number, number], to: [number, number]
 }
 
 /**
- * Encuentra el índice en `polyline` más cercano al punto `p`.
- * O(N), pero solo se llama 2 veces por bus leg sobre polylines de ~50-300 puntos.
+ * Índice del punto de `shape` más cercano a `pt` (parada real de subida/bajada).
+ * Permite recortar la shape de la variante al tramo que recorre el pasajero.
  */
-function nearestIndex(polyline: [number, number][], p: [number, number]): number {
-  let bestIdx = 0;
-  let bestDistSq = Infinity;
-  for (let i = 0; i < polyline.length; i++) {
-    const dlat = polyline[i][0] - p[0];
-    const dlon = polyline[i][1] - p[1];
-    const d = dlat * dlat + dlon * dlon;
-    if (d < bestDistSq) {
-      bestDistSq = d;
-      bestIdx = i;
-    }
+function nearestIndex(shape: [number, number][], pt: [number, number]): number {
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < shape.length; i++) {
+    const d = haversineM(shape[i], pt);
+    if (d < bestD) { bestD = d; best = i; }
   }
-  return bestIdx;
+  return best;
+}
+
+/** Distancia mínima de un punto a cualquier vértice de la shape (cobertura). */
+function minDistToShape(shape: [number, number][], pt: [number, number]): number {
+  let m = Infinity;
+  for (const p of shape) { const d = haversineM(p, pt); if (d < m) m = d; }
+  return m;
 }
 
 /**
- * Dada una polyline completa del recorrido de la línea y los puntos de
- * subida/bajada, devuelve el TROZO real correspondiente.
- *
- * Si los puntos están al revés en la polyline (variante de vuelta vs ida),
- * invierte el slice para mantener orientación origen→destino.
- *
- * Si la polyline no contiene los puntos (muy lejos), devuelve null y la UI
- * mantiene las paradas conectadas.
+ * Recorta UNA shape al tramo subida→bajada. Devuelve el clip + un "maxGap" (la peor
+ * distancia de una parada intermedia del leg a la shape) para poder elegir, entre
+ * varias shapes candidatas de la misma línea, la que MEJOR cubre el recorrido real.
  */
-function sliceBusPolyline(
-  full: [number, number][],
-  from: [number, number],
-  to: [number, number],
+function clipOneShape(
+  shape: [number, number][],
+  legPolyline: [number, number][]
+): { clip: [number, number][]; maxGap: number } | null {
+  if (!shape || shape.length < 2) return null;
+  const board = legPolyline[0];
+  const alight = legPolyline[legPolyline.length - 1];
+  let iA = nearestIndex(shape, board);
+  let iB = nearestIndex(shape, alight);
+  if (iA === iB) return null;
+  const reversed = iA > iB;
+  if (reversed) { const t = iA; iA = iB; iB = t; }
+  // Las anclas deben caer sobre la shape (≤250m) — si no, esta shape no es de este tramo.
+  if (haversineM(shape[iA], reversed ? alight : board) > 250) return null;
+  if (haversineM(shape[iB], reversed ? board : alight) > 250) return null;
+  let clip = shape.slice(iA, iB + 1);
+  if (reversed) clip = clip.slice().reverse();
+  if (clip.length < 2) return null;
+  // Cobertura: cuánto se aleja cada parada intermedia del leg de este clip. Si una
+  // parada queda lejos del trazo, esta shape no representa el recorrido → descartable.
+  let maxGap = 0;
+  for (let k = 1; k < legPolyline.length - 1; k++) {
+    const g = minDistToShape(clip, legPolyline[k]);
+    if (g > maxGap) maxGap = g;
+  }
+  clip[0] = board;
+  clip[clip.length - 1] = alight;
+  return { clip, maxGap };
+}
+
+/**
+ * Trazo real por calles de un bus leg. El variantId del motor (ej "181-0-1") NO es la
+ * key de routes.json (que es cod_variante numérico, ej "8389"). Por eso probamos TODAS
+ * las shapes de la LÍNEA (line-shapes.json: línea→cod_variantes con shape) y elegimos la
+ * que mejor cubre las paradas reales del leg (menor maxGap). Si ninguna cubre bien
+ * (>120m), devolvemos null → queda la recta de paradas (honesto, sin inventar el camino).
+ */
+function clipBestShape(
+  routes: RoutesIndex,
+  lineShapes: Record<string, string[]>,
+  line: string | undefined,
+  legPolyline: [number, number][] | undefined
 ): [number, number][] | null {
-  if (!full || full.length < 2) return null;
-  const i = nearestIndex(full, from);
-  const j = nearestIndex(full, to);
-  // Distancia umbral aprox 200m: si el match es muy lejos, descartamos
-  // (la polyline no corresponde a esta variante).
-  const distI = haversineM(full[i], from);
-  const distJ = haversineM(full[j], to);
-  if (distI > 250 || distJ > 250) return null;
-  if (i === j) return [from, to];
-  const [a, b] = i < j ? [i, j] : [j, i];
-  let slice = full.slice(a, b + 1);
-  if (i > j) slice = slice.reverse();
-  // Reemplazar los extremos por los puntos exactos para que conecte con stops
-  return [from, ...slice.slice(1, -1), to];
+  if (!line || !legPolyline || legPolyline.length < 2) return null;
+  const candidates = lineShapes[line];
+  if (!candidates || !candidates.length) return null;
+
+  let best: { clip: [number, number][]; maxGap: number } | null = null;
+  for (const cv of candidates) {
+    const shape = routes[cv];
+    if (!shape) continue;
+    const r = clipOneShape(shape, legPolyline);
+    if (r && (!best || r.maxGap < best.maxGap)) best = r;
+  }
+  // Solo aceptamos si el recorrido cubre las paradas razonablemente (≤120m de gap).
+  if (best && best.maxGap <= 120) return best.clip;
+  return null;
 }
 
 /**
@@ -187,31 +232,31 @@ export function useEnrichedRouteLegs(route: PlannedRouteDto | null): RouteLegDto
     const walkPromises = route.legs.map(async (leg, i) => {
       if (leg.type !== "walk" || !leg.polyline || leg.polyline.length !== 2) return null;
       const [from, to] = leg.polyline;
+      // Solo evitamos el router para tramos triviales (<40m: la parada está ahí
+      // nomás, cruzás derecho). Para todo lo demás el peatón DEBE seguir las
+      // calles (por la vereda) — el perfil foot ignora el sentido, así que es el
+      // camino más corto real, no una diagonal cruzando manzanas.
+      if (haversineM(from, to) < 40) return null;
       const newPoly = await fetchWalkingPolyline(from, to);
       if (!newPoly || newPoly.length < 2) return null;
       return { idx: i, polyline: newPoly };
     });
 
-    // Para bus legs: cargar routes.json una vez y cortar la polyline al tramo.
-    // Mucho más rápido que walks (no hace fetch externo, solo lookup en memoria).
-    const busPromise = (async (): Promise<Array<{ idx: number; polyline: [number, number][] } | null>> => {
-      const busLegs = route.legs
-        .map((leg, idx) => ({ leg, idx }))
-        .filter(({ leg }) => leg.type === "bus" && leg.polyline && leg.polyline.length >= 2);
-      if (!busLegs.length) return [];
-      const routes: RoutesIndex = await loadRoutesCache();
-      return busLegs.map(({ leg, idx }) => {
-        const line = leg.lines?.[0];
-        if (!line || !leg.polyline) return null;
-        const full = routes[line];
-        if (!full || full.length < 5) return null;
-        const from = leg.polyline[0];
-        const to = leg.polyline[leg.polyline.length - 1];
-        const sliced = sliceBusPolyline(full, from, to);
-        if (!sliced || sliced.length < 3) return null;
-        return { idx, polyline: sliced };
-      });
-    })();
+    // Bus legs: enriquecemos con el recorrido real por calles, pero SOLO usando la
+    // shape de la VARIANTE EXACTA (routes[variantId]) recortada al tramo subida→bajada.
+    // routes.json ahora está keyado por cod_variante (pipeline regenerado desde el
+    // shapefile oficial v_uptu_lsv). Nunca caemos a otra variante de la misma línea
+    // (podría ir en sentido contrario → bug que ya tuvimos). Si la variante no tiene
+    // shape en el feed oficial, clipBestShape devuelve null y queda la recta de
+    // paradas reales (honesto, nunca un camino equivocado).
+    const busPromise = Promise.all([loadRoutesCache(), loadLineShapes()]).then(([routes, lineShapes]) =>
+      route.legs.map((leg, i) => {
+        if (leg.type !== "bus") return null;
+        const line = leg.lines && leg.lines.length ? leg.lines[0] : undefined;
+        const clipped = clipBestShape(routes, lineShapes, line, leg.polyline);
+        return clipped ? { idx: i, polyline: clipped } : null;
+      })
+    );
 
     Promise.all([Promise.all(walkPromises), busPromise]).then(([walkResults, busResults]) => {
       if (cancelled) return;

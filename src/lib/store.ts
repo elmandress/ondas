@@ -6,13 +6,26 @@
 export interface FavoriteRoute {
   id: string;
   name: string;          // "Casa → Trabajo"
-  fromStop: string;      // stopId
+  fromStop: string;      // stopId (puede quedar vacío si la ruta es por dirección)
   fromName: string;
   toStop?: string;
   toName?: string;
   lines: string[];
   walkMinutes: number;   // minutos caminando hasta la parada
   emoji: string;
+
+  // ── Rutas por DIRECCIÓN (no solo por parada) — idea de Guille ──
+  // Backward-compatible: todos opcionales. Si están las coords, la ruta se puede
+  // abrir directo en el planificador con origen/destino por dirección (y el origen
+  // es editable: si `fromIsCurrentLocation` es true, se usa el GPS al abrir).
+  fromLat?: number;
+  fromLon?: number;
+  fromAddress?: string;        // dirección textual del origen (si no es una parada)
+  /** true: al abrir la ruta, el origen se toma del GPS actual en vez de coords fijas. */
+  fromIsCurrentLocation?: boolean;
+  toLat?: number;
+  toLon?: number;
+  toAddress?: string;          // dirección textual del destino
 }
 
 export interface UserPrefs {
@@ -59,4 +72,12 @@ export function removeFavorite(id: string): void {
   const prefs = getPrefs();
   prefs.favoriteRoutes = prefs.favoriteRoutes.filter((r) => r.id !== id);
   savePrefs(prefs);
+}
+
+// ── Onboarding (primer uso) ──
+export function isOnboardingDone(): boolean {
+  return getPrefs().onboardingDone === true;
+}
+export function setOnboardingDone(done = true): void {
+  savePrefs({ ...getPrefs(), onboardingDone: done });
 }

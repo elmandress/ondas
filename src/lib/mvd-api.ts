@@ -11,6 +11,7 @@
  * Como Next.js puede reciclar el proceso, el cache es best-effort.
  */
 
+
 const TOKEN_URL = process.env.MVD_API_TOKEN_URL || "https://mvdapi-auth.montevideo.gub.uy/token";
 const API_BASE = process.env.MVD_API_BASE || "https://api.montevideo.gub.uy/api/transportepublico";
 const CLIENT_ID = process.env.MVD_API_CLIENT_ID;

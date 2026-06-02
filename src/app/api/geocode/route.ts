@@ -9,11 +9,42 @@
  * No devolvemos lugares fuera de Uruguay.
  */
 import { NextRequest, NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 import { searchPois, getIconForCategory, type ScoredPoi } from "@/lib/poi-search";
 import { tryResolveIntersection } from "@/lib/intersection-search";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Índice de ciudades del INTERIOR (geocodificadas en build, fuera del bbox MVD).
+// Va antes de Nominatim: "Punta del Este" debe resolver a Maldonado, NO a una calle
+// homónima de Montevideo (Nominatim con bounded=1 nunca la encontraría).
+interface InteriorCity { name: string; depto: string; lat: number; lon: number }
+let _interiorCities: Record<string, InteriorCity> | null = null;
+function getInteriorCities(): Record<string, InteriorCity> {
+  if (_interiorCities) return _interiorCities;
+  try {
+    _interiorCities = JSON.parse(fs.readFileSync(path.join(process.cwd(), "public", "interior-cities.json"), "utf-8"));
+  } catch { _interiorCities = {}; }
+  return _interiorCities!;
+}
+function normCity(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+}
+function matchInteriorCity(q: string): InteriorCity | null {
+  const nq = normCity(q);
+  if (nq.length < 3) return null;
+  const cities = getInteriorCities();
+  // exacto primero, luego "empieza con" (evita que "san" matchee cualquier cosa)
+  for (const c of Object.values(cities)) if (normCity(c.name) === nq) return c;
+  for (const c of Object.values(cities)) {
+    const n = normCity(c.name);
+    if (n.startsWith(nq) && nq.length >= 4) return c;
+    if (nq.startsWith(n) && n.length >= 4) return c;
+  }
+  return null;
+}
 
 // Bounding box Montevideo + Canelones cercano (área metropolitana)
 const VIEWBOX = "-56.45,-34.55,-55.85,-34.95"; // left,top,right,bottom
@@ -30,6 +61,24 @@ interface GeoResult {
   icon: string;
   source: "curated" | "nominatim";
   score?: number;
+}
+
+/** Forma parcial de un item de respuesta de Nominatim (solo los campos que usamos). */
+interface NominatimItem {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+  type: string;
+  class: string;
+  name?: string;
+  address?: {
+    amenity?: string; shop?: string; tourism?: string; leisure?: string;
+    building?: string; office?: string; name?: string;
+    road?: string; pedestrian?: string; footway?: string;
+    house_number?: string;
+    neighbourhood?: string; suburb?: string; city_district?: string; quarter?: string;
+  };
 }
 
 function poiToResult(p: ScoredPoi): GeoResult {
@@ -71,7 +120,7 @@ async function fetchNominatim(q: string): Promise<GeoResult[]> {
     if (!res.ok) return [];
     const data = await res.json();
 
-    return (Array.isArray(data) ? data : []).map((item: any) => {
+    return (Array.isArray(data) ? data : []).map((item: NominatimItem) => {
       const a = item.address || {};
       const primary =
         a.amenity || a.shop || a.tourism || a.leisure ||
@@ -125,9 +174,60 @@ function iconForOsmClass(cls: string, type: string): string {
 }
 
 export async function GET(req: NextRequest) {
+  // ── REVERSE geocode: lat/lon → dirección (para "fijar punto en el mapa", FR-4.1).
+  // Feedback instantáneo: el cliente ya muestra el marcador; esto le pone nombre.
+  const latP = req.nextUrl.searchParams.get("lat");
+  const lonP = req.nextUrl.searchParams.get("lon");
+  if (latP && lonP) {
+    const lat = Number(latP), lon = Number(lonP);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return NextResponse.json({ error: "lat/lon inválidos" }, { status: 400 });
+    }
+    try {
+      const params = new URLSearchParams({
+        format: "jsonv2", lat: String(lat), lon: String(lon), zoom: "18", addressdetails: "1",
+      });
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
+        headers: { "User-Agent": "OndasMVD/1.0 (transporte-montevideo@ondas.uy)" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { display_name?: string; address?: Record<string, string>; name?: string };
+      const a = data.address || {};
+      const road = a.road || a.pedestrian || a.footway || a.neighbourhood;
+      const num = a.house_number;
+      const name = data.name || (road ? (num ? `${road} ${num}` : road) : null) || "Punto en el mapa";
+      return NextResponse.json(
+        { name, fullName: data.display_name || name, lat, lon },
+        { headers: { "Cache-Control": "public, s-maxage=86400" } },
+      );
+    } catch {
+      return NextResponse.json({ name: "Punto en el mapa", fullName: null, lat, lon });
+    }
+  }
+
   const q = req.nextUrl.searchParams.get("q")?.trim();
   if (!q || q.length < 1) {
     return NextResponse.json({ results: [] });
+  }
+
+  // 0a. CIUDAD DEL INTERIOR (Punta del Este, Salto, Colonia…). Va primero porque el
+  // bbox de MVD haría que Nominatim devuelva una calle homónima local. Resolvemos a la
+  // ciudad real (fuera del bbox) → la app la trata como viaje interdepartamental.
+  const city = matchInteriorCity(q);
+  if (city) {
+    const cityResult: GeoResult = {
+      id: `city:${city.name}`,
+      name: city.name,
+      fullName: `${city.name}, ${city.depto}, Uruguay`,
+      lat: city.lat, lon: city.lon,
+      type: "city", class: "place", icon: "🏙️", source: "curated",
+    };
+    // Igual ofrecemos POIs locales por si el usuario quería algo en MVD con ese nombre.
+    const extras = searchPois(q, 3).map(poiToResult);
+    return NextResponse.json(
+      { results: [cityResult, ...extras].slice(0, 5) },
+      { headers: { "Cache-Control": "public, s-maxage=3600" } },
+    );
   }
 
   // 0. ESQUINAS (intersecciones) — feature MUY usado en Uruguay.
@@ -192,7 +292,11 @@ export async function GET(req: NextRequest) {
   }
 
   // Limpiar score del payload final (no se expone al cliente)
-  const final = combined.slice(0, 7).map(({ score: _score, ...rest }) => rest);
+  const final = combined.slice(0, 7).map((r) => {
+    const rest = { ...r };
+    delete rest.score;
+    return rest;
+  });
 
   return NextResponse.json(
     { results: final },

@@ -1,0 +1,15 @@
+import { chromium } from "playwright";
+const b = await chromium.launch();
+const p = await b.newPage();
+await p.setViewportSize({ width: 390, height: 844 });
+await p.goto("http://localhost:3000/", { waitUntil: "networkidle", timeout: 60000 }).catch(()=>{});
+await p.waitForTimeout(1200);
+await p.locator('button[aria-label="Buscar"]:visible').first().click().catch(()=>{});
+await p.waitForTimeout(800);
+const mic = await p.locator('button[aria-label="Buscar por voz"]').count();
+console.log("mic visible:", mic);
+await p.locator('button[aria-label="Buscar por voz"]').first().click({timeout:3000}).catch(e=>console.log("click fail",e.message.slice(0,60)));
+await p.waitForTimeout(1200);
+await p.screenshot({ path: "D:/tmp/shots/mic-cartel.png" });
+console.log("done");
+await b.close();

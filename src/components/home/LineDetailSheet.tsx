@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { useLineStops } from "@/hooks/useLineStops";
+import { loadOperators, resolveOperator, type OperatorInfo } from "@/lib/operators";
 
 interface LineDetailSheetProps {
   line: string;
   destination?: string;
   highlightStopId?: string;
+  /** Empresa del bus en vivo (de la API), si se conoce — prioriza sobre el mapeo estático. */
+  liveCompany?: string;
   onClose: () => void;
 }
 
@@ -15,10 +18,21 @@ export default function LineDetailSheet({
   line,
   destination = "",
   highlightStopId,
+  liveCompany,
   onClose,
 }: LineDetailSheetProps) {
   const { stops, headsign, loading, notFound } = useLineStops(line, destination);
   const highlightRef = useRef<HTMLDivElement | null>(null);
+
+  // Empresa operadora + contacto + WiFi (datos reales; sin clave inventada).
+  const [operator, setOperator] = useState<OperatorInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadOperators().then((data) => {
+      if (!cancelled) setOperator(resolveOperator(data, line, liveCompany));
+    });
+    return () => { cancelled = true; };
+  }, [line, liveCompany]);
 
   // Scroll automático a la parada resaltada cuando carguen las paradas
   useEffect(() => {
@@ -28,9 +42,6 @@ export default function LineDetailSheet({
   }, [stops, highlightStopId]);
 
   const totalStops = stops.length;
-  const highlightIdx = highlightStopId
-    ? stops.findIndex((s) => s.stopId === highlightStopId)
-    : -1;
 
   return (
     <>
@@ -40,7 +51,7 @@ export default function LineDetailSheet({
         exit={{ opacity: 0 }}
         transition={{ duration: 0.18 }}
         onClick={onClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-[6px] z-40"
+        className="fixed inset-0 bg-black/60 backdrop-blur-[6px] z-[1100]"
       />
 
       <motion.div
@@ -48,7 +59,7 @@ export default function LineDetailSheet({
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 32, stiffness: 340 }}
-        className="fixed bottom-0 left-0 right-0 z-50 max-w-md mx-auto"
+        className="fixed bottom-0 left-0 right-0 z-[1110] max-w-md mx-auto"
         style={{ maxHeight: "90vh" }}
       >
         <div
@@ -77,7 +88,7 @@ export default function LineDetailSheet({
                   {headsign || destination || `Línea ${line}`}
                 </h2>
                 {totalStops > 0 && (
-                  <p className="text-[11px] text-slate-500 mt-0.5">{totalStops} paradas</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{totalStops} paradas · tiempo desde el inicio del recorrido</p>
                 )}
               </div>
               <button
@@ -91,6 +102,31 @@ export default function LineDetailSheet({
               </button>
             </div>
           </div>
+
+          {/* Empresa operadora + WiFi (datos reales). */}
+          {operator && (
+            <div className="line-operator">
+              <div className="lo-row">
+                <span className="lo-label">Empresa</span>
+                <span className="lo-empresa">{operator.empresa}</span>
+                {operator.web && (
+                  <a className="lo-link" href={operator.web} target="_blank" rel="noopener noreferrer">
+                    Sitio web
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+                  </a>
+                )}
+              </div>
+              {operator.wifi && (
+                <div className="lo-wifi">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M8.5 16.4a6 6 0 0 1 7 0"/><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/></svg>
+                  <span><b>WiFi a bordo:</b> {operator.wifi.via}</span>
+                  {operator.wifi.appUrl && (
+                    <a className="lo-link" href={operator.wifi.appUrl} target="_blank" rel="noopener noreferrer">app</a>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="h-px mx-5 flex-shrink-0" style={{ background: "rgba(255,255,255,0.05)" }} />
 
@@ -118,9 +154,12 @@ export default function LineDetailSheet({
                   const isHighlight = stop.stopId === highlightStopId;
                   const isFirst = idx === 0;
                   const isLast = idx === stops.length - 1;
-                  const eta = stop.arrivalSeconds > 0
-                    ? formatArrival(stop.arrivalSeconds)
-                    : null;
+                  // Tiempo de viaje ACUMULADO desde la cabecera (dato duro del GTFS:
+                  // arrival_seconds relativo). Honesto: "este bus tarda +N min en llegar
+                  // acá desde el inicio del recorrido". No es una hora del reloj inventada.
+                  const base = stops[0]?.arrivalSeconds ?? 0;
+                  const offset = stop.arrivalSeconds - base;
+                  const eta = !isFirst && offset > 30 ? `+${Math.round(offset / 60)} min` : null;
 
                   return (
                     <div
@@ -142,9 +181,9 @@ export default function LineDetailSheet({
                         <div
                           className="w-3 h-3 rounded-full flex-shrink-0 border-2"
                           style={{
-                            background: isHighlight ? "#60a5fa" : isFirst || isLast ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.1)",
-                            borderColor: isHighlight ? "#3b82f6" : isFirst || isLast ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.08)",
-                            boxShadow: isHighlight ? "0 0 0 3px rgba(59,130,246,0.2)" : "none",
+                            background: isHighlight ? "var(--accent)" : isFirst || isLast ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.1)",
+                            borderColor: isHighlight ? "var(--accent-deep)" : isFirst || isLast ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.08)",
+                            boxShadow: isHighlight ? "0 0 0 3px rgba(240,160,32,0.25)" : "none",
                           }}
                         />
                         {/* Line bottom */}
@@ -167,7 +206,7 @@ export default function LineDetailSheet({
                         <div className="min-w-0">
                           <p
                             className="text-[13px] font-semibold leading-snug truncate"
-                            style={{ color: isHighlight ? "#93c5fd" : "#e2e8f0" }}
+                            style={{ color: isHighlight ? "var(--accent)" : "#e2e8f0" }}
                           >
                             {stop.name}
                           </p>
@@ -175,7 +214,7 @@ export default function LineDetailSheet({
                         </div>
                         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                           {isHighlight && (
-                            <span className="text-[9px] font-black uppercase tracking-wider text-blue-400 px-1.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
                               Aquí
                             </span>
                           )}
@@ -194,10 +233,4 @@ export default function LineDetailSheet({
       </motion.div>
     </>
   );
-}
-
-function formatArrival(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }

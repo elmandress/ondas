@@ -22,22 +22,26 @@ export function etaClass(minutes: number): string {
 }
 
 export function etaColorClass(minutes: number): string {
+  // Calmado a propósito: solo lo inminente se resalta; el resto neutro y legible
+  // (antes todo <=8min salía ámbar → sensación de urgencia constante).
   if (minutes <= 2) return "text-emerald-400";
-  if (minutes <= 8) return "text-amber-400";
-  return "text-slate-400";
+  return "text-slate-200";
 }
 
 /**
  * Buffer dinámico para incertidumbre del bus.
- * Bus rara vez pasa exacto a la hora: agregamos colchón creciente según distancia.
- *  - <5 min de caminata → +1 min de buffer
- *  - 5–10 min → +2 min
- *  - >10 min → +3 min
+ * El bus rara vez pasa exacto a la hora — y a veces se ADELANTA. Mejor llegar a la
+ * parada unos minutos antes y esperar, que correr y que se te pase en la cara.
+ * Por eso el colchón es de 3–5 min (no 1–3): preferimos que el usuario espere un
+ * toque parado a que pierda el bondi por 30 segundos.
+ *  - <5 min de caminata  → +3 min de buffer
+ *  - 5–10 min            → +4 min
+ *  - >10 min             → +5 min
  */
 export function dynamicBuffer(walkMinutes: number): number {
-  if (walkMinutes < 5) return 1;
-  if (walkMinutes <= 10) return 2;
-  return 3;
+  if (walkMinutes < 5) return 3;
+  if (walkMinutes <= 10) return 4;
+  return 5;
 }
 
 /**

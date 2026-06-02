@@ -1,0 +1,26 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ geolocation: { latitude: -34.9058, longitude: -56.1882 }, permissions: ["geolocation"] });
+const page = await ctx.newPage();
+const errs = [];
+page.on("console", (m) => { if (m.type() === "error") errs.push(m.text().slice(0, 200)); });
+page.on("pageerror", (e) => errs.push("PAGEERR: " + e.message.slice(0, 200)));
+await page.setViewportSize({ width: 390, height: 844 });
+await page.goto("http://localhost:3000/", { waitUntil: "networkidle", timeout: 60000 }).catch(() => {});
+await page.waitForTimeout(1500);
+await page.locator(`button[aria-label="Rutas"]:visible`).first().click().catch(() => {});
+await page.waitForTimeout(1000);
+await page.locator(".input-row.to").first().click().catch(() => {});
+await page.waitForTimeout(500);
+await page.locator('input[placeholder*="dónde"]').first().fill("Tres Cruces").catch(() => {});
+await page.waitForTimeout(2500);
+await page.locator(".search-result").first().click({ timeout: 4000 }).catch((e) => errs.push("pick fail " + e.message.slice(0,80)));
+await page.waitForTimeout(4000);
+await page.screenshot({ path: "D:/tmp/shots/route-results.png" });
+// expand first card
+await page.locator(".card button").first().click({ timeout: 3000 }).catch(() => {});
+await page.waitForTimeout(1500);
+await page.screenshot({ path: "D:/tmp/shots/route-expanded.png" });
+console.log("CONSOLE ERRORS:", errs.length);
+errs.slice(0, 10).forEach((e) => console.log(" •", e));
+await browser.close();

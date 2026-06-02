@@ -22,12 +22,12 @@ import {
 import {
   getScheduledArrivalsForStop,
   getNextScheduledPerLine,
+  getLastDepartureForLine,
 } from "@/lib/schedule-db";
+import { detectLastBus } from "@/lib/delay-prediction";
 import {
   isMvdApiConfigured,
-  getUpcomingBuses,
   getBuses,
-  type MvdUpcomingBus,
   type MvdBus,
 } from "@/lib/mvd-api";
 import { findStopServer } from "@/lib/stops-server";
@@ -36,75 +36,36 @@ import { busTowardsStopGtfs } from "@/lib/bus-direction-gtfs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function mapUpcomingToArrival(u: MvdUpcomingBus, stopId?: string): Arrival {
-  // upcomingBuses ya viene con ETA calculado por el backend STM con GPS real.
-  // Usamos ese ETA como fuente primaria — NO lo sobreescribimos con estimación GTFS.
-  // GTFS solo se consulta para enriquecer: paradas restantes, distancia real, isShortened.
-  let remainingStops: number | undefined;
-  let routeDistanceM: number | undefined;
-  let isShortened = false;
-  if (stopId && u.location?.coordinates) {
-    const vehicle = {
-      vehicleId: String(u.busId),
-      lineId: u.line,
-      lineName: u.line,
-      lat: u.location.coordinates[1],
-      lon: u.location.coordinates[0],
-      bearing: 0,
-      speed: 0,
-      timestamp: Date.now(),
-      variantCode: u.lineVariantId,
-      destinoDesc: u.destination,
-    };
-    const check = busTowardsStopGtfs(vehicle, stopId);
-    if (check.goingTo) {
-      remainingStops = check.remainingStops;
-      routeDistanceM = check.routeDistanceM;
-      const official = check.matchedHeadsign || "";
-      isShortened = official.length > 0 &&
-        !normalizeForCompare(u.destination).includes(normalizeForCompare(official)) &&
-        !normalizeForCompare(official).includes(normalizeForCompare(u.destination));
-    }
-  }
-
-  // ETA oficial STM (GPS real, calculado por el backend de IM).
-  // Nota: u.eta viene en segundos. Math.round para evitar saltos de ±30s.
-  const etaSeconds = Math.max(0, u.eta);
-  return {
-    lineId: u.line,
-    lineName: u.line,
-    lineColor: lineColorFromCode(u.line),
-    destination: u.destination,
-    destinationCode: u.lineVariantId,
-    eta: Math.round(etaSeconds / 60),
-    etaSeconds,
-    // Distancia REAL del recorrido (GTFS) si disponible, fallback al dato STM oficial
-    distance: routeDistanceM ?? u.distance,
-    remainingStops,
-    vehicleId: String(u.busId),
-    lat: u.location?.coordinates?.[1],
-    lon: u.location?.coordinates?.[0],
-    realtime: true,
-    access: u.access,
-    thermalConfort: u.thermalConfort,
-    isShortened,
-  };
+/** Haversine en metros (server-side, sin depender de utils de cliente). */
+function distM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**
- * Convierte un bus crudo en Arrival aplicando filtro GTFS:
- * - Si el bus va por una variante que NO pasa por la parada → devuelve null
- * - Si ya pasó la parada → devuelve null
- * - Si va hacia → calcula ETA real basada en paradas restantes del trip GTFS,
- *   NO por haversine.
+ * Convierte un bus crudo en Arrival.
+ *
+ * `trustUpstream` (feedback Guille — destinos acortados):
+ *   - true  → el bus viene del filtro OFICIAL del STM (busstopId), que ya confirma
+ *     que va hacia la parada. Confiamos en el STM: usamos GTFS solo para ENRIQUECER
+ *     (ETA por paradas, acortado); si GTFS no lo ubica (típico de madrugada con
+ *     recorridos acortados que no están en nuestras variantes), igual lo mostramos
+ *     con ETA estimada por distancia. NO lo descartamos.
+ *   - false → fuente no confirmada (buses?lines, tracking lejano). Mantiene el filtro
+ *     GTFS estricto como red de seguridad (evita "buses ya pasados").
  */
-function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string): Arrival | null {
+function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string, trustUpstream = false): Arrival | null {
+  const lat = b.location.coordinates[1];
+  const lon = b.location.coordinates[0];
   const vehicle = {
     vehicleId: String(b.busId),
     lineId: b.line,
     lineName: b.line,
-    lat: b.location.coordinates[1],
-    lon: b.location.coordinates[0],
+    lat, lon,
     bearing: 0,
     speed: b.speed || 0,
     timestamp: Date.parse(b.timestamp) || Date.now(),
@@ -112,35 +73,51 @@ function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string): Arrival | nul
     destinoDesc: b.destination,
   };
   const check = busTowardsStopGtfs(vehicle, targetStopId);
-  if (!check.goingTo) return null;
+
+  const base = {
+    lineId: b.line,
+    lineName: b.line,
+    lineColor: lineColorFromCode(b.line),
+    destination: b.destination, // SIEMPRE el destino que reporta el GPS en vivo (acortado real)
+    destinationCode: b.lineVariantId,
+    vehicleId: String(b.busId),
+    lat, lon,
+    realtime: true as const,
+    access: b.access,
+    thermalConfort: b.thermalConfort,
+    company: b.company,
+  };
+
+  if (!check.goingTo) {
+    // Fuente lejana no confirmada → filtro estricto.
+    if (!trustUpstream) return null;
+    // Aunque sea fuente oficial del STM: si el GTFS está SEGURO de que el bus YA PASÓ
+    // la parada, descartarlo (el filtro del STM a veces incluye pasados / sentido
+    // contrario). Solo confiamos en el STM cuando el GTFS NO puede ubicarlo.
+    if (check.reason === "passed") return null;
+    // Fuente oficial del STM, GTFS incierto → confiar. ETA estimada por distancia.
+    const stop = findStopServer(targetStopId);
+    let etaSeconds = 0;
+    if (stop) {
+      const d = distM(lat, lon, stop.stopLat, stop.stopLon);
+      const speedMs = (vehicle.speed > 3 ? vehicle.speed : 16) * 1000 / 3600; // 16 km/h urbano por defecto
+      etaSeconds = Math.round(d / speedMs);
+    }
+    return { ...base, eta: Math.max(0, Math.round(etaSeconds / 60)), etaSeconds, distance: 0, isShortened: false };
+  }
 
   const etaSeconds = check.etaSeconds ?? 0;
-
-  // SRS FR-6.x (feedback Guille): detectar trayecto acortado real.
-  // Si el destino REAL del bus (b.destination, lo que reporta el GPS en vivo) difiere
-  // del headsign GTFS oficial (la variante "completa"), es un acortado/desvío.
-  // Comparamos normalizado para tolerar mayúsculas/acentos/paréntesis.
   const officialHeadsign = check.matchedHeadsign || "";
   const isShortened = officialHeadsign.length > 0 &&
     !normalizeForCompare(b.destination).includes(normalizeForCompare(officialHeadsign)) &&
     !normalizeForCompare(officialHeadsign).includes(normalizeForCompare(b.destination));
 
   return {
-    lineId: b.line,
-    lineName: b.line,
-    lineColor: lineColorFromCode(b.line),
-    destination: b.destination,
-    destinationCode: b.lineVariantId,
+    ...base,
     eta: Math.max(0, Math.round(etaSeconds / 60)),
     etaSeconds,
     distance: check.routeDistanceM ?? 0,
     remainingStops: check.remainingStops,
-    vehicleId: String(b.busId),
-    lat: b.location.coordinates[1],
-    lon: b.location.coordinates[0],
-    realtime: true,
-    access: b.access,
-    thermalConfort: b.thermalConfort,
     isShortened,
   };
 }
@@ -190,43 +167,35 @@ export async function GET(req: NextRequest) {
     const sources: string[] = [];
 
     if (isMvdApiConfigured() && stop) {
-      // En paralelo: upcomingbuses + buses upstream (la API tiene rate limit pero estos son distintos endpoints)
-      const [upcoming, upstream] = await Promise.all([
-        getUpcomingBuses(stopId, lineCodes, 5).catch(() => []),
-        getBuses({ busstopId: stopId }).catch(() => []),
+      // upcomingbuses devuelve 400 desde mayo 2026 — API de MVD lo desactivó o cambió contrato.
+      // Fuente primaria: buses?busstopId (filtra upstream server-side + trae access/thermalConfort)
+      // + buses?lines (tracking lejano — ve buses a más de 2km que el busstopId no incluye).
+      const ourLines = new Set(lineCodes);
+
+      const [upstream, allOfLines] = await Promise.all([
+        getBuses({ busstopId: stopId }).catch(() => [] as MvdBus[]),
+        getBuses({ lines: lineCodes }).catch(() => [] as MvdBus[]),
       ]);
 
-      if (upcoming.length > 0) {
-        liveArrivals.push(...upcoming.map((u) => mapUpcomingToArrival(u, stopId)));
-        sources.push("upcoming");
-      }
-
-      if (upstream.length > 0 && stop) {
-        // SRS FR-2.7: filtrar con GTFS — descarta variantes que no pasan por la parada
-        // o buses que ya pasaron. ETA basada en paradas restantes del trip oficial.
-        const ourLines = new Set(lineCodes);
+      if (upstream.length > 0) {
         const relevant = upstream.filter((b) => ourLines.has(b.line));
         const filtered = relevant
-          .map((b) => mapBusToArrivalWithGtfs(b, stopId))
+          .map((b) => mapBusToArrivalWithGtfs(b, stopId, true)) // confiar en el filtro oficial del STM
           .filter((a): a is Arrival => a !== null);
         liveArrivals.push(...filtered);
         if (filtered.length > 0) sources.push("buses-upstream-gtfs");
       }
 
-      // Tracking lejano: traer todos los buses de las líneas y filtrar por GTFS.
-      // Resuelve "329 aparece recién a 2 cuadras" — ahora aparece desde lejos si va a la parada.
-      if (stop) {
-        const allOfLines = await getBuses({ lines: lineCodes }).catch(() => [] as MvdBus[]);
-        if (allOfLines.length > 0) {
-          const knownIds = new Set(liveArrivals.map((a) => a.vehicleId));
-          const farther = allOfLines
-            .filter((b) => !knownIds.has(String(b.busId)))
-            .map((b) => mapBusToArrivalWithGtfs(b, stopId))
-            .filter((a): a is Arrival => a !== null);
-          if (farther.length > 0) {
-            liveArrivals.push(...farther);
-            sources.push("gtfs-far-tracking");
-          }
+      // Tracking lejano: agrega buses que el endpoint upstream no incluyó todavía
+      if (allOfLines.length > 0) {
+        const knownIds = new Set(liveArrivals.map((a) => a.vehicleId));
+        const farther = allOfLines
+          .filter((b) => !knownIds.has(String(b.busId)) && ourLines.has(b.line))
+          .map((b) => mapBusToArrivalWithGtfs(b, stopId))
+          .filter((a): a is Arrival => a !== null);
+        if (farther.length > 0) {
+          liveArrivals.push(...farther);
+          sources.push("gtfs-far-tracking");
         }
       }
     }
@@ -306,6 +275,25 @@ export async function GET(req: NextRequest) {
     combined.sort((a, b) => a.eta - b.eta);
     combined = combined.slice(0, 25);
 
+    // ─── F1.4: confianza honesta (último bus + atraso observado) ───
+    // Por cada línea distinta, su última corrida programada del día (dato duro).
+    // Marcamos el PRIMER arrival de cada línea que coincide con esa última hora.
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    const lastByLine = new Map<string, number | null>();
+    const markedLastLine = new Set<string>();
+    for (const a of combined) {
+      if (!lastByLine.has(a.lineName)) {
+        lastByLine.set(a.lineName, getLastDepartureForLine(stopId, a.lineName));
+      }
+      const lastHora = lastByLine.get(a.lineName) ?? null;
+      const arrivalHora = nowMin + a.eta;
+      const lb = detectLastBus(arrivalHora, lastHora, nowMin);
+      if (lb.isLastOfDay && !markedLastLine.has(a.lineName)) {
+        a.isLastOfDay = true;
+        markedLastLine.add(a.lineName);
+      }
+    }
+
     return NextResponse.json(
       {
         arrivals: combined,
@@ -317,6 +305,29 @@ export async function GET(req: NextRequest) {
     );
   } catch (err) {
     console.error("[/api/stm/arrivals] error:", err);
+    // Último recurso: si TODO lo de arriba falló (incluso getStopVariants), igual
+    // intentamos los horarios programados locales (schedule.db) en vez de devolver vacío.
+    // "Si no carga el tiempo real, mostrá los horarios estimados" (feedback usuario).
+    try {
+      const sched = getScheduledArrivalsForStop(stopId);
+      if (sched.length > 0) {
+        const arrivals: Arrival[] = sched.slice(0, 20).map((s) => ({
+          lineId: s.lineCode,
+          lineName: s.lineCode,
+          lineColor: lineColorFromCode(s.lineCode),
+          destination: s.lineCode,
+          destinationCode: 0,
+          eta: Math.max(0, s.minutesFromNow),
+          etaSeconds: Math.max(0, s.minutesFromNow) * 60,
+          realtime: false,
+          isScheduled: true,
+        }));
+        return NextResponse.json(
+          { arrivals, stopId, updatedAt: Date.now(), source: "schedule-only", degraded: true },
+          { headers: { "Cache-Control": "no-store, max-age=0" } }
+        );
+      }
+    } catch {}
     return NextResponse.json(
       { arrivals: [], stopId, updatedAt: Date.now(), error: "API STM no disponible" },
       { status: 200 }

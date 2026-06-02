@@ -45,6 +45,8 @@ describe.skipIf(!HAS_GTFS || !HAS_STOPS)("route-planner-gtfs", async () => {
     expect(hasWalk).toBe(true);
   });
 
+  // pocitos→cerro (cross-city ~12km) es el caso más pesado. Con la memo de directas
+  // baja a <1s; dejamos el timeout default (5s) como guardarraíl anti-regresión de perf.
   it("NO incluye 'walk' cuando distancia >2.5km", () => {
     const routes = planRoutesGtfs(pocitos, cerro);
     const hasWalk = routes.some((r) => r.signature === "walk");

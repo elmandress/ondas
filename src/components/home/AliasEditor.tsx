@@ -67,7 +67,7 @@ export default function AliasEditor({ stopId, stopName, currentAlias, onClose }:
             onChange={(e) => setCustom(e.target.value)}
             placeholder="ej. Gym, Liceo, Casa de mamá…"
             maxLength={20}
-            className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500/40 mb-3"
+            className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500/40 mb-3"
           />
 
           <div className="flex gap-2">

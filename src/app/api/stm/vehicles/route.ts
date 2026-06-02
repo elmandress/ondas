@@ -40,31 +40,84 @@ function dedupeVehicles(list: VehiclePosition[]): VehiclePosition[] {
   return [...byId.values()];
 }
 
+/** Normaliza para comparar destinos sin acentos/mayúsculas. */
+function norm(s: string): string {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+}
+
 export async function GET(req: NextRequest) {
   const lineId = req.nextUrl.searchParams.get("lineId") || undefined;
   const lineIdsParam = req.nextUrl.searchParams.get("lineIds");
   const lineIds = lineIdsParam ? lineIdsParam.split(",").filter(Boolean) : undefined;
   const stopId = req.nextUrl.searchParams.get("stopId");
+  const dest = req.nextUrl.searchParams.get("dest"); // "que va a X" en vivo
+
+  // ── Búsqueda "que va a X" (F2.3): todos los buses en vivo cuyo DESTINO matchea X.
+  // Es lo que la gente ama: "a Pando" → solo los que van ahí, en tiempo real.
+  if (dest && dest.trim().length >= 2) {
+    try {
+      if (!isMvdApiConfigured()) return NextResponse.json({ vehicles: [], dest, source: "no-api" });
+      const q = norm(dest);
+      const all = await getBuses({}).catch(() => [] as MvdBus[]);
+      // Solo el DESTINO (a dónde VA el bus), no la subline (que incluye el origen:
+      // "Pocitos - Paso de la Arena" matchearía "Pocitos" aunque vaya a Paso de la Arena).
+      const matched = all
+        .filter((b) => norm(b.destination).includes(q))
+        .map(mvdBusToVehicle);
+      return NextResponse.json(
+        { vehicles: dedupeVehicles(matched), dest, count: matched.length, source: "dest-live" },
+        { headers: { "Cache-Control": "no-store, max-age=0" } },
+      );
+    } catch {
+      return NextResponse.json({ vehicles: [], dest, error: "API STM no disponible" }, { status: 200 });
+    }
+  }
 
   try {
     let vehicles: VehiclePosition[] = [];
     const sources: string[] = [];
 
-    // Caso con parada: filtro GTFS estricto (variante + ordinal)
+    // Caso con parada: DEBE ser consistente con /api/stm/arrivals (si no, la lista
+    // muestra buses "en vivo" que el mapa no puede trackear). Por eso:
+    //   1. Fuente OFICIAL del STM (busstopId) → confiar (ya filtra dirección server-side).
+    //   2. Fuente lejana (lines) → filtro GTFS estricto como red de seguridad.
     if (isMvdApiConfigured() && stopId && lineIds && lineIds.length > 0) {
-      const buses = await getBuses({ lines: lineIds }).catch(() => [] as MvdBus[]);
-      const filtered: VehiclePosition[] = [];
-      for (const b of buses) {
+      const ourLines = new Set(lineIds);
+      const [upstream, allOfLines] = await Promise.all([
+        getBuses({ busstopId: stopId }).catch(() => [] as MvdBus[]),
+        getBuses({ lines: lineIds }).catch(() => [] as MvdBus[]),
+      ]);
+      const out: VehiclePosition[] = [];
+      const seen = new Set<string>();
+
+      // 1. Upstream oficial: confiar, PERO descartar los que el GTFS confirma que ya
+      //    pasaron la parada (el filtro del STM a veces incluye pasados/sentido contrario).
+      for (const b of upstream) {
+        if (!ourLines.has(b.line)) continue;
         const v = mvdBusToVehicle(b);
-        const check = busTowardsStopGtfs(v, stopId);
-        if (check.goingTo) filtered.push(v);
+        if (seen.has(v.vehicleId)) continue;
+        if (busTowardsStopGtfs(v, stopId).reason === "passed") continue; // ya pasó → no trackear
+        out.push(v); seen.add(v.vehicleId);
       }
-      vehicles = filtered;
-      if (filtered.length > 0) sources.push("gtfs-filtered");
+      if (out.length > 0) sources.push("upstream");
+
+      // 2. Lejanos no confirmados: filtro GTFS de dirección (evita sentido contrario).
+      let far = 0;
+      for (const b of allOfLines) {
+        if (!ourLines.has(b.line)) continue;
+        const v = mvdBusToVehicle(b);
+        if (seen.has(v.vehicleId)) continue;
+        if (busTowardsStopGtfs(v, stopId).goingTo) { out.push(v); seen.add(v.vehicleId); far++; }
+      }
+      if (far > 0) sources.push("gtfs-far");
+
+      vehicles = out;
     }
 
+    const hasStop = !!stopId;
+
     // Sin parada → todos los buses de las líneas pedidas
-    if (vehicles.length === 0 && isMvdApiConfigured() && lineIds && lineIds.length > 0) {
+    if (!hasStop && vehicles.length === 0 && isMvdApiConfigured() && lineIds && lineIds.length > 0) {
       const buses = await getBuses({ lines: lineIds });
       if (buses.length > 0) {
         vehicles = buses.map(mvdBusToVehicle);
@@ -72,8 +125,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Fallback legacy
-    if (vehicles.length === 0) {
+    // Fallback legacy — solo sin parada (con parada sería sin filtro de dirección)
+    if (!hasStop && vehicles.length === 0) {
       vehicles = await getVehiclePositions(lineId, lineIds);
       if (vehicles.length > 0) sources.push("legacy");
     }

@@ -1,29 +1,54 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { AnimatePresence } from "framer-motion";
+import { useState, useEffect, useCallback } from "react";
 import { useArrivals } from "@/hooks/useArrivals";
+import { useInteriorArrivals, isInteriorStop } from "@/hooks/useInteriorArrivals";
 import { useStopInfo } from "@/hooks/useStopInfo";
-import { STOPS_DATASET } from "@/lib/stm";
-import { formatEta, etaColorClass, formatTime } from "@/lib/utils";
+import { STOPS_DATASET, isAccessibleArrival, arrivalHasAc } from "@/lib/stm";
+import { formatTime } from "@/lib/utils";
 import { useFavoriteStops, toggleFavoriteStop } from "@/lib/favorite-stops";
 import LineDetailSheet from "@/components/home/LineDetailSheet";
+import { Icons } from "@/components/brand/Icons";
+import LineBadge from "@/components/ui/LineBadge";
+import EmptyState from "@/components/ui/EmptyState";
+import ArrivalRow from "@/components/ui/ArrivalRow";
 
 interface StopArrivalSheetProps {
   stopId: string;
   onClose: () => void;
 }
 
+const CLOSE_MS = 340;
+
 export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetProps) {
   const stop = STOPS_DATASET.find((s) => s.stopId === stopId);
-  const { info } = useStopInfo(stopId);
-  const { arrivals, loading, lastUpdated, refetch } = useArrivals(stopId, 20000);
-  // Líneas REALES de la API (no las del shapefile que están desactualizadas)
+  const interior = isInteriorStop(stopId);
+  const { info } = useStopInfo(interior ? null : stopId);
+  // Parada del interior → llegadas del GPS en vivo (Busmatick); STM → API oficial.
+  const stm = useArrivals(interior ? null : stopId, 20000);
+  const int = useInteriorArrivals(interior ? stopId : null, stop?.stopLat, stop?.stopLon, stop?.lines);
+  const arrivals = interior ? int.arrivals : stm.arrivals;
+  const loading = interior ? int.loading : stm.loading;
+  const lastUpdated = interior ? new Date() : stm.lastUpdated;
+  const lastFetchFailed = interior ? false : stm.lastFetchFailed;
+  const isOffline = interior ? false : stm.isOffline;
+  const refetch = interior ? () => {} : stm.refetch;
   const realLines = info?.variants.map((v) => v.lineCode) || stop?.lines || [];
-  // Vista de línea completa
-  const [lineDetail, setLineDetail] = useState<{ line: string; destination?: string } | null>(null);
+  const [lineDetail, setLineDetail] = useState<{ line: string; destination?: string; company?: string } | null>(null);
 
-  // Favoritos reactivos
+  // Animación CSS (.open). Montamos cerrado, abrimos en el próximo frame; al cerrar
+  // diferimos onClose hasta terminar la transición para que se vea el slide-out.
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const handleClose = useCallback(() => {
+    setOpen(false);
+    setTimeout(onClose, CLOSE_MS);
+  }, [onClose]);
+
   const favorites = useFavoriteStops();
   const isFav = favorites.some((f) => f.stopId === stopId);
   const handleToggleFav = () => {
@@ -36,257 +61,114 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
     });
   };
 
+  const firstUrgent = arrivals[0]?.eta <= 3;
+
+  // Filtros por comodidad (dato oficial por bus). Independientes y acumulables.
+  const [fAccess, setFAccess] = useState(false);
+  const [fAc, setFAc] = useState(false);
+  const shown = arrivals.filter((a) => (!fAccess || isAccessibleArrival(a)) && (!fAc || arrivalHasAc(a)));
+
   return (
     <>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.18 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-[6px] z-40"
-      />
+      <div className={`sheet-backdrop mobile-only ${open ? "open" : ""}`} onClick={handleClose} />
 
-      <motion.div
-        initial={{ y: "100%" }}
-        animate={{ y: 0 }}
-        exit={{ y: "100%" }}
-        transition={{ type: "spring", damping: 32, stiffness: 340 }}
-        className="fixed bottom-0 left-0 right-0 z-50 max-w-md mx-auto"
-        style={{ maxHeight: "88vh" }}
-      >
-        <div className="flex flex-col overflow-hidden rounded-t-[28px] border-t border-white/[0.07]" style={{ background: "rgba(8,13,26,0.97)", backdropFilter: "blur(32px)", maxHeight: "88vh" }}>
+      <div className={`bottom-sheet ${open ? "open" : ""}`}>
+        <div className="sheet-handle" />
 
-          {/* Drag handle */}
-          <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-            <div className="w-8 h-[3px] rounded-full bg-white/15" />
+        <div className="sheet-header">
+          <div className="icon"><Icons.Bus size={22} /></div>
+          <div className="text">
+            <div className="eyebrow">Parada #{stop?.stopCode || stopId}</div>
+            <div className="name">{stop?.stopName || `Parada ${stopId}`}</div>
           </div>
-
-          {/* Header */}
-          <div className="px-5 pt-2 pb-3 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.25)" }}>
-                <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="4" width="20" height="14" rx="2" />
-                  <path d="M22 9H2" />
-                  <circle cx="7" cy="19" r="1.5" /><circle cx="17" cy="19" r="1.5" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-blue-500">
-                  Parada #{stop?.stopCode || stopId}
-                </p>
-                <h2 className="text-[15px] font-bold text-white leading-tight mt-0.5 truncate pr-2">
-                  {stop?.stopName || `Parada ${stopId}`}
-                </h2>
-              </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button
-                  onClick={handleToggleFav}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: isFav ? "rgba(251,191,36,0.18)" : "rgba(255,255,255,0.05)" }}
-                  aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
-                >
-                  <svg
-                    className={`w-4 h-4 ${isFav ? "text-amber-400" : "text-slate-400"}`}
-                    viewBox="0 0 24 24"
-                    fill={isFav ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    strokeWidth={2.2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                  </svg>
-                </button>
-                <button
-                  onClick={refetch}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(255,255,255,0.05)" }}
-                >
-                  <svg className={`w-4 h-4 text-slate-400 ${loading ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                    <polyline points="23 4 23 10 17 10" />
-                    <polyline points="1 20 1 14 7 14" />
-                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-                  </svg>
-                </button>
-                <button
-                  onClick={onClose}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(255,255,255,0.05)" }}
-                >
-                  <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Line chips — tocar para ver recorrido completo */}
-            {realLines.length > 0 && (
-              <div className="flex gap-1.5 flex-wrap mt-3 max-h-14 overflow-hidden">
-                {realLines.slice(0, 12).map((l) => (
-                  <button
-                    key={l}
-                    onClick={() => setLineDetail({ line: l })}
-                    className="text-[10px] font-black px-2 py-0.5 rounded-md text-slate-300 active:scale-95 transition-transform"
-                    style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }}
-                    title={`Ver recorrido completo línea ${l}`}
-                  >
-                    {l}
-                  </button>
-                ))}
-                {realLines.length > 12 && (
-                  <span className="text-[10px] text-slate-600 self-center">+{realLines.length - 12}</span>
-                )}
-              </div>
-            )}
-
-            {lastUpdated && (
-              <p className="text-[9px] text-slate-700 mt-2">Actualizado {formatTime(lastUpdated)}</p>
-            )}
-          </div>
-
-          <div className="h-px mx-5 flex-shrink-0" style={{ background: "rgba(255,255,255,0.05)" }} />
-
-          {/* Arrivals list */}
-          <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
-            {loading && !arrivals.length ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-[66px] skeleton rounded-2xl" />
-              ))
-            ) : arrivals.length === 0 ? (
-              <div className="py-12 flex flex-col items-center gap-3">
-                <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <svg className="w-7 h-7 text-slate-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                    <rect x="2" y="4" width="20" height="14" rx="2" />
-                    <path d="M22 9H2" />
-                  </svg>
-                </div>
-                <div className="text-center">
-                  <p className="text-slate-400 text-sm font-semibold">Sin buses próximamente</p>
-                  <p className="text-slate-600 text-xs mt-1">No hay servicios en los próximos 30 min</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                {arrivals[0]?.eta <= 3 && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl mb-1"
-                    style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)" }}
-                  >
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <p className="text-xs text-emerald-400 font-bold">Bus llegando — preparate para salir</p>
-                  </motion.div>
-                )}
-
-                {arrivals.map((a, i) => (
-                  <motion.div
-                    key={`${a.lineId}-${i}`}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                  >
-                    <ArrivalRow
-                      arrival={a}
-                      onLinePress={(line, destination) => setLineDetail({ line, destination })}
-                    />
-                  </motion.div>
-                ))}
-
-                <p className="text-center text-[9px] text-slate-700 pt-2 pb-1">
-                  {arrivals.length} próximos servicios
-                </p>
-              </>
-            )}
+          <div className="actions">
+            <button className={`icon-btn sm ${isFav ? "active" : ""}`} onClick={handleToggleFav} aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}>
+              <Icons.Star size={18} filled={isFav} />
+            </button>
+            <button className="icon-btn sm" onClick={refetch} aria-label="Actualizar">
+              <span style={loading ? { animation: "spin 1s linear infinite", display: "grid" } : undefined}><Icons.Refresh size={18} /></span>
+            </button>
+            <button className="icon-btn sm" onClick={handleClose} aria-label="Cerrar">
+              <Icons.Close size={18} />
+            </button>
           </div>
         </div>
-      </motion.div>
 
-      {/* Vista de recorrido completo de una línea */}
+        {/* Líneas — tocar para ver recorrido completo */}
+        {realLines.length > 0 && (
+          <div className="sheet-lines">
+            {realLines.slice(0, 14).map((l) => (
+              <button key={l} onClick={() => setLineDetail({ line: l })} title={`Ver recorrido línea ${l}`} className="tap-card">
+                <LineBadge num={l} size="sm" />
+              </button>
+            ))}
+            {realLines.length > 14 && <span style={{ alignSelf: "center", font: "var(--font-small)", color: "var(--text-3)" }}>+{realLines.length - 14}</span>}
+          </div>
+        )}
+
+        <div className="sheet-status">
+          {isOffline ? (
+            <><span className="pip" style={{ background: "var(--accent)" }} />Sin conexión · mostrando caché</>
+          ) : lastUpdated ? (
+            <><span className="pip" />{lastFetchFailed ? "Error al actualizar · " : "Actualizado "}{formatTime(lastUpdated)}</>
+          ) : (
+            <><span className="pip" />Buscando servicios…</>
+          )}
+        </div>
+
+        {firstUrgent && (
+          <div className="urgent-banner"><Icons.Bus size={18} /><span>El bus está llegando — preparate para salir</span></div>
+        )}
+
+        {arrivals.length > 0 && (
+          <div className="arrival-filters">
+            <button className={`filter-chip ${fAccess ? "on" : ""}`} onClick={() => setFAccess((v) => !v)} aria-pressed={fAccess}>
+              <Icons.Wheelchair size={14} /> Accesible
+            </button>
+            <button className={`filter-chip ${fAc ? "on" : ""}`} onClick={() => setFAc((v) => !v)} aria-pressed={fAc}>
+              <Icons.Ac size={15} /> Con aire
+            </button>
+          </div>
+        )}
+
+        <div className="sheet-arrivals scrollbar-none">
+          {loading && !arrivals.length ? (
+            Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel" style={{ height: 64, marginBottom: 8 }} />)
+          ) : arrivals.length === 0 ? (
+            isOffline ? (
+              <EmptyState emoji="📡" title="Sin conexión" sub="No hay internet ahora. Cuando vuelva, actualizamos solos." onRetry={refetch} />
+            ) : lastFetchFailed ? (
+              <EmptyState emoji="💤" title="Los servidores del STM están durmiendo" sub="No pudimos traer las llegadas en este momento. Nosotros estamos listos — probá de nuevo." onRetry={refetch} />
+            ) : interior ? (
+              <EmptyState icon={<Icons.Bus size={28} />} title="Ningún bus se acerca ahora" sub="Mostramos los buses del interior en vivo cuando esta parada es su próxima. Mirá el mapa para ver todos los que circulan en la zona." />
+            ) : (
+              <EmptyState icon={<Icons.Bus size={28} />} title="Sin buses próximamente" sub="No hay servicios en los próximos 30 min." />
+            )
+          ) : shown.length === 0 ? (
+            <EmptyState icon={<Icons.Bus size={28} />} title="Ninguno confirma ese filtro" sub="El dato de accesibilidad/aire no siempre viene por bus. Probá sin filtro." />
+          ) : (
+            shown.map((a, i) => (
+              <ArrivalRow key={`${a.lineId}-${i}`} arrival={a} stopId={stopId} onLinePress={(line, destination, company) => setLineDetail({ line, destination, company })} />
+            ))
+          )}
+        </div>
+
+        <div className="sheet-footer">
+          {fAccess || fAc ? `${shown.length} de ${arrivals.length}` : arrivals.length} servicios próximos · datos STM Montevideo
+        </div>
+      </div>
+
       <AnimatePresence>
         {lineDetail && (
           <LineDetailSheet
             line={lineDetail.line}
             destination={lineDetail.destination}
+            liveCompany={lineDetail.company}
             highlightStopId={stopId}
             onClose={() => setLineDetail(null)}
           />
         )}
       </AnimatePresence>
     </>
-  );
-}
-
-function ArrivalRow({
-  arrival,
-  onLinePress,
-}: {
-  arrival: import("@/lib/stm").Arrival;
-  onLinePress?: (line: string, destination: string) => void;
-}) {
-  const isUrgent = arrival.eta <= 2;
-  const isSoon = arrival.eta <= 8;
-
-  return (
-    <div
-      className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl`}
-      style={{
-        background: isUrgent ? "rgba(52,211,153,0.08)" : isSoon ? "rgba(251,191,36,0.05)" : "rgba(255,255,255,0.03)",
-        border: isUrgent ? "1px solid rgba(52,211,153,0.2)" : isSoon ? "1px solid rgba(251,191,36,0.1)" : "1px solid rgba(255,255,255,0.04)",
-      }}
-    >
-      {/* Line badge — tappable para ver recorrido completo */}
-      <button
-        onClick={() => onLinePress?.(arrival.lineName, arrival.destination)}
-        className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-sm text-white flex-shrink-0 active:scale-95 transition-transform"
-        style={{ background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.12)" }}
-        title={`Ver recorrido línea ${arrival.lineName}`}
-      >
-        {arrival.lineName}
-      </button>
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-white truncate">{arrival.destination}</p>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          {arrival.realtime ? (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-              En vivo
-            </span>
-          ) : arrival.isScheduled ? (
-            <span className="text-[9px] bg-indigo-500/15 text-indigo-400 px-1.5 py-0.5 rounded font-bold">Horario</span>
-          ) : (
-            <span className="text-[10px] text-slate-600 font-medium">Estimado</span>
-          )}
-          {arrival.isShortened && (
-            <span className="text-[9px] bg-amber-500/15 text-amber-400 px-1.5 py-0.5 rounded font-bold">Acortado</span>
-          )}
-          {/* SRS FR-6.3: accesibilidad REAL (dato oficial API IM) */}
-          {(arrival.access === "PISO BAJO" || arrival.access === "PLATAFORMA ELEVADORA") && (
-            <span className="text-[9px] bg-sky-500/15 text-sky-400 px-1.5 py-0.5 rounded font-bold" title={arrival.access}>♿ Accesible</span>
-          )}
-          {arrival.thermalConfort === "Aire Acondicionado" && (
-            <span className="text-[9px] bg-cyan-500/15 text-cyan-400 px-1.5 py-0.5 rounded font-bold" title="Aire acondicionado">❄ AC</span>
-          )}
-          {arrival.remainingStops !== undefined && arrival.remainingStops > 0 && (
-            <span className="text-[10px] text-slate-500" title="Paradas que le faltan al bus">
-              · a {arrival.remainingStops} paradas
-            </span>
-          )}
-          {!arrival.remainingStops && arrival.distance && arrival.distance > 0 && (
-            <span className="text-[10px] text-slate-700">{(arrival.distance / 1000).toFixed(1)}km</span>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-shrink-0 text-right">
-        <p className={`text-2xl font-black time-display ${isUrgent ? "text-emerald-400 countdown-urgent" : etaColorClass(arrival.eta)}`}>
-          {formatEta(arrival.eta)}
-        </p>
-      </div>
-    </div>
   );
 }

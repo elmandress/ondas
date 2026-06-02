@@ -86,6 +86,12 @@ export interface Arrival {
   thermalConfort?: string;
   /** Paradas restantes hasta la parada destino (según GTFS). */
   remainingStops?: number;
+  /** F1.4: esta llegada es la ÚLTIMA corrida programada del día de su línea aquí.
+   *  Dato duro de schedule.db. La UI lo resalta ("último del día"). */
+  isLastOfDay?: boolean;
+  /** Empresa operadora del bus en vivo (CUTCSA, COETC…), de la API. Permite mostrar
+   *  empresa+web al ver el detalle de la línea, también para líneas urbanas de MVD. */
+  company?: string;
 }
 
 export interface VehiclePosition {
@@ -103,6 +109,13 @@ export interface VehiclePosition {
   destinoDesc?: string;
   /** Sublínea descriptiva (ej: "PUNTA CARRETAS -- PEÑAROL") */
   sublinea?: string;
+  /** Empresa operadora (string, ej "CUTCSA") si la fuente la reporta. */
+  company?: string;
+  /** Datos enriquecidos del GPS del INTERIOR (Busmatick): próxima parada, atraso (min),
+   *  ocupación (pasajeros). Ninguna otra fuente uruguaya los muestra bien. */
+  nextStop?: string;
+  delayMin?: number;
+  occupancy?: number;
 }
 
 export interface GeoAddress {
@@ -395,12 +408,15 @@ export async function geocodeAddress(query: string): Promise<GeoAddress[]> {
     if (!res.ok) return [];
     const data = await res.json();
 
-    return (Array.isArray(data) ? data : []).slice(0, 5).map((item: any) => ({
-      address: item.nomenclatura || item.nombre || query,
-      lat: item.puntoY || item.lat || 0,
-      lon: item.puntoX || item.lon || 0,
-      type: item.tipo || "D",
-    }));
+    return (Array.isArray(data) ? data : []).slice(0, 5).map((raw: unknown) => {
+      const item = raw as Record<string, unknown>;
+      return {
+        address: (item.nomenclatura || item.nombre || query) as string,
+        lat: (item.puntoY || item.lat || 0) as number,
+        lon: (item.puntoX || item.lon || 0) as number,
+        type: (item.tipo || "D") as string,
+      };
+    });
   } catch {
     return [];
   }
@@ -467,10 +483,39 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
 export function lineColorFromCode(lineCode: string): string {
   const map: Record<string, string> = {
     "103": "#2563eb", "174": "#7c3aed", "D1": "#ea580c", "189": "#0891b2",
-    "G": "#16a34a", "H": "#dc2626", "21": "#ca8a04", "121": "#db2777",
+    "468": "#16a34a", "H": "#dc2626", "21": "#ca8a04", "121": "#db2777",
     "20": "#0284c7", "88": "#9333ea", "183": "#0d9488", "102": "#d97706",
   };
   return map[lineCode] || `hsl(${(lineCode.split("").reduce((a, c) => a + c.charCodeAt(0), 0) * 47) % 360}, 70%, 55%)`;
+}
+
+/**
+ * Líneas confirmadas 100% ELÉCTRICAS (flota BYD con WiFi + USB + AC) — dato verificable,
+ * NO inventado. Solo afirmamos WiFi en estas líneas; en el resto NO claimeamos, porque
+ * los ~177 eléctricos (de 1547) ROTAN por toda la red y la API no expone WiFi por bus.
+ *
+ * Fuente: "Nuevo circuito eléctrico" (montevideo.gub.uy) — el circuito 100% eléctrico
+ * son TRES líneas: CA1→CE1, D1→DE1, 14→E14. WiFi/USB confirmado en las BYD por la ficha
+ * de la línea D1 (Wikipedia) y la nota de los 50 nuevos eléctricos BYD. Hay churn de nombres
+ * (mayo 2025: DE1 volvió a D1), así que incluimos AMBAS variantes para cubrir lo que devuelva la API.
+ * Mantener conservador: agregar solo líneas confirmadas como 100% eléctricas.
+ */
+export const ELECTRIC_WIFI_LINES = new Set<string>([
+  "CA1", "CE1",   // Ciudad Vieja ↔ (circuito eléctrico)
+  "D1", "DE1",    // Ciudad Vieja ↔ Carrasco
+  "14", "E14",    // Pocitos / Punta Carretas / Parque Rodó ↔ Centro / Ciudad Vieja
+]);
+export function lineHasWifi(lineName: string): boolean {
+  return ELECTRIC_WIFI_LINES.has(lineName.trim().toUpperCase());
+}
+
+/** ¿La llegada es de un bus accesible (piso bajo / plataforma)? Dato oficial por bus. */
+export function isAccessibleArrival(a: Pick<Arrival, "access">): boolean {
+  return a.access === "PISO BAJO" || a.access === "PLATAFORMA ELEVADORA";
+}
+/** ¿La llegada es de un bus con aire acondicionado? Dato oficial por bus. */
+export function arrivalHasAc(a: Pick<Arrival, "thermalConfort">): boolean {
+  return a.thermalConfort === "Aire Acondicionado";
 }
 
 // Mocks eliminados — la app NUNCA inventa datos. Si la API no responde,
