@@ -20,6 +20,7 @@ import { useEnrichedRouteLegs } from "@/hooks/useEnrichedRouteLegs";
 import { setRouteInput } from "@/lib/route-input";
 import { setActiveTab } from "@/lib/active-tab";
 import { speak } from "@/lib/voice-alerts";
+import { haptic } from "@/lib/haptics";
 import LineBadge from "@/components/ui/LineBadge";
 import ArrivalRow from "@/components/ui/ArrivalRow";
 import { Icons } from "@/components/brand/Icons";
@@ -330,8 +331,8 @@ export default function MapScreen() {
     if (followAlert === lastSpokenAlert.current) return;
     lastSpokenAlert.current = followAlert;
     const stopsTxt = followedStops != null && followedStops > 0 ? ` Faltan ${followedStops} paradas.` : "";
-    if (followAlert === "soon") speak(`Preparate, tu bus está por llegar a tu parada.${stopsTxt}`);
-    else if (followAlert === "now") speak("¡Bajate ahora! Tu bus está llegando a tu parada.");
+    if (followAlert === "soon") { haptic(15); speak(`Preparate, tu bus está por llegar a tu parada.${stopsTxt}`); }
+    else if (followAlert === "now") { haptic([20, 60, 20]); speak("¡Bajate ahora! Tu bus está llegando a tu parada."); }
   }, [followAlert, followedStops]);
 
   function clearSelections() {
@@ -523,6 +524,7 @@ export default function MapScreen() {
                         onLinePress={(line, destination, company) => setLineDetail({ line, destination, company })}
                         following={!!a.vehicleId && selectedVehicleId === a.vehicleId}
                         onFollow={canFollow ? () => {
+                          haptic(); // confirmación táctil sutil (premium, sin ruido visual)
                           mapApi!.flyTo(followLat!, followLon!, 17);
                           if (a.vehicleId) setSelectedVehicleId(a.vehicleId);
                         } : undefined}
@@ -736,16 +738,20 @@ export default function MapScreen() {
             style={{ bottom: "calc(20px + env(safe-area-inset-bottom))" }}
           >
             {/* Alerta "prepárate / ¡bajate!": el bus seguido está por llegar a tu parada.
-                Mostramos paradas restantes (estilo Transit/Citymapper) si las tenemos —
-                más claro que solo minutos. Cae a minutos si no hay dato de paradas. */}
+                Combina paradas restantes + minutos (patrón Amap "a 3 paradas · ~6 min"):
+                dos referencias reducen la ansiedad de "¿cuánto falta?". Cae a lo que haya. */}
             {followAlert && (
               <div className={`follow-alert ${followAlert}`}>
                 <Icons.Bus size={16} />
                 <span>{followAlert === "now"
                   ? "¡Está llegando! Salí a la parada ahora"
-                  : followedStops != null && followedStops > 0
-                    ? `Faltan ${followedStops} parada${followedStops > 1 ? "s" : ""} — prepárate`
-                    : `Llega en ${followedEta} min — prepárate`}</span>
+                  : (() => {
+                      const stopsTxt = followedStops != null && followedStops > 0
+                        ? `Faltan ${followedStops} parada${followedStops > 1 ? "s" : ""}` : null;
+                      const minTxt = followedEta != null ? `~${followedEta} min` : null;
+                      const both = [stopsTxt, minTxt].filter(Boolean).join(" · ");
+                      return both ? `${both} — prepárate` : "Tu bus se acerca — prepárate";
+                    })()}</span>
               </div>
             )}
             <div className="bg-[#0a0f1c]/95 backdrop-blur-xl rounded-2xl p-3 border border-amber-500/30 shadow-2xl">
