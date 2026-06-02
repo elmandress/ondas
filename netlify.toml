@@ -15,14 +15,21 @@
   # better-sqlite3 necesita compilarse contra el Node de Netlify Functions
   NPM_FLAGS = "--include=optional"
 
-# Bundlear los archivos de datos (gtfs.db, mvd-pois.json, variant_to_line.json)
-# en las API routes serverless. schedule.db (84MB) excluido por tamaño.
+# Bundlear los archivos de datos que el server lee en runtime dentro de las API
+# routes serverless. CRÍTICO: el código usa gtfs-v2.db (recorridos+variantes nuevas,
+# ej. línea 582) y metro-schedule.db; si no se incluyen, en producción cae al gtfs.db
+# v1 viejo → "No se encontró el recorrido" para líneas que sí existen. schedule.db
+# (84MB) NO entra en una function de Netlify → la app degrada al GTFS para horarios.
 [functions]
   included_files = [
-    "data/gtfs.db",
+    "data/gtfs-v2.db",
+    "data/metro-schedule.db",
     "data/mvd-pois.json",
     "data/variant_to_line.json",
-    "data/line-hours.json"
+    "data/line-hours.json",
+    "data/interior-stops.json",
+    "public/interdept.json",
+    "public/interior-cities.json"
   ]
   external_node_modules = ["better-sqlite3"]
   node_bundler = "nft"

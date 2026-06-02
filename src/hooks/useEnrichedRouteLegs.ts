@@ -12,22 +12,10 @@
  */
 import { useEffect, useState } from "react";
 import type { PlannedRouteDto, RouteLegDto } from "@/hooks/useRouteplanner";
-import { loadRoutesCache, type RoutesIndex } from "@/lib/routes-cache";
-
-// line-shapes.json: línea comercial → [cod_variantes que tienen shape en routes.json].
-// Necesario porque el variantId del motor ("181-0-1") no es la key de routes.json
-// (cod_variante numérico "8389"). Cacheado a nivel módulo.
-let _lineShapes: Record<string, string[]> | null = null;
-let _lineShapesPromise: Promise<Record<string, string[]>> | null = null;
-function loadLineShapes(): Promise<Record<string, string[]>> {
-  if (_lineShapes) return Promise.resolve(_lineShapes);
-  if (_lineShapesPromise) return _lineShapesPromise;
-  _lineShapesPromise = fetch("/line-shapes.json")
-    .then((r) => r.json())
-    .then((d: Record<string, string[]>) => { _lineShapes = d; _lineShapesPromise = null; return d; })
-    .catch(() => { _lineShapesPromise = null; return {}; });
-  return _lineShapesPromise;
-}
+import { loadRoutesCache, loadLineShapes, type RoutesIndex } from "@/lib/routes-cache";
+// line-shapes.json (línea → cod_variantes con shape) ahora vive en routes-cache.ts,
+// compartido con el recorrido del bus del mapa. Necesario porque el variantId del
+// motor ("181-0-1") no es la key de routes.json (cod_variante numérico "8389").
 
 const cache = new Map<string, [number, number][]>();
 const inflight = new Map<string, Promise<[number, number][] | null>>();

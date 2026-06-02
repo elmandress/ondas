@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type * as L from "leaflet";
 import type { VehiclePosition, BusStop } from "@/lib/stm";
-import { loadRoutesCache } from "@/lib/routes-cache";
+import { loadRoutesCache, loadLineShapes } from "@/lib/routes-cache";
 import { getNetInfo } from "@/lib/network";
 
 // Unified bus icon — white bus silhouette on a dark pill, with line number below
@@ -123,6 +123,7 @@ export default function LeafletMap({
   const stopMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const userMarkerRef = useRef<L.Marker | null>(null);
   const initializedRef = useRef(false);
+  const resizeObsRef = useRef<ResizeObserver | null>(null);
 
   // Inicialización del mapa — solo una vez
   useEffect(() => {
@@ -232,6 +233,26 @@ export default function LeafletMap({
 
       mapInstanceRef.current = { map, L };
 
+      // El mapa vive en una tab que arranca OCULTA (opacity:0). Leaflet calcula su
+      // tamaño al crearse → con la tab oculta lo calcula mal y los tiles quedan en
+      // negro hasta que el usuario interactúa. Un ResizeObserver detecta cuando el
+      // contenedor recupera tamaño (al activarse la tab / abrir "Ver en el mapa") y
+      // fuerza invalidateSize para que repinte los tiles. Sin esto, el mapa de la
+      // ruta aparecía vacío.
+      if (typeof ResizeObserver !== "undefined" && mapRef.current) {
+        let lastW = 0, lastH = 0;
+        resizeObsRef.current = new ResizeObserver((entries) => {
+          const r = entries[0]?.contentRect;
+          if (!r) return;
+          // Solo invalidar cuando pasa de tamaño 0 a visible, o cambia de verdad.
+          if (r.width > 0 && r.height > 0 && (r.width !== lastW || r.height !== lastH)) {
+            lastW = r.width; lastH = r.height;
+            map.invalidateSize({ animate: false });
+          }
+        });
+        resizeObsRef.current.observe(mapRef.current);
+      }
+
       // Exponer API imperativa al padre
       onReadyRef.current?.({
         flyTo: (lat, lon, zoom = 16) => {
@@ -246,6 +267,10 @@ export default function LeafletMap({
     });
 
     return () => {
+      if (resizeObsRef.current) {
+        resizeObsRef.current.disconnect();
+        resizeObsRef.current = null;
+      }
       if (mapInstanceRef.current) {
         mapInstanceRef.current.map.remove();
         mapInstanceRef.current = null;
@@ -454,15 +479,27 @@ export default function LeafletMap({
     }
 
     const selectedVehicle = vehicles.find((v) => v.vehicleId === selectedVehicleId);
-    if (!selectedVehicle || !selectedVehicle.variantCode) return;
+    if (!selectedVehicle) return;
 
     let cancelled = false;
-    loadRoutesCache().then((routes) => {
+    Promise.all([loadRoutesCache(), loadLineShapes()]).then(([routes, lineShapes]) => {
       if (cancelled || !mapInstanceRef.current) return;
-      // Busca por variantCode primero (ej "9220"), fallback por nombre de línea (ej "76")
-      // El fallback cubre variantes nuevas que no están en el shapefile (ej: 9221 → usa polyline de 76)
-      const variantKey = String(selectedVehicle.variantCode);
-      const coords = routes[variantKey] || routes[selectedVehicle.lineName];
+      // routes.json está keyado por cod_variante. El bus en vivo trae variantCode
+      // interno (no siempre coincide) y NO siempre lo trae. Estrategia robusta:
+      //  1) cod_variante directo del bus (si vino y existe);
+      //  2) cualquier cod_variante de la LÍNEA via line-shapes.json (la mejor disponible);
+      //  3) fallback histórico: routes[lineName].
+      // Así el recorrido aparece SIEMPRE que la línea tenga shape (ej: 582 → 8922/8923),
+      // sin depender de que el bus traiga variantCode. (Bug: "no se ve la ruta del bondi").
+      let coords: [number, number][] | undefined =
+        selectedVehicle.variantCode ? routes[String(selectedVehicle.variantCode)] : undefined;
+      if (!coords) {
+        const candidates = lineShapes[selectedVehicle.lineName] || [];
+        for (const cv of candidates) {
+          if (routes[cv]?.length) { coords = routes[cv]; break; }
+        }
+      }
+      if (!coords) coords = routes[selectedVehicle.lineName];
       if (!coords || coords.length === 0) return;
 
       polylineRef.current = L.polyline(coords, {

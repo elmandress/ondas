@@ -547,7 +547,10 @@ ul { list-style: none; }
 .suggested-pill .emo { font-size: 17px; }
 
 /* ============== Map overlays (sobre Leaflet real) ============== */
-.map-screen { position: relative; height: calc(100vh - 92px - env(safe-area-inset-bottom)); width: 100%; overflow: hidden; background: #080f1d; margin: 0 -18px; }
+/* 100dvh (dynamic viewport): en móvil la barra de URL aparece/desaparece y con 100vh el
+   contenido quedaba cortado abajo. dvh se ajusta a la altura REAL visible. vh queda de
+   fallback para navegadores viejos (la línea dvh lo pisa donde se soporta). */
+.map-screen { position: relative; height: calc(100vh - 92px - env(safe-area-inset-bottom)); height: calc(100dvh - 92px - env(safe-area-inset-bottom)); width: 100%; overflow: hidden; background: #080f1d; margin: 0 -18px; }
 @media (min-width: 768px) and (max-width: 1023px) { .map-screen { height: calc(100vh - 56px); margin: -28px -36px; } }
 @media (min-width: 1024px) { .map-screen { display: none; } }
 .map-search { position: absolute; top: 16px; left: 5%; right: 5%; z-index: 5; background: rgba(13,20,34,0.86); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--border-strong); border-radius: var(--r-chip); min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 11px; }

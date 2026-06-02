@@ -30,8 +30,14 @@ const nextConfig: NextConfig = {
       "./data/mvd-pois.json",
       "./data/variant_to_line.json",
       "./data/metro-schedule.db",
+      "./data/interior-stops.json",
       "./public/routes.json",
       "./public/stops.json",
+      // Estos viven en public/ pero se leen con fs en el server (no como estáticos),
+      // así que Next NO los tracea solo → hay que listarlos o fallan en prod
+      // (interdepartamentales y geocoding del interior).
+      "./public/interdept.json",
+      "./public/interior-cities.json",
     ],
   },
 

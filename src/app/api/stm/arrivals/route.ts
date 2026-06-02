@@ -143,6 +143,22 @@ function dedupeLive(arrivals: Arrival[]): Arrival[] {
   return [...byVehicle.values()];
 }
 
+/** Mapea horarios programados (schedule.db / metro-schedule.db) a Arrival. Sin GPS:
+ *  realtime=false, isScheduled=true (la UI los marca como "horario", no inventa posición). */
+function scheduledToArrivals(sched: ReturnType<typeof getScheduledArrivalsForStop>): Arrival[] {
+  return sched.slice(0, 20).map((s) => ({
+    lineId: s.lineCode,
+    lineName: s.lineCode,
+    lineColor: lineColorFromCode(s.lineCode),
+    destination: s.lineCode,
+    destinationCode: 0,
+    eta: Math.max(0, s.minutesFromNow),
+    etaSeconds: Math.max(0, s.minutesFromNow) * 60,
+    realtime: false,
+    isScheduled: true,
+  }));
+}
+
 export async function GET(req: NextRequest) {
   const stopId = req.nextUrl.searchParams.get("stopId");
   if (!stopId) {
@@ -152,6 +168,17 @@ export async function GET(req: NextRequest) {
   try {
     const stopInfo: StopInfo | null = await getStopVariants(stopId);
     if (!stopInfo) {
+      // Paradas METRO (Canelones, prefijo "M"): la API STM urbana no las conoce, así
+      // que getStopVariants da null. Pero su HORARIO programado vive en metro-schedule.db.
+      // Antes salíamos con "no-info" → la parada se veía "Sin buses próximamente" aunque
+      // tuviéramos los horarios. Acá los servimos (no hay GPS en vivo del metro, es honesto).
+      const metroSched = scheduledToArrivals(getScheduledArrivalsForStop(stopId));
+      if (metroSched.length > 0) {
+        return NextResponse.json(
+          { arrivals: metroSched, stopId, updatedAt: Date.now(), source: "metro-schedule", degraded: true },
+          { headers: { "Cache-Control": "no-store, max-age=0" } }
+        );
+      }
       return NextResponse.json({ arrivals: [], stopId, updatedAt: Date.now(), source: "no-info" });
     }
 
@@ -309,19 +336,8 @@ export async function GET(req: NextRequest) {
     // intentamos los horarios programados locales (schedule.db) en vez de devolver vacío.
     // "Si no carga el tiempo real, mostrá los horarios estimados" (feedback usuario).
     try {
-      const sched = getScheduledArrivalsForStop(stopId);
-      if (sched.length > 0) {
-        const arrivals: Arrival[] = sched.slice(0, 20).map((s) => ({
-          lineId: s.lineCode,
-          lineName: s.lineCode,
-          lineColor: lineColorFromCode(s.lineCode),
-          destination: s.lineCode,
-          destinationCode: 0,
-          eta: Math.max(0, s.minutesFromNow),
-          etaSeconds: Math.max(0, s.minutesFromNow) * 60,
-          realtime: false,
-          isScheduled: true,
-        }));
+      const arrivals = scheduledToArrivals(getScheduledArrivalsForStop(stopId));
+      if (arrivals.length > 0) {
         return NextResponse.json(
           { arrivals, stopId, updatedAt: Date.now(), source: "schedule-only", degraded: true },
           { headers: { "Cache-Control": "no-store, max-age=0" } }

@@ -142,10 +142,16 @@ export function useVoiceInput({ onResult, onError, lang = "es-UY" }: UseVoiceInp
     rec.onend = () => setState((s) => (s === "listening" ? "idle" : s));
 
     recRef.current = rec;
+    // Feedback OPTIMISTA: abrimos el overlay "escuchando" al instante, sin esperar a
+    // onstart. En algunos navegadores onstart tarda o no llega (el servicio de voz
+    // del browser se cuelga) → sin esto el botón parecía "muerto" al tocarlo. Si algo
+    // falla, onerror/onend vuelven el estado a idle.
+    setState("listening");
     try {
       rec.start();
-    } catch (err) {
-      onErrorRef.current?.("No se pudo iniciar el micrófono");
+    } catch {
+      // Algunos navegadores lanzan si ya hay un reconocimiento activo: lo reiniciamos.
+      onErrorRef.current?.("No se pudo iniciar el micrófono, probá de nuevo");
       setState("idle");
     }
   }, [lang, secure]);

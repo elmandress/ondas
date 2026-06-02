@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { useLocation } from "@/hooks/useLocation";
 import { useArrivals } from "@/hooks/useArrivals";
@@ -66,28 +66,32 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [now, setNow] = useState<Date | null>(null);
 
   // Hero "¿De dónde salís?": atajos (Casa/Trabajo) + parada más cercana.
+  // Memoizado: sin esto se recalculaba en cada render (cada tick del reloj de 30s y
+  // cada micro-update del GPS) creando objetos nuevos → el hero parpadeaba. Ahora solo
+  // se recalcula si cambian las paradas o la ubicación de verdad (ya estabilizada).
   const [heroIdx, setHeroIdx] = useState(0);
-  const heroSources = mounted
-    ? [
-        ...shortcuts.slice(0, 2).map((f) => {
-          const stopData = STOPS_DATASET.find((s) => s.stopId === f.stopId);
-          const walkMin = location && stopData
-            ? walkingMinutes(distanceTo(location.lat, location.lon, stopData.stopLat, stopData.stopLon))
-            : 5;
-          return { stopId: f.stopId, stopName: f.stopName, alias: f.alias, walkMin };
-        }),
-        ...(nearbyStops.length > 0 && !shortcuts.some((s) => s.stopId === nearbyStops[0].stopId)
-          ? [{
-              stopId: nearbyStops[0].stopId,
-              stopName: nearbyStops[0].stopName,
-              alias: undefined as string | undefined,
-              walkMin: location && locationIsReal
-                ? walkingMinutes(distanceTo(location.lat, location.lon, nearbyStops[0].stopLat, nearbyStops[0].stopLon))
-                : 5,
-            }]
-          : []),
-      ]
-    : [];
+  const heroSources = useMemo(() => {
+    if (!mounted) return [];
+    return [
+      ...shortcuts.slice(0, 2).map((f) => {
+        const stopData = STOPS_DATASET.find((s) => s.stopId === f.stopId);
+        const walkMin = location && stopData
+          ? walkingMinutes(distanceTo(location.lat, location.lon, stopData.stopLat, stopData.stopLon))
+          : 5;
+        return { stopId: f.stopId, stopName: f.stopName, alias: f.alias, walkMin };
+      }),
+      ...(nearbyStops.length > 0 && !shortcuts.some((s) => s.stopId === nearbyStops[0].stopId)
+        ? [{
+            stopId: nearbyStops[0].stopId,
+            stopName: nearbyStops[0].stopName,
+            alias: undefined as string | undefined,
+            walkMin: location && locationIsReal
+              ? walkingMinutes(distanceTo(location.lat, location.lon, nearbyStops[0].stopLat, nearbyStops[0].stopLon))
+              : 5,
+          }]
+        : []),
+    ];
+  }, [mounted, shortcuts, nearbyStops, location, locationIsReal]);
   const heroSource = heroSources[Math.min(heroIdx, heroSources.length - 1)] ?? null;
 
   useEffect(() => {
@@ -298,7 +302,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       {/* Acciones STM */}
       <div className="section-head"><h2>Acciones STM</h2></div>
       <div className="shortcut-grid">
-        <a href="https://www.montevideo.gub.uy/aplicacion/consulta-tu-saldo-stm" target="_blank" rel="noopener noreferrer" className="shortcut-card tap-card">
+        <a href="https://montevideo.gub.uy/stm-en-linea" target="_blank" rel="noopener noreferrer" className="shortcut-card tap-card">
           <div className="top">
             <span className="emo" style={{ background: "var(--live-soft)", color: "var(--live)" }}>💳</span>
             <span className="alias">Saldo STM</span>

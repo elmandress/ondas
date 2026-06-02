@@ -486,7 +486,8 @@ export default function MapScreen() {
                 </div>
               )}
 
-              <div className="map-panel-scroll px-4 pb-5 max-h-[44vh] overflow-y-auto">
+              <div className="map-panel-scroll px-4 max-h-[44vh] overflow-y-auto"
+                   style={{ paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }}>
                 {arrivalsLoading && !arrivals.length ? (
                   [1, 2, 3, 4].map((i) => <div key={i} className="h-14 skeleton rounded-xl" />)
                 ) : arrivals.length === 0 ? (
@@ -573,7 +574,8 @@ export default function MapScreen() {
                 </button>
               </div>
 
-              <div className="px-4 pb-5 overflow-y-auto flex-1 min-h-0">
+              <div className="px-4 overflow-y-auto flex-1 min-h-0"
+                   style={{ paddingBottom: "calc(24px + env(safe-area-inset-bottom))" }}>
                 {selectedRoute.route.legs.map((leg, i) => {
                   const minutes = Math.max(1, Math.round(leg.durationS / 60));
                   if (leg.type === "walk") {

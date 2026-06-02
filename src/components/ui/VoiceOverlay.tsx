@@ -11,7 +11,9 @@ import { useEffect, useRef, useState } from "react";
 export default function VoiceOverlay({
   open,
   onCancel,
-  hint = "Decí el nombre de una parada o lugar",
+  // Honestidad: NO es un asistente que entiende "llevame a...". Reconoce un lugar,
+  // parada o calle y lo escribe en el buscador. El ejemplo deja claro qué decir.
+  hint = "Decí un lugar, parada o dirección — ej. “Pocitos” o “Avenida Italia”",
 }: {
   open: boolean;
   onCancel: () => void;

@@ -9,6 +9,22 @@ export type RoutesIndex = Record<string, [number, number][]>;
 let routesCache: RoutesIndex | null = null;
 let routesPromise: Promise<RoutesIndex> | null = null;
 
+// line-shapes.json: línea comercial ("582") → [cod_variantes con shape en routes.json].
+// Necesario porque routes.json está keyado por cod_variante numérico, no por línea.
+// Lo usan el trazado de rutas Y el recorrido del bus seleccionado en el mapa.
+let lineShapesCache: Record<string, string[]> | null = null;
+let lineShapesPromise: Promise<Record<string, string[]>> | null = null;
+
+export function loadLineShapes(): Promise<Record<string, string[]>> {
+  if (lineShapesCache) return Promise.resolve(lineShapesCache);
+  if (lineShapesPromise) return lineShapesPromise;
+  lineShapesPromise = fetch("/line-shapes.json")
+    .then((r) => r.json())
+    .then((d: Record<string, string[]>) => { lineShapesCache = d; lineShapesPromise = null; return d; })
+    .catch(() => { lineShapesPromise = null; return {}; });
+  return lineShapesPromise;
+}
+
 export function getRoutesCache(): RoutesIndex | null {
   return routesCache;
 }
