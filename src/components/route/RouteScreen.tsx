@@ -14,6 +14,7 @@ import { useRoutePlanner, type PlannedRouteDto, type RouteLegDto } from "@/hooks
 import { setSelectedRoute } from "@/lib/selected-route";
 import { setActiveTab } from "@/lib/active-tab";
 import { fareLabel } from "@/lib/fare";
+import { tripImpactLabel } from "@/lib/trip-impact";
 import { shareTrip } from "@/lib/share-trip";
 import { useRouteInput, setRouteInput } from "@/lib/route-input";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
@@ -1021,6 +1022,20 @@ function GtfsRouteCard({
             </li>
           )}
         </ol>
+
+        {/* Impacto del viaje: CO₂ ahorrado vs auto + calorías caminando (estilo Citymapper,
+            con datos reales). Motiva a usar el bondi. Solo para rutas con bus. */}
+        {!isWalkOnly && (() => {
+          const busM = route.legs.filter((l) => l.type === "bus").reduce((s, l) => s + (l.distanceM || 0), 0);
+          const walkMin = Math.round(route.legs.filter((l) => l.type === "walk").reduce((s, l) => s + l.durationS, 0) / 60);
+          const label = tripImpactLabel(busM, walkMin);
+          return label ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, padding: "10px 12px", borderRadius: "var(--r-card)", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 16 }}>🌱</span>
+              <span style={{ font: "500 12px/1.4 var(--ff)", color: "var(--text-2)" }}>{label}</span>
+            </div>
+          ) : null;
+        })()}
 
         {/* Viaje mixto: taxi/Uber para el último tramo (de noche o si la caminata es larga) */}
         <MixedTripOption route={route} destinationName={destinationName} />
