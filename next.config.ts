@@ -17,6 +17,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3"],
 
+  // Seguridad (best practices 2026):
+  //  - poweredByHeader:false → no revelar que es Next.js (menos superficie de ataque).
+  //  - productionBrowserSourceMaps:false → no exponer el código fuente original en prod.
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
+  reactStrictMode: true,
+
   // Tree-shaking más agresivo de paquetes grandes con muchos exports: solo entra al
   // bundle lo que realmente usamos (reduce JS inicial → carga más rápida, menos datos).
   experimental: {

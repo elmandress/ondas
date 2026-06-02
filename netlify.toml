@@ -41,7 +41,13 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "geolocation=(self)"
+    Permissions-Policy = "geolocation=(self), microphone=(self), camera=()"
+    # HSTS: forzar HTTPS por 1 año (la PWA ya corre en HTTPS en Netlify).
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    # CSP balanceado: bloquea XSS sin romper la app. 'unsafe-inline' en script/style
+    # es necesario por los estilos inline de framer-motion y Leaflet (sin nonce server).
+    # connect-src lista las APIs que el cliente llama; img permite tiles CARTO + data/blob.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://*.basemaps.cartocdn.com https://routing.openstreetmap.de https://router.project-osrm.org https://nominatim.openstreetmap.org https://api.montevideo.gub.uy https://m.montevideo.gub.uy https://direcciones.ide.uy; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
 [[headers]]
   for = "/manifest.json"
@@ -53,3 +59,24 @@
   for = "/icons/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Datasets estáticos pesados (routes.json 5.5MB, stops.json 1.5MB, etc.): cambian solo
+# al regenerar el GTFS. Cacheá 1 día con revalidación → en visitas repetidas cargan del
+# cache (instantáneo, sin re-bajar megas). stale-while-revalidate sirve el viejo mientras
+# baja el nuevo en segundo plano (mejor performance percibida, best practice 2026).
+[[headers]]
+  for = "/routes.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+[[headers]]
+  for = "/stops.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+[[headers]]
+  for = "/line-shapes.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+[[headers]]
+  for = "/operators.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"

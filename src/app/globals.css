@@ -927,3 +927,27 @@ ul { list-style: none; }
 .howto-honest { display: flex; gap: 9px; align-items: flex-start; margin-top: 4px; padding: 12px 14px; border-radius: var(--r-card);
   background: var(--accent-soft); border: 1px solid var(--accent-border); font: var(--font-small); color: var(--text-2); }
 .howto-honest svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+
+/* ===== Accesibilidad táctil (mobile-first, best practice 2026) =====
+   En dispositivos táctiles (pointer: coarse) garantizamos que los botones de acción
+   chicos (los w-9 h-9 = 36px de cerrar/refrescar/etc.) tengan el ÁREA DE TOQUE mínima
+   de 44×44px que recomiendan Apple e Material Design — SIN agrandar su tamaño visual.
+   El pseudo-elemento ::after expande la zona tocable de forma invisible. Así no hay
+   "toqué el botón y no pasó nada" en el celular, sin romper el diseño compacto. */
+@media (pointer: coarse) {
+  button, a[role="button"], .tap-card, .nav-item {
+    position: relative;
+  }
+  /* Solo a botones realmente chicos: si el botón ya mide ≥44px no hace falta. */
+  button.w-9.h-9::after,
+  button[aria-label]:not(.nav-item)::after {
+    content: "";
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
+    width: 100%;
+    height: 100%;
+  }
+}
