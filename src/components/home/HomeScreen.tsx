@@ -15,11 +15,9 @@ import StopArrivalSheet from "@/components/home/StopArrivalSheet";
 import RoutesManager from "@/components/home/RoutesManager";
 import { LogoLockup } from "@/components/brand/Logo";
 import { Icons } from "@/components/brand/Icons";
-import LineBadge from "@/components/ui/LineBadge";
 import PeakHint from "@/components/ui/PeakHint";
 import SettingsSheet from "@/components/home/SettingsSheet";
 import HowToSheet from "@/components/home/HowToSheet";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 import { setRouteInput } from "@/lib/route-input";
 
 type Tab = "home" | "route" | "map" | "search";
@@ -61,7 +59,6 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   }
 
   const shortcuts = useMemo(() => favoriteStops.filter((f) => !!f.alias), [favoriteStops]);
-  const otherFavs = useMemo(() => favoriteStops.filter((f) => !f.alias), [favoriteStops]);
 
   // "Get me home/work" (Citymapper): un toque planifica la ruta desde tu ubicación
   // actual hasta la parada con alias Casa/Trabajo. Solo aparece si tenés esa parada
@@ -142,7 +139,6 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
           <button onClick={() => setShowHowTo(true)} aria-label="Cómo usar" style={{ color: "var(--text-2)", display: "grid", placeItems: "center", width: 32, height: 32 }}>
             <Icons.Help size={20} />
           </button>
-          <ThemeToggle size={32} />
           <button onClick={() => setShowSettings(true)} aria-label="Ajustes" style={{ color: "var(--text-2)", display: "grid", placeItems: "center", width: 32, height: 32 }}>
             <Icons.Settings size={20} />
           </button>
@@ -157,10 +153,11 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className="gps"><span className="gps-dot" />{locationIsReal ? "Ubicación precisa" : "Ubicación aproximada"}</span>
+          {/* El tema vive en Ajustes (Apariencia) — sacado del header para no competir con
+              lo importante. Header = solo Ayuda + Ajustes. Menos ruido para gente grande. */}
           <button onClick={() => setShowHowTo(true)} aria-label="Cómo usar" className="icon-btn sm" style={{ width: 40, height: 40 }}>
             <Icons.Help size={20} />
           </button>
-          <ThemeToggle size={40} />
           <button onClick={() => setShowSettings(true)} aria-label="Ajustes" className="icon-btn sm" style={{ width: 40, height: 40 }}>
             <Icons.Settings size={20} />
           </button>
@@ -274,29 +271,19 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         </>
       )}
 
-      {/* Mis atajos */}
-      {mounted && shortcuts.length > 0 && (
-        <>
-          <div className="section-head"><h2>Mis atajos</h2></div>
-          <div className="shortcut-grid">
-            {shortcuts.slice(0, 4).map((fav) => (
-              <ShortcutCard
-                key={fav.stopId}
-                fav={fav}
-                onTap={() => setSheetStopId(fav.stopId)}
-                onLongPress={() => setEditingAlias({ stopId: fav.stopId, stopName: fav.stopName, alias: fav.alias })}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      {/* NOTA: la sección "Mis atajos" se eliminó — duplicaba los favoritos con alias
+          (Casa/Trabajo) que ya aparecen arriba como source-tabs (cambian el contador) y
+          como botones "A casa/A trabajo" (planifican la ruta). Mostrar el mismo dato 3
+          veces era complejidad innecesaria. Editar alias se hace desde "Paradas favoritas". */}
 
-      {/* Paradas favoritas (★) */}
-      {mounted && otherFavs.length > 0 && (
+      {/* Paradas favoritas — TODAS (con alias Casa/Trabajo y sin alias). Antes solo
+          mostraba las sin-alias porque las otras estaban en "Mis atajos"; al eliminar esa
+          sección, acá viven todas (editar/borrar incluido). */}
+      {mounted && favoriteStops.length > 0 && (
         <>
-          <div className="section-head"><h2>Paradas favoritas</h2><span className="link">{otherFavs.length}</span></div>
+          <div className="section-head"><h2>Paradas favoritas</h2><span className="link">{favoriteStops.length}</span></div>
           <div className="list-stack">
-            {otherFavs.slice(0, 6).map((fav) => (
+            {favoriteStops.slice(0, 6).map((fav) => (
               <FavoriteStopRow
                 key={fav.stopId}
                 fav={fav}
@@ -434,50 +421,7 @@ function getSubhead(date: Date, real: boolean): string {
   return `${d} · ${t}${real ? " · ubicación precisa" : ""}`;
 }
 
-// ── ShortcutCard (Casa/Trabajo/Facu). Long-press edita alias ──────────
-function ShortcutCard({ fav, onTap, onLongPress }: { fav: FavoriteStop; onTap: () => void; onLongPress: () => void }) {
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressed = useRef(false);
-
-  const startPress = () => {
-    longPressed.current = false;
-    pressTimer.current = setTimeout(() => { longPressed.current = true; onLongPress(); }, 500);
-  };
-  const cancelPress = () => {
-    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
-  };
-
-  return (
-    <button
-      onClick={() => { if (!longPressed.current) onTap(); }}
-      onMouseDown={startPress}
-      onMouseUp={cancelPress}
-      onMouseLeave={cancelPress}
-      onTouchStart={startPress}
-      onTouchEnd={cancelPress}
-      onTouchCancel={cancelPress}
-      onContextMenu={(e) => { e.preventDefault(); onLongPress(); }}
-      className="shortcut-card tap-card"
-    >
-      <div className="top">
-        <span className="emo">{aliasIcon(fav.alias)}</span>
-        <span className="alias">{fav.alias}</span>
-      </div>
-      <div className="mid">
-        {fav.lines.length > 0 ? (
-          <>
-            <LineBadge num={fav.lines[0]} size="sm" />
-            <span className="nextline">{fav.lines.slice(0, 3).join(" · ")}{fav.lines.length > 3 ? ` +${fav.lines.length - 3}` : ""}</span>
-          </>
-        ) : (
-          <span className="nextline">{fav.stopName}</span>
-        )}
-      </div>
-    </button>
-  );
-}
-
-// ── FavoriteStopRow (★ sin alias) ─────────────────────────────────────
+// ── FavoriteStopRow (paradas favoritas, con o sin alias) ──────────────
 function FavoriteStopRow({ fav, onTap, onRemove, onEditAlias }: {
   fav: FavoriteStop;
   onTap: () => void;
