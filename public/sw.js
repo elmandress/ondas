@@ -1,69 +1,84 @@
-// Service Worker mínimo para que Ondas sea PWA installable.
-// Estrategia: network-first con fallback a cache, sin agresividad
-// (los datos son tiempo-real, no queremos servir datos viejos por error).
+// Service Worker de Cuándo (PWA installable + modo offline real).
+//
+// Filosofía: los datos EN VIVO (/api/*) NUNCA se cachean — mostrar un bus viejo sería
+// mentir. Pero el "esqueleto" (app shell + datasets que cambian raro: paradas, recorridos)
+// SÍ se cachea, así la app ABRE sin señal y podés ver el mapa, las paradas y los recorridos.
+// Estrategia por tipo:
+//   - app shell (/, _next/static): cache-first (con revalidación en segundo plano).
+//   - datasets .json pesados: stale-while-revalidate (sirve cache al toque + actualiza atrás).
+//   - /api/*: solo red (nunca cache).
+//   - resto: network-first con fallback a cache.
 
-const CACHE_NAME = "ondas-v1";
-const STATIC_ASSETS = [
-  "/",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-];
+const CACHE = "cuando-v2";
+
+// Datasets que vale la pena tener offline (el catálogo del transporte).
+const DATASETS = ["/stops.json", "/routes.json", "/line-shapes.json", "/operators.json", "/interior-stops.json"];
+const SHELL = ["/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
-  // Pre-cache de assets críticos
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {})
-  );
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  // Limpiar caches viejos
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });
 
+// stale-while-revalidate: devuelve el cache YA (rápido) y actualiza en segundo plano.
+function staleWhileRevalidate(request) {
+  return caches.open(CACHE).then((cache) =>
+    cache.match(request).then((cached) => {
+      const network = fetch(request).then((res) => {
+        if (res && res.ok) cache.put(request, res.clone());
+        return res;
+      }).catch(() => cached);
+      return cached || network;
+    })
+  );
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // NUNCA cachear API routes (datos en vivo)
+  // Datos en vivo: nunca cachear (que falle si no hay red — es honesto).
   if (url.pathname.startsWith("/api/")) return;
-
-  // Solo manejamos GET de mismo origen
+  // Solo GET de mismo origen.
   if (event.request.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // stops.json y routes.json: cache-first (cambian raro)
-  if (url.pathname === "/stops.json" || url.pathname === "/routes.json") {
-    event.respondWith(
-      caches.match(event.request).then((cached) => {
-        if (cached) return cached;
-        return fetch(event.request).then((res) => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
-          }
-          return res;
-        });
-      })
-    );
+  // Datasets del catálogo → stale-while-revalidate (instantáneo + se actualiza solo).
+  if (DATASETS.includes(url.pathname)) {
+    event.respondWith(staleWhileRevalidate(event.request));
     return;
   }
 
-  // Resto: network-first con fallback al cache si falla red
+  // App shell y estáticos de Next → cache-first con revalidación.
+  if (url.pathname === "/" || url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
+    event.respondWith(staleWhileRevalidate(event.request));
+    return;
+  }
+
+  // Resto → network-first, cae al cache si no hay red; si tampoco, la home cacheada.
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        if (res.ok && (url.pathname === "/" || url.pathname.startsWith("/_next/static/"))) {
+        if (res && res.ok) {
           const clone = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
+          caches.open(CACHE).then((c) => c.put(event.request, clone));
         }
         return res;
       })
-      .catch(() => caches.match(event.request) || new Response("Sin conexión", { status: 503 }))
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        // Para navegaciones (HTML), servir la home cacheada → la app abre offline.
+        if (event.request.mode === "navigate") {
+          const home = await caches.match("/");
+          if (home) return home;
+        }
+        return new Response("Sin conexión", { status: 503, headers: { "Content-Type": "text/plain" } });
+      })
   );
 });

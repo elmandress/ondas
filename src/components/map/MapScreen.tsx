@@ -304,16 +304,24 @@ export default function MapScreen() {
     ? vehiclesForMap.find((v) => v.vehicleId === selectedVehicleId)
     : undefined;
 
-  // Alerta "bajate ahora / prepárate": si estás siguiendo un bus que va hacia la parada
-  // seleccionada, su ETA sale de los arrivals. ≤1 min = ¡ya!; ≤3 = preparate. (Idea Moovit.)
-  const followedEta = useMemo(() => {
+  // Seguimiento del bus elegido hacia la parada: ETA + paradas restantes (dato GTFS).
+  // La cuenta regresiva de paradas ("faltan 3 paradas") es la feature estrella de
+  // Transit GO / Citymapper / Moovit — la gente la quiere más que los minutos.
+  const followed = useMemo(() => {
     if (!selectedVehicleId || !selectedStop) return null;
     const a = arrivals.find((x) => x.vehicleId === selectedVehicleId && x.realtime);
-    return a ? a.eta : null;
+    if (!a) return null;
+    return { eta: a.eta, remainingStops: a.remainingStops ?? null };
   }, [selectedVehicleId, selectedStop, arrivals]);
-  const followAlert = followedEta != null && followedEta <= 3
-    ? (followedEta <= 1 ? "now" : "soon") as "now" | "soon"
-    : null;
+  const followedEta = followed?.eta ?? null;
+  const followedStops = followed?.remainingStops ?? null;
+  // Disparamos por paradas restantes si lo tenemos (más preciso que el ETA); si no, por ETA.
+  const followAlert: "now" | "soon" | null =
+    followedStops != null
+      ? (followedStops <= 0 ? "now" : followedStops <= 2 ? "soon" : null)
+      : followedEta != null && followedEta <= 3
+        ? (followedEta <= 1 ? "now" : "soon")
+        : null;
 
   // Aviso por VOZ del "preparate / bajate" — accesibilidad y manos libres (opt-in en
   // Ajustes). Solo habla cuando el estado CAMBIA (ref), para no repetir cada refresh.
@@ -321,9 +329,10 @@ export default function MapScreen() {
   useEffect(() => {
     if (followAlert === lastSpokenAlert.current) return;
     lastSpokenAlert.current = followAlert;
-    if (followAlert === "soon") speak("Preparate, tu bus está por llegar a tu parada.");
-    else if (followAlert === "now") speak("¡Bajate ahora! Tu bus está llegando.");
-  }, [followAlert]);
+    const stopsTxt = followedStops != null && followedStops > 0 ? ` Faltan ${followedStops} paradas.` : "";
+    if (followAlert === "soon") speak(`Preparate, tu bus está por llegar a tu parada.${stopsTxt}`);
+    else if (followAlert === "now") speak("¡Bajate ahora! Tu bus está llegando a tu parada.");
+  }, [followAlert, followedStops]);
 
   function clearSelections() {
     setSelectedStopId(null);
@@ -726,13 +735,17 @@ export default function MapScreen() {
             className={`map-overlay-card map-vehicle-card absolute left-3 right-3 z-[1002] ${selectedStop ? "above-panel" : ""}`}
             style={{ bottom: "calc(20px + env(safe-area-inset-bottom))" }}
           >
-            {/* Alerta "prepárate / ¡bajate!": el bus seguido está por llegar a tu parada. */}
+            {/* Alerta "prepárate / ¡bajate!": el bus seguido está por llegar a tu parada.
+                Mostramos paradas restantes (estilo Transit/Citymapper) si las tenemos —
+                más claro que solo minutos. Cae a minutos si no hay dato de paradas. */}
             {followAlert && (
               <div className={`follow-alert ${followAlert}`}>
                 <Icons.Bus size={16} />
                 <span>{followAlert === "now"
                   ? "¡Está llegando! Salí a la parada ahora"
-                  : `Llega en ${followedEta} min — prepárate`}</span>
+                  : followedStops != null && followedStops > 0
+                    ? `Faltan ${followedStops} parada${followedStops > 1 ? "s" : ""} — prepárate`
+                    : `Llega en ${followedEta} min — prepárate`}</span>
               </div>
             )}
             <div className="bg-[#0a0f1c]/95 backdrop-blur-xl rounded-2xl p-3 border border-amber-500/30 shadow-2xl">

@@ -928,6 +928,16 @@ ul { list-style: none; }
   background: var(--accent-soft); border: 1px solid var(--accent-border); font: var(--font-small); color: var(--text-2); }
 .howto-honest svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
 
+/* "Llevame a casa/trabajo" — accesos rápidos estilo Citymapper Get-me-home. */
+.quick-go-row { display: flex; gap: 10px; margin-top: 10px; }
+.quick-go { flex: 1; display: flex; align-items: center; gap: 10px; padding: 12px 14px; min-height: 44px;
+  border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); text-align: left; }
+.quick-go:active { transform: scale(0.98); }
+.quick-go .qg-emo { font-size: 20px; flex-shrink: 0; }
+.quick-go .qg-txt { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.quick-go .qg-txt b { font: 700 14px/1.2 var(--ff); color: var(--text); }
+.quick-go .qg-txt span { font: 500 11px/1 var(--ff); color: var(--text-3); margin-top: 2px; }
+
 /* ===== Accesibilidad táctil (mobile-first, best practice 2026) =====
    En dispositivos táctiles (pointer: coarse) garantizamos que los botones de acción
    chicos (los w-9 h-9 = 36px de cerrar/refrescar/etc.) tengan el ÁREA DE TOQUE mínima

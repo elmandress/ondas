@@ -60,8 +60,23 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     }
   }
 
-  const shortcuts = favoriteStops.filter((f) => !!f.alias);
-  const otherFavs = favoriteStops.filter((f) => !f.alias);
+  const shortcuts = useMemo(() => favoriteStops.filter((f) => !!f.alias), [favoriteStops]);
+  const otherFavs = useMemo(() => favoriteStops.filter((f) => !f.alias), [favoriteStops]);
+
+  // "Get me home/work" (Citymapper): un toque planifica la ruta desde tu ubicación
+  // actual hasta la parada con alias Casa/Trabajo. Solo aparece si tenés esa parada
+  // guardada. Resuelve el caso más común de un commuter: "llevame a casa ya".
+  function goToFavorite(fav: FavoriteStop) {
+    const stop = STOPS_DATASET.find((s) => s.stopId === fav.stopId);
+    if (!stop) return;
+    setRouteInput({
+      to: { lat: stop.stopLat, lon: stop.stopLon, name: fav.stopName },
+      fromCurrentLocation: true,
+    });
+    onTabChange("route");
+  }
+  const homeShortcut = shortcuts.find((f) => f.alias?.toLowerCase() === "casa");
+  const workShortcut = shortcuts.find((f) => f.alias?.toLowerCase() === "trabajo");
   const [mounted, setMounted] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
 
@@ -162,6 +177,25 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         </span>
         <Icons.Chevron size={20} />
       </button>
+
+      {/* "Llevame a casa/trabajo" (Citymapper Get-me-home): un toque planifica la ruta
+          desde tu ubicación. Solo si tenés esas paradas guardadas con alias. */}
+      {(homeShortcut || workShortcut) && (
+        <div className="quick-go-row">
+          {homeShortcut && (
+            <button className="quick-go" onClick={() => goToFavorite(homeShortcut)}>
+              <span className="qg-emo">🏠</span>
+              <span className="qg-txt"><b>A casa</b><span>desde acá</span></span>
+            </button>
+          )}
+          {workShortcut && (
+            <button className="quick-go" onClick={() => goToFavorite(workShortcut)}>
+              <span className="qg-emo">💼</span>
+              <span className="qg-txt"><b>A trabajo</b><span>desde acá</span></span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Selector de origen + Hero. El contador de abajo dice cuándo salir para
           tomar el próximo bus DESDE la parada elegida acá. */}

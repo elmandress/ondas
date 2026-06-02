@@ -531,7 +531,7 @@ export default function RouteScreen() {
         )}
       </AnimatePresence>
 
-      <VoiceOverlay open={voice.state === "listening"} onCancel={() => voice.stop()} hint='Decí, por ejemplo, "Llevame a Pocitos"' />
+      <VoiceOverlay open={voice.state === "listening"} onCancel={() => voice.stop()} hint='Decí el destino — ej. "Pocitos" o "Tres Cruces"' />
     </div>
   );
 }
