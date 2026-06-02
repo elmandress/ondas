@@ -928,6 +928,17 @@ ul { list-style: none; }
   background: var(--accent-soft); border: 1px solid var(--accent-border); font: var(--font-small); color: var(--text-2); }
 .howto-honest svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
 
+/* Impacto del viaje (CO₂/calorías) — opt-in, discreto. Cerrado por defecto. */
+.trip-impact-details { margin-top: 12px; }
+.trip-impact-details > summary { list-style: none; cursor: pointer; font: 500 12px/1 var(--ff);
+  color: var(--text-3); display: inline-flex; align-items: center; gap: 5px; padding: 4px 0; }
+.trip-impact-details > summary::-webkit-details-marker { display: none; }
+.trip-impact-details > summary::before { content: "🌱"; font-size: 13px; }
+.trip-impact-details > summary::after { content: "▾"; font-size: 10px; color: var(--text-3); transition: transform .2s; }
+.trip-impact-details[open] > summary::after { transform: rotate(180deg); }
+.trip-impact-details .trip-impact-body { font: 500 12px/1.5 var(--ff); color: var(--text-2);
+  margin-top: 8px; padding: 10px 12px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); }
+
 /* "Llevame a casa/trabajo" — accesos rápidos estilo Citymapper Get-me-home. */
 .quick-go-row { display: flex; gap: 10px; margin-top: 10px; }
 .quick-go { flex: 1; display: flex; align-items: center; gap: 10px; padding: 12px 14px; min-height: 44px;
