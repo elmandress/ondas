@@ -31,7 +31,7 @@ import {
   type MvdBus,
 } from "@/lib/mvd-api";
 import { findStopServer } from "@/lib/stops-server";
-import { busTowardsStopGtfs } from "@/lib/bus-direction-gtfs";
+import { busTowardsStopGtfs, busLikelyPassedStop } from "@/lib/bus-direction-gtfs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,6 +95,10 @@ function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string, trustUpstream 
     // la parada, descartarlo (el filtro del STM a veces incluye pasados / sentido
     // contrario). Solo confiamos en el STM cuando el GTFS NO puede ubicarlo.
     if (check.reason === "passed") return null;
+    // Respaldo: aunque el GTFS no haya podido snapear (reason "no-position"/"no-snap"),
+    // si geométricamente el bus quedó MÁS ALLÁ de la parada, ya pasó → no mostrar.
+    // Esto arregla el caso "estoy en la 160, el bus está en la 162 y me dice que llega".
+    if (busLikelyPassedStop({ lat, lon, lineName: b.line, destinoDesc: b.destination }, targetStopId)) return null;
     // Fuente oficial del STM, GTFS incierto → confiar. ETA estimada por distancia.
     const stop = findStopServer(targetStopId);
     let etaSeconds = 0;

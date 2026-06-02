@@ -32,16 +32,17 @@ export function etaColorClass(minutes: number): string {
  * Buffer dinámico para incertidumbre del bus.
  * El bus rara vez pasa exacto a la hora — y a veces se ADELANTA. Mejor llegar a la
  * parada unos minutos antes y esperar, que correr y que se te pase en la cara.
- * Por eso el colchón es de 3–5 min (no 1–3): preferimos que el usuario espere un
- * toque parado a que pierda el bondi por 30 segundos.
- *  - <5 min de caminata  → +3 min de buffer
- *  - 5–10 min            → +4 min
- *  - >10 min             → +5 min
+ * Una persona tampoco sale en el instante exacto: necesita terminar lo que hace,
+ * agarrar las cosas y arrancar. Por eso el colchón mínimo es de 4 min y sube con la
+ * caminata: preferimos avisar de más que dejar al usuario corriendo o perdiendo el bus.
+ *  - <5 min de caminata  → +4 min de buffer
+ *  - 5–10 min            → +5 min
+ *  - >10 min             → +6 min
  */
 export function dynamicBuffer(walkMinutes: number): number {
-  if (walkMinutes < 5) return 3;
-  if (walkMinutes <= 10) return 4;
-  return 5;
+  if (walkMinutes < 5) return 4;
+  if (walkMinutes <= 10) return 5;
+  return 6;
 }
 
 /**
@@ -94,7 +95,12 @@ export function distanceTo(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export function walkingMinutes(distanceMeters: number): number {
-  return Math.ceil(distanceMeters / 75); // 75 m/min ≈ 4.5 km/h
+  // Factor de sinuosidad 1.3: la distancia REAL caminando por las calles es ~30% mayor
+  // que la línea recta (no podés cruzar manzanas en diagonal). Sin esto subestimábamos
+  // el tiempo a pie → el aviso "salí ahora" llegaba tarde (queja del usuario).
+  // 75 m/min ≈ 4.5 km/h. Mínimo 2 min: nunca decir "0 a pie", siempre toma algo llegar.
+  const realMeters = distanceMeters * 1.3;
+  return Math.max(2, Math.ceil(realMeters / 75));
 }
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {

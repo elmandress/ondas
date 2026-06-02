@@ -236,6 +236,63 @@ export function busTowardsStopGtfs(
   };
 }
 
+/**
+ * Chequeo de RESPALDO honesto: ¿el bus probablemente YA PASÓ la parada?
+ *
+ * `busTowardsStopGtfs` exige que el GPS snapee a ≤900m de una parada de la variante.
+ * Pero un bus que ya pasó y va entre paradas lejos (o por una calle paralela) cae en
+ * "no-position", y como confiamos en el STM (trustUpstream) se mostraba igual → bug
+ * del usuario: "estoy en la 160, el bus está en la 162 y me dice que llega".
+ *
+ * Esta función NO usa el límite de snap: toma la mejor variante de la línea (por
+ * headsign), encuentra la parada MÁS CERCANA al bus sea cual sea la distancia, y si su
+ * secuencia es mayor que la de la parada objetivo → el bus ya la dejó atrás. Margen de
+ * 1 parada para no descartar al que está justo llegando (== o target-1).
+ *
+ * Devuelve true SOLO si está razonablemente seguro de que pasó; ante la duda, false
+ * (preferimos mostrar de más que ocultar un bus que sí viene).
+ */
+export function busLikelyPassedStop(
+  bus: { lat: number; lon: number; lineName: string; destinoDesc?: string },
+  targetStopId: string
+): boolean {
+  const variants = getVariantsForLine(bus.lineName);
+  if (variants.length === 0) return false;
+
+  const normDest = normalizeHeadsign(bus.destinoDesc || "");
+  const matched = variants.filter((v) => headsignMatches(v, normDest));
+  const candidates = matched.length > 0 ? matched : variants;
+
+  // De las variantes que pasan por la parada, elegir la que mejor ajusta al GPS
+  // (parada más cercana al bus). Comparar su secuencia con la del objetivo.
+  let bestSnap = Infinity;
+  let passedOnBest = false;
+  let evaluatedAny = false;
+  for (const v of candidates) {
+    const targetSeq = getStopSequence(v.variantId, targetStopId);
+    if (targetSeq == null) continue; // esta variante no pasa por la parada
+    const stops = getStopsForVariant(v.variantId);
+    if (stops.length === 0) continue;
+    let curIdx = -1, curSnap = Infinity;
+    for (let i = 0; i < stops.length; i++) {
+      const c = getStopCoord(stops[i].stopId);
+      if (!c) continue;
+      const d = distM(bus.lat, bus.lon, c.lat, c.lon);
+      if (d < curSnap) { curSnap = d; curIdx = i; }
+    }
+    if (curIdx === -1) continue;
+    evaluatedAny = true;
+    if (curSnap < bestSnap) {
+      bestSnap = curSnap;
+      // Pasó si la parada más cercana al bus está MÁS DE 1 después de la objetivo.
+      passedOnBest = stops[curIdx].sequence > targetSeq + 1;
+    }
+  }
+  // Solo afirmamos "pasó" si pudimos ubicar el bus en una variante con la parada y la
+  // mejor proyección está a una distancia plausible (≤1.5km; más lejos = no confiable).
+  return evaluatedAny && passedOnBest && bestSnap <= 1500;
+}
+
 /** Filtra una lista de buses para quedarse solo con los que van hacia `stopId`. */
 export function filterBusesGoingToStop<T extends VehiclePosition & { destinoDesc?: string }>(
   buses: T[],

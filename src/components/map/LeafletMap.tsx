@@ -502,7 +502,14 @@ export default function LeafletMap({
       if (!coords) coords = routes[selectedVehicle.lineName];
       if (!coords || coords.length === 0) return;
 
+      // noClip + smoothFactor 0 + renderer SVG: sin esto, con preferCanvas Leaflet
+      // recortaba la polyline al viewport y el recorrido del bus se veía como una
+      // DIAGONAL RECTA de pocos puntos en vez del trazo real (~360 pts) siguiendo las
+      // calles. Mismo fix que para las rutas planificadas.
       polylineRef.current = L.polyline(coords, {
+        renderer: L.svg({ padding: 0.5 }),
+        noClip: true,
+        smoothFactor: 0,
         color: "#60a5fa",
         weight: 4,
         opacity: 0.85,

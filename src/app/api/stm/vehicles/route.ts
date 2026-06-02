@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getVehiclePositions, type VehiclePosition } from "@/lib/stm";
 import { isMvdApiConfigured, getBuses, type MvdBus } from "@/lib/mvd-api";
-import { busTowardsStopGtfs } from "@/lib/bus-direction-gtfs";
+import { busTowardsStopGtfs, busLikelyPassedStop } from "@/lib/bus-direction-gtfs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -97,6 +97,9 @@ export async function GET(req: NextRequest) {
         const v = mvdBusToVehicle(b);
         if (seen.has(v.vehicleId)) continue;
         if (busTowardsStopGtfs(v, stopId).reason === "passed") continue; // ya pasó → no trackear
+        // Respaldo geométrico: descartar también los que quedaron más allá de la parada
+        // aunque el GPS no haya snapeado (mismo bug del "estoy en la 160, está en la 162").
+        if (busLikelyPassedStop({ lat: v.lat, lon: v.lon, lineName: v.lineName, destinoDesc: v.destinoDesc }, stopId)) continue;
         out.push(v); seen.add(v.vehicleId);
       }
       if (out.length > 0) sources.push("upstream");
