@@ -13,6 +13,7 @@ import { useWalkingSteps } from "@/hooks/useWalkingSteps";
 import { useRoutePlanner, type PlannedRouteDto, type RouteLegDto } from "@/hooks/useRouteplanner";
 import { setSelectedRoute } from "@/lib/selected-route";
 import { setActiveTab } from "@/lib/active-tab";
+import { fareLabel } from "@/lib/fare";
 import { shareTrip } from "@/lib/share-trip";
 import { useRouteInput, setRouteInput } from "@/lib/route-input";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
@@ -928,6 +929,12 @@ function GtfsRouteCard({
             {totalMin}<span style={{ font: "600 13px/1 var(--ff)", color: "var(--text-2)" }}> min</span>
           </p>
           <p className="text-eyebrow" style={{ marginTop: 4 }}>{headerLabel}</p>
+          {/* Costo del boleto (dato oficial STM) — estilo Citymapper. Solo rutas con bus. */}
+          {!isWalkOnly && (
+            <p style={{ font: "600 11px/1 var(--ff)", color: "var(--text-3)", marginTop: 3 }}>
+              🎫 {fareLabel(route.numTransfers)}
+            </p>
+          )}
         </div>
         <div className="flex-1 flex items-center gap-1.5 flex-wrap justify-end">
           {seq}
