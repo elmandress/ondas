@@ -114,7 +114,7 @@ export default function RoutesManager({ onClose, onChange }: RoutesManagerProps)
       <motion.div
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 280 }}
-        className="absolute bottom-0 left-0 right-0 rounded-t-3xl overflow-hidden flex flex-col"
+        className="absolute bottom-0 left-0 right-0 rounded-t-[18px] overflow-hidden flex flex-col"
         style={{ background: "var(--bg-elevated)", height: "86dvh" }}
       >
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-white/20" /></div>

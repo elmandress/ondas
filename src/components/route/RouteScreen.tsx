@@ -15,6 +15,7 @@ import { setSelectedRoute } from "@/lib/selected-route";
 import { setActiveTab } from "@/lib/active-tab";
 import { fareLabel } from "@/lib/fare";
 import { tripImpactLabel } from "@/lib/trip-impact";
+import { SERVICE_ALERT_SOURCES } from "@/lib/service-alerts";
 import { shareTrip } from "@/lib/share-trip";
 import { useRouteInput, setRouteInput } from "@/lib/route-input";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
@@ -495,6 +496,7 @@ export default function RouteScreen() {
                       }}
                     />
                   ))}
+                  <ServiceAlertsNote />
                 </>
               ) : routes.length === 0 ? (
                 <NoRoutesState from={from} to={to} />
@@ -1357,6 +1359,37 @@ function DepartTimePicker({ value, onChange, children }: { value: string | null;
         </label>
       )}
       {children}
+    </div>
+  );
+}
+
+// ── ServiceAlertsNote ─────────────────────────────────────────────────
+// Línea DISCRETA al final de las rutas: acceso a desvíos oficiales de la IM.
+// La IM no da API de alertas (verificado) → linkeamos su fuente oficial, sin
+// scraping frágil. No invasivo: solo un recordatorio honesto de "fijate si hay corte".
+function ServiceAlertsNote() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{ display: "flex", alignItems: "center", gap: 7, font: "500 12px/1.3 var(--ff)", color: "var(--text-3)", padding: "6px 2px" }}
+      >
+        <Icons.Warn size={14} />
+        ¿Hay obras o desvíos? Fijate en la fuente oficial
+        <span style={{ fontSize: 10, transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+          {SERVICE_ALERT_SOURCES.map((s) => (
+            <a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", flexDirection: "column", padding: "9px 12px", borderRadius: "var(--r-card)", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <span style={{ font: "600 13px/1.2 var(--ff)", color: "var(--text)" }}>{s.label} ↗</span>
+              <span style={{ font: "500 11px/1.3 var(--ff)", color: "var(--text-3)", marginTop: 2 }}>{s.sublabel}</span>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

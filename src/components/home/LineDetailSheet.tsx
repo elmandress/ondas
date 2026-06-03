@@ -63,7 +63,7 @@ export default function LineDetailSheet({
         style={{ maxHeight: "90vh" }}
       >
         <div
-          className="flex flex-col overflow-hidden rounded-t-[28px] border-t border-white/[0.07]"
+          className="flex flex-col overflow-hidden rounded-t-[18px] border-t border-white/[0.07]"
           style={{ background: "rgba(8,13,26,0.97)", backdropFilter: "blur(32px)", maxHeight: "90vh" }}
         >
           {/* Drag handle */}
