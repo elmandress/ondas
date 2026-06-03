@@ -272,11 +272,11 @@ export default function SearchScreen() {
             </>
           )}
 
-          <div className="search-section-title">Populares en Montevideo</div>
+          {/* "Paradas frecuentes" curadas (TRENDING_IDS). Antes había también una
+              sección "Explorá" = STOPS_DATASET.slice(0,10) (relleno sin criterio) →
+              eliminada: paradas al azar no aportan, son ruido. Menos es más. */}
+          <div className="search-section-title">Paradas frecuentes</div>
           {trendingStops.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} />)}
-
-          <div className="search-section-title">Explorá</div>
-          {STOPS_DATASET.slice(0, 10).map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} />)}
         </>
       )}
 

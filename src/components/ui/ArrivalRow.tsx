@@ -27,7 +27,11 @@ export default function ArrivalRow({
   /** El bus de esta fila está siendo seguido (botón en ámbar). */
   following?: boolean;
 }) {
+  // Urgencia con SIGNIFICADO (no todo gris): verde "ya viene" (≤2min), ámbar "pronto"
+  // (≤6min), neutro "falta". Da jerarquía — un bus a 1h no se ve igual que uno a 3min.
   const arriving = arrival.eta <= 2;
+  const soon = arrival.eta > 2 && arrival.eta <= 6;
+  const etaClass = arriving ? "urgent" : soon ? "soon" : "";
   const accessible = isAccessibleArrival(arrival);
   const ac = arrivalHasAc(arrival);
   const wifi = lineHasWifi(arrival.lineName); // solo líneas 100% eléctricas confirmadas
@@ -68,7 +72,7 @@ export default function ArrivalRow({
         </div>
       </div>
 
-      <span className={`eta tnum ${arriving ? "urgent" : ""}`}>{formatEta(arrival.eta, arrival.etaApprox)}</span>
+      <span className={`eta tnum ${etaClass}`}>{formatEta(arrival.eta, arrival.etaApprox)}</span>
 
       {canPage && (
         <button
