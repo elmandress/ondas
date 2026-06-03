@@ -475,6 +475,30 @@ language sql stable as $$
 $$;
 comment on function public.nearby_stops is 'Paradas dentro de radius_m de un punto, por distancia (índice GiST).';
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 12. ANALYTICS ANÓNIMO (privacy-first, sin trackers externos)
+--     Eventos AGREGADOS sin PII: nombre de evento + props no identificables +
+--     timestamp. NO guarda IP, user_id, ni cookies. Coherente con el valor de
+--     "privacidad sin trackers". Sirve para saber qué pantallas/acciones se usan
+--     sin espiar a nadie. Insert anónimo permitido; lectura solo service_role.
+-- ═══════════════════════════════════════════════════════════════════════════
+create table if not exists public.analytics_events (
+  id          bigint generated always as identity primary key,
+  event       text not null,                 -- "open_app", "plan_route", "follow_bus"…
+  props       jsonb not null default '{}',   -- datos NO identificables (ej. {"tab":"map"})
+  session     text,                          -- id de sesión efímero del cliente (no es el usuario)
+  created_at  timestamptz not null default now()
+);
+comment on table public.analytics_events is 'Eventos anónimos agregados (sin PII/IP/cookies). Privacy-first.';
+create index if not exists idx_analytics_event_time on public.analytics_events (event, created_at desc);
+
+alter table public.analytics_events enable row level security;
+-- Cualquiera puede INSERTAR un evento anónimo; NADIE puede leerlos vía RLS
+-- (solo service_role, que bypassa RLS, para los reportes agregados).
+drop policy if exists "analytics anon insert" on public.analytics_events;
+create policy "analytics anon insert" on public.analytics_events
+  for insert with check (true);
+
 commit;
 
 -- ╔══════════════════════════════════════════════════════════════════════════╗

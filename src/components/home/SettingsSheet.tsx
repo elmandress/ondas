@@ -102,6 +102,7 @@ function MainView({ go }: { go: (v: View) => void }) {
       <Section title="Privacidad">
         <Row icon={<Icons.Crosshair size={18} />} title="Tu ubicación es tuya" sub="El GPS solo se usa si lo permitís. No la guardamos ni te seguimos." />
         <Row icon={<Icons.Star size={18} />} title="Sin cuenta, sin login" sub="Tus favoritos y recientes viven solo en tu teléfono." />
+        <AnalyticsToggle />
       </Section>
 
       <Section title="Funciones activas">
@@ -426,6 +427,36 @@ function TextSizeChooser() {
         Agranda los textos importantes para leerlos más fácil.
       </div>
     </div>
+  );
+}
+
+// Estadísticas anónimas: opt-OUT. Por defecto ON (eventos sin PII ayudan a mejorar la
+// app), pero el usuario puede apagarlo. Coherente con privacidad: nunca identifica a nadie.
+function AnalyticsToggle() {
+  const [off, setOff] = useState(false);
+  useEffect(() => { try { setOff(localStorage.getItem("cuando_no_analytics") === "1"); } catch {} }, []);
+  return (
+    <button
+      onClick={() => {
+        const next = !off;
+        setOff(next);
+        try { localStorage.setItem("cuando_no_analytics", next ? "1" : "0"); } catch {}
+      }}
+      style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 0", width: "100%", textAlign: "left" }}
+    >
+      <span style={{ color: "var(--text-2)", display: "grid", placeItems: "center", width: 38, height: 38, flexShrink: 0 }}>
+        <Icons.Help size={18} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ font: "var(--font-card)", color: "var(--text)" }}>Estadísticas anónimas</div>
+        <div style={{ font: "var(--font-small)", color: "var(--text-3)", marginTop: 2 }}>
+          {off ? "Apagadas. No medimos nada." : "Eventos sin datos personales para mejorar la app. Tocá para apagar."}
+        </div>
+      </div>
+      <span style={{ width: 44, height: 26, borderRadius: 999, background: off ? "var(--surface)" : "var(--accent)", position: "relative", flexShrink: 0, border: `1px solid ${off ? "var(--border)" : "var(--accent)"}`, transition: "background .2s" }}>
+        <span style={{ position: "absolute", top: 2, left: off ? 2 : 20, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+      </span>
+    </button>
   );
 }
 

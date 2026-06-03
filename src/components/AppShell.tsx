@@ -10,6 +10,7 @@ import { isOnboardingDone } from "@/lib/store";
 import { LogoMark } from "@/components/brand/Logo";
 import { Icons, type IconName } from "@/components/brand/Icons";
 import OfflineBanner from "@/components/ui/OfflineBanner";
+import { track } from "@/lib/analytics";
 
 const OnboardingFlow = dynamic(() => import("@/components/onboarding/OnboardingFlow"), { ssr: false });
 
@@ -43,7 +44,10 @@ export default function AppShell() {
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>([activeTab]));
   useEffect(() => {
     setVisited((v) => (v.has(activeTab) ? v : new Set(v).add(activeTab)));
+    track("view_tab", { tab: activeTab }); // anónimo: qué pantalla se usa
   }, [activeTab]);
+
+  useEffect(() => { track("open_app"); }, []);
 
   // Onboarding de primer uso (client-only para no romper SSR).
   const [showOnboarding, setShowOnboarding] = useState(false);
