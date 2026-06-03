@@ -6,13 +6,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatEta(minutes: number): string {
-  if (minutes <= 0) return "Ahora";
-  if (minutes === 1) return "1 min";
-  if (minutes < 60) return `${minutes} min`;
+export function formatEta(minutes: number, approx = false): string {
+  if (minutes <= 0) return approx ? "~Ya" : "Ahora";
+  // "~" cuando el ETA es estimado por distancia (no por recorrido GTFS) → honestidad:
+  // no prometemos el minuto exacto cuando no podemos ubicar el bus en su recorrido.
+  const tilde = approx ? "~" : "";
+  if (minutes === 1) return `${tilde}1 min`;
+  if (minutes < 60) return `${tilde}${minutes} min`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+  return m === 0 ? `${tilde}${h}h` : `${tilde}${h}h ${m}m`;
 }
 
 export function etaClass(minutes: number): string {

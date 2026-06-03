@@ -107,7 +107,9 @@ function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string, trustUpstream 
       const speedMs = (vehicle.speed > 3 ? vehicle.speed : 16) * 1000 / 3600; // 16 km/h urbano por defecto
       etaSeconds = Math.round(d / speedMs);
     }
-    return { ...base, eta: Math.max(0, Math.round(etaSeconds / 60)), etaSeconds, distance: 0, isShortened: false };
+    // etaApprox: este ETA salió de distancia+velocidad asumida, no del recorrido GTFS
+    // → menos preciso. La UI lo marca con "~" para ser honesta sobre la incertidumbre.
+    return { ...base, eta: Math.max(0, Math.round(etaSeconds / 60)), etaSeconds, distance: 0, isShortened: false, etaApprox: true };
   }
 
   const etaSeconds = check.etaSeconds ?? 0;

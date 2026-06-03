@@ -86,6 +86,10 @@ export interface Arrival {
   thermalConfort?: string;
   /** Paradas restantes hasta la parada destino (según GTFS). */
   remainingStops?: number;
+  /** ETA APROXIMADO: estimado por distancia en línea recta + velocidad asumida (cuando
+   *  el GTFS no pudo ubicar el bus en el recorrido). Menos preciso que el ETA por
+   *  paradas → la UI lo muestra con "~" para no prometer exactitud (honestidad). */
+  etaApprox?: boolean;
   /** F1.4: esta llegada es la ÚLTIMA corrida programada del día de su línea aquí.
    *  Dato duro de schedule.db. La UI lo resalta ("último del día"). */
   isLastOfDay?: boolean;

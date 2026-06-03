@@ -932,10 +932,11 @@ function GtfsRouteCard({
             {totalMin}<span style={{ font: "600 13px/1 var(--ff)", color: "var(--text-2)" }}> min</span>
           </p>
           <p className="text-eyebrow" style={{ marginTop: 4 }}>{headerLabel}</p>
-          {/* Costo del boleto (dato oficial STM) — estilo Citymapper. Solo rutas con bus. */}
+          {/* Costo del boleto (tabla oficial fare.ts). Suburbano usa tarifa metropolitana
+              distinta ($86+, aumentó 01/06/2026). Solo rutas con bus. */}
           {!isWalkOnly && (
             <p style={{ font: "600 11px/1 var(--ff)", color: "var(--text-3)", marginTop: 3 }}>
-              🎫 {fareLabel(route.numTransfers)}
+              🎫 {fareLabel(route.numTransfers, usesMetro)}
             </p>
           )}
         </div>

@@ -68,7 +68,7 @@ export default function ArrivalRow({
         </div>
       </div>
 
-      <span className={`eta tnum ${arriving ? "urgent" : ""}`}>{formatEta(arrival.eta)}</span>
+      <span className={`eta tnum ${arriving ? "urgent" : ""}`}>{formatEta(arrival.eta, arrival.etaApprox)}</span>
 
       {canPage && (
         <button
