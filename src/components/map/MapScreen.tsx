@@ -33,7 +33,7 @@ const LeafletMap = dynamic(() => import("@/components/map/LeafletMap"), {
     <div className="w-full h-full bg-[#070b14] flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-slate-400 text-sm">Cargando mapa…</p>
+        <p className="text-slate-400 text-sm">Abriendo el mapa…</p>
       </div>
     </div>
   ),

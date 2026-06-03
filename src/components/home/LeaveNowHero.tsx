@@ -50,7 +50,7 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
         <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--surface)", display: "grid", placeItems: "center", color: "var(--text-3)" }}>
           <Icons.Bus size={24} />
         </div>
-        <p style={{ font: "var(--font-small)", color: "var(--text-3)" }}>Sin servicios próximos</p>
+        <p style={{ font: "var(--font-small)", color: "var(--text-3)" }}>No viene ninguno por ahora</p>
       </div>
     );
   }

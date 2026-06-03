@@ -464,7 +464,7 @@ export default function RouteScreen() {
               ) : !stopsReady ? (
                 <p className="text-center text-slate-500 text-sm py-12">Cargando paradas…</p>
               ) : gtfsLoading ? (
-                <p className="text-center text-slate-500 text-sm py-12">Buscando rutas…</p>
+                <p className="text-center text-slate-500 text-sm py-12">Buscando el mejor bondi…</p>
               ) : usingGtfs ? (
                 <>
                   <p className="text-eyebrow mt-1">
