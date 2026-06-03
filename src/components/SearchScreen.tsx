@@ -322,7 +322,11 @@ function StopRow({ stop, onTap, isHistory, query }: { stop: BusStop; onTap: () =
 function PlaceRow({ place, onTap }: { place: GeoResult; onTap: () => void }) {
   return (
     <button className="search-result place" onClick={onTap}>
-      <div className="icon" style={{ fontSize: 18 }}>{place.icon || "📍"}</div>
+      {/* Ícono VECTORIAL de marca (Pin ámbar), no emoji en caja morada. Un solo sistema
+          de íconos = coherencia visual. Antes: place.icon era un emoji (🛍️📍) = look de IA. */}
+      <div className="icon" style={{ background: "var(--accent-soft)", color: "var(--accent)", display: "grid", placeItems: "center" }}>
+        <Icons.Pin size={18} />
+      </div>
       <div className="body">
         <div className="name">{place.name}</div>
         <div className="meta">{place.fullName.split(",").slice(0, 3).join(",")}</div>

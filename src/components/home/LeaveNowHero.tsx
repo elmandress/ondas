@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import type { Arrival } from "@/lib/stm";
+import CountUp from "@/components/ui/CountUp";
 import { walkToLeaveTime, leaveNowUrgency, formatEta, dynamicBuffer } from "@/lib/utils";
 import { Icons } from "@/components/brand/Icons";
 import LineBadge from "@/components/ui/LineBadge";
@@ -67,7 +68,7 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
   } else {
     countNode = (
       <>
-        <span className="tnum">{leaveInMin}</span>
+        <CountUp value={leaveInMin} className="tnum" />
         <span className="unit">min</span>
       </>
     );

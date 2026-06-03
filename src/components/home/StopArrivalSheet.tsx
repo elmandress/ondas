@@ -8,6 +8,7 @@ import { useStopInfo } from "@/hooks/useStopInfo";
 import { STOPS_DATASET, isAccessibleArrival, arrivalHasAc } from "@/lib/stm";
 import { formatTime } from "@/lib/utils";
 import { useFavoriteStops, toggleFavoriteStop } from "@/lib/favorite-stops";
+import { haptic } from "@/lib/haptics";
 import LineDetailSheet from "@/components/home/LineDetailSheet";
 import { Icons } from "@/components/brand/Icons";
 import LineBadge from "@/components/ui/LineBadge";
@@ -51,14 +52,18 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
 
   const favorites = useFavoriteStops();
   const isFav = favorites.some((f) => f.stopId === stopId);
+  const [favPulse, setFavPulse] = useState(false);
   const handleToggleFav = () => {
     if (!stop) return;
-    toggleFavoriteStop({
+    const added = toggleFavoriteStop({
       stopId: stop.stopId,
       stopCode: stop.stopCode,
       stopName: stop.stopName,
       lines: realLines.length > 0 ? realLines : stop.lines,
     });
+    // Delight: haptic + un pulso de la estrella al guardar. Pequeño, pero hace que la
+    // acción se SIENTA. Antes: guardabas un favorito y no pasaba nada (transaccional).
+    if (added) { haptic(15); setFavPulse(true); setTimeout(() => setFavPulse(false), 400); }
   };
 
   const firstUrgent = arrivals[0]?.eta <= 3;
@@ -82,7 +87,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
             <div className="name">{stop?.stopName || `Parada ${stopId}`}</div>
           </div>
           <div className="actions">
-            <button className={`icon-btn sm ${isFav ? "active" : ""}`} onClick={handleToggleFav} aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}>
+            <button className={`icon-btn sm ${isFav ? "active" : ""} ${favPulse ? "fav-pulse" : ""}`} onClick={handleToggleFav} aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}>
               <Icons.Star size={18} filled={isFav} />
             </button>
             <button className="icon-btn sm" onClick={refetch} aria-label="Actualizar">

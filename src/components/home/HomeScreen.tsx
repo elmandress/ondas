@@ -32,7 +32,7 @@ function distStr(d: number | null): string {
 }
 
 export default function HomeScreen({ onTabChange }: HomeScreenProps) {
-  const { location, isReal: locationIsReal, status: locationStatus } = useLocation();
+  const { location, isReal: locationIsReal, status: locationStatus, retry: retryLocation } = useLocation();
   const { ready: stopsReady } = useStopsDataset();
   const [nearbyStops, setNearbyStops] = useState<BusStop[]>([]);
   const [activeStopId, setActiveStopId] = useState<string | null>(null);
@@ -222,18 +222,24 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
             stopAlias={heroSource.alias}
             onTap={() => setSheetStopId(heroSource.stopId)}
           />
+        ) : (!mounted || !stopsReady || locationStatus === "pending") ? (
+          /* CARGANDO: skeleton del hero en vez de un empty state seco. Da sensación de
+             velocidad — el usuario ve que "ya viene" en vez de un cartel de tarea. */
+          <div className="hero-card skel" style={{ minHeight: 168 }} aria-label="Buscando tu parada más cercana" />
         ) : (
+          /* SIN GPS / sin parada: CTA cálido y deseable (no "activá el contador" como to-do).
+             Primera impresión = invitar, no mandar tarea. Un toque activa la ubicación. */
           <button
-            onClick={() => setShowRoutesManager(true)}
+            onClick={() => retryLocation()}
             className="hero-card"
-            style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, borderStyle: "dashed", cursor: "pointer" }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, cursor: "pointer", background: "radial-gradient(120% 100% at 50% 0%, rgba(240,160,32,0.10), transparent 70%)" }}
           >
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)" }}>
-              <Icons.Star size={22} />
+            <div style={{ width: 52, height: 52, borderRadius: "var(--r-card)", background: "var(--accent)", display: "grid", placeItems: "center", color: "#1a1206" }}>
+              <Icons.Crosshair size={26} />
             </div>
             <div style={{ textAlign: "center" }}>
-              <p style={{ font: "var(--font-card)", color: "var(--text)" }}>Activá el contador</p>
-              <p style={{ font: "var(--font-small)", color: "var(--text-3)", marginTop: 2 }}>Guardá una parada favorita o activá el GPS</p>
+              <p style={{ font: "700 17px/1.2 var(--ff)", color: "var(--text)" }}>Mostrame mi próximo bus</p>
+              <p style={{ font: "var(--font-small)", color: "var(--text-2)", marginTop: 4, maxWidth: 240 }}>Activá la ubicación y te digo cuándo salir, al instante.</p>
             </div>
           </button>
         )}
