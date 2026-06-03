@@ -9,6 +9,7 @@ import { useActiveTab, type Tab } from "@/lib/active-tab";
 import { isOnboardingDone } from "@/lib/store";
 import { LogoMark } from "@/components/brand/Logo";
 import { Icons, type IconName } from "@/components/brand/Icons";
+import OfflineBanner from "@/components/ui/OfflineBanner";
 
 const OnboardingFlow = dynamic(() => import("@/components/onboarding/OnboardingFlow"), { ssr: false });
 
@@ -66,6 +67,7 @@ export default function AppShell() {
 
   return (
     <div className="app-shell">
+      <OfflineBanner />
       {/* Sidebar — tablet (72px) / desktop (220px). CSS la oculta en mobile. */}
       <aside className="sidebar">
         <div className="brand" style={{ marginBottom: 28 }}>
