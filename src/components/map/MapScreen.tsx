@@ -434,7 +434,7 @@ export default function MapScreen() {
       <AnimatePresence>
         {selectedStop && !selectedVehicleId && (
           <div className="map-stop-panel absolute bottom-0 left-0 right-0 z-[1001]">
-            <div className="map-stop-panel-inner bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden shadow-[0_-12px_40px_rgba(0,0,0,0.6)]">
+            <div className="map-stop-panel-inner bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
               <div className="map-panel-handle flex justify-center pt-2.5 pb-1.5">
                 <div className="w-9 h-[3px] rounded-full bg-white/15" />
               </div>
@@ -550,8 +550,8 @@ export default function MapScreen() {
             style={{ maxHeight: "70vh" }}
           >
             <div
-              className="bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden shadow-[0_-12px_40px_rgba(0,0,0,0.6)] flex flex-col"
-              style={{ maxHeight: "70vh" }}
+              className="bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden flex flex-col"
+              style={{ maxHeight: "70vh", boxShadow: "var(--shadow-sheet)" }}
             >
               <div className="flex justify-center pt-2.5 pb-1.5">
                 <div className="w-9 h-[3px] rounded-full bg-white/15" />
@@ -636,7 +636,7 @@ export default function MapScreen() {
             transition={{ type: "spring", damping: 30, stiffness: 320 }}
             className="map-overlay-card absolute bottom-0 left-0 right-0 z-[1001]"
           >
-            <div className="bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden shadow-[0_-12px_40px_rgba(0,0,0,0.6)]">
+            <div className="bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
               <div className="flex justify-center pt-2.5 pb-1.5">
                 <div className="w-9 h-[3px] rounded-full bg-white/15" />
               </div>
@@ -754,7 +754,7 @@ export default function MapScreen() {
                     })()}</span>
               </div>
             )}
-            <div className="bg-[#0a0f1c]/95 backdrop-blur-xl rounded-2xl p-3 border border-amber-500/30 shadow-2xl">
+            <div className="bg-[#0a0f1c]/95 backdrop-blur-xl p-3 border border-amber-500/30" style={{ borderRadius: "var(--r-card)", boxShadow: "var(--shadow-card)" }}>
               <div className="flex items-center justify-between gap-2">
                 {/* Tocar el bus/badge → abre el MISMO detalle de línea que en Inicio:
                     recorrido completo, paradas, tiempos, empresa, web, wifi. */}
@@ -811,7 +811,7 @@ export default function MapScreen() {
             className="absolute left-3 right-3 z-[1005]"
             style={{ top: "calc(env(safe-area-inset-top) + 70px)" }}
           >
-            <div className="bg-[#0a0f1c]/97 backdrop-blur-xl rounded-2xl p-3 border border-amber-500/30 shadow-2xl">
+            <div className="bg-[#0a0f1c]/97 backdrop-blur-xl p-3 border border-amber-500/30" style={{ borderRadius: "var(--r-card)", boxShadow: "var(--shadow-card)" }}>
               <p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-400 mb-1">Punto seleccionado</p>
               <p className="text-[12px] text-white font-semibold mb-0.5 truncate">
                 {pinName ?? "Buscando dirección…"}

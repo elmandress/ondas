@@ -12,6 +12,7 @@
  * ser viejo pero la conexión es real.
  */
 import type { StopRecord } from "@/lib/stops-dataset";
+import { haversineMeters } from "@/lib/geo";
 
 export interface RouteCandidate {
   type: "walk" | "direct" | "transfer";
@@ -35,15 +36,8 @@ const BUS_AVG_SPEED_MS = 6.5; // ~23 km/h promedio urbano con paradas
 const BUS_WAIT_MIN = 6; // espera promedio en parada
 const TRANSFER_PENALTY_MIN = 7; // espera + caminata entre paradas
 
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// Distancia: utilidad geográfica única (lib/geo). Alias local para no tocar callsites.
+const haversine = haversineMeters;
 
 function walkMinutes(meters: number): number {
   return Math.ceil(meters / (WALK_SPEED_MS * 60));

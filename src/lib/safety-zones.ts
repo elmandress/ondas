@@ -43,15 +43,8 @@ const NIGHT_ZONES: NightZone[] = [
   { name: "Colón Centro/Sur", lat: -34.8060, lon: -56.2215, radiusKm: 1.4 },
 ];
 
-function haversineKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
-  const R = 6371;
-  const dLat = ((bLat - aLat) * Math.PI) / 180;
-  const dLon = ((bLon - aLon) * Math.PI) / 180;
-  const x =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
+// Distancia: utilidad geográfica única (lib/geo).
+import { haversineKm } from "@/lib/geo";
 
 /**
  * ¿El punto cae en una zona marcada para precaución nocturna?

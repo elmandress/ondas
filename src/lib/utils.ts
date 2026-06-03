@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { STOPS_DATASET, getStopsSync, type BusStop } from "@/lib/stm";
+import { haversineMeters } from "@/lib/geo";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -104,16 +105,6 @@ export function walkingMinutes(distanceMeters: number): number {
   // 75 m/min ≈ 4.5 km/h. Mínimo 2 min: nunca decir "0 a pie", siempre toma algo llegar.
   const realMeters = distanceMeters * 1.3;
   return Math.max(2, Math.ceil(realMeters / 75));
-}
-
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // Mantener export de STOPS_DATASET para retrocompatibilidad (proxy)

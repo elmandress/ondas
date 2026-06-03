@@ -21,7 +21,7 @@
   /* Text — higher contrast, fewer layers */
   --text: #eef0f5;
   --text-2: #9aa3b5;   /* lightened from spec for WCAG AA on dark */
-  --text-3: #5c647a;
+  --text-3: #737c92;   /* subido de #5c647a (3.34:1, fallaba WCAG AA) a 4.71:1 — pasa AA */
 
   /* Accent — amber, used sparingly */
   --accent: #f0a020;          /* slightly brightened for AA contrast */
@@ -43,10 +43,25 @@
   --warn: #f0564b;
   --warn-soft: rgba(220,38,38,0.14);
 
-  /* Radius — confident, less bubbly (bajado: se sentía muy "burbuja") */
-  --r-card: 14px;
-  --r-chip: 10px;
-  --r-pill: 999px;
+  /* ===== Design system: escala ÚNICA de radios, sombras y spacing =====
+     Antes los componentes mezclaban tokens con Tailwind suelto (rounded-xl/2xl, shadow-2xl,
+     box-shadow inline) → 3 radios casi iguales y ~10 sombras distintas = look "improvisado".
+     Esta es la fuente única de verdad. Tailwind se mapea a estos tokens (ver tailwind theme). */
+  /* Radios — escala confiada (no burbuja), pocos valores intencionales. */
+  --r-xs: 8px;     /* chips chicos, badges */
+  --r-chip: 10px;  /* chips, inputs */
+  --r-card: 14px;  /* tarjetas, botones grandes */
+  --r-lg: 18px;    /* bottom-sheets, modales (borde superior) */
+  --r-pill: 999px; /* pills, toggles */
+
+  /* Sombras / elevación — 3 niveles. Una función = una sombra. */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.35);                  /* badges, elementos chicos elevados */
+  --shadow-card: 0 4px 16px rgba(0,0,0,0.40);               /* tarjetas flotantes, cards del mapa */
+  --shadow-sheet: 0 -8px 32px rgba(0,0,0,0.55);             /* bottom-sheets (sombra hacia arriba) */
+  --shadow-pop: 0 12px 40px rgba(0,0,0,0.55);               /* popovers, modales centrados */
+
+  /* Spacing — escala de 4px (consistencia de paddings entre componentes). */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;  --sp-5: 20px;  --sp-6: 24px;
 
   /* Type — Plus Jakarta Sans via next/font (--font-jakarta) */
   --ff: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -111,6 +126,14 @@ body {
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 input { font: inherit; color: inherit; background: none; border: none; outline: none; }
 ul { list-style: none; }
+
+/* Foco visible para navegación por TECLADO (WCAG 2.4.7). Solo :focus-visible → no
+   molesta al tocar con el dedo (mouse/touch no lo dispara), pero quien navega con Tab
+   ve claramente dónde está. Anillo ámbar de marca. Antes casi no había foco visible. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-xs); }
+a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 
 ::-webkit-scrollbar { width: 0px; background: transparent; }
 

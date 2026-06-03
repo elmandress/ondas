@@ -96,7 +96,7 @@ function MainView({ go }: { go: (v: View) => void }) {
 
       <Section title="Entender la app">
         <NavRow icon={<Icons.Bus size={18} />} title="Cómo funciona Cuándo" sub="De dónde sacamos los datos y cómo los calculamos" onClick={() => go("comofunciona")} />
-        <NavRow icon={<Icons.Wheelchair size={18} />} title="Tus derechos como pasajero" sub="Tarifas, pases libres, asientos y convivencia — por departamento" onClick={() => go("derechos")} />
+        <NavRow icon={<Icons.Wheelchair size={18} />} title="Tarifas y tus derechos" sub="Precios del boleto, pases libres, asientos y convivencia" onClick={() => go("derechos")} />
       </Section>
 
       <Section title="Privacidad">
@@ -212,16 +212,31 @@ function DerechosView() {
         normativa oficial. No es asesoramiento legal; ante dudas, consultá el reglamento de tu
         departamento (links abajo).</P>
 
-      <H>Tarifas — valores vigentes a {FARE_VIGENCIA}</H>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "4px 0 8px" }}>
+      <H>💳 Tarifas — valores vigentes a {FARE_VIGENCIA}</H>
+      <p style={{ font: "600 11px/1 var(--ff)", color: "var(--text-3)", letterSpacing: "0.04em", textTransform: "uppercase", margin: "2px 0 4px" }}>Urbano Montevideo</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "0 0 8px" }}>
         {([
-          ["Común / 1 hora (tarjeta STM)", `$${URBAN_FARES.hora_stm}`],
-          ["Común / 1 hora (efectivo)", `$${URBAN_FARES.hora_efectivo}`],
-          ["Jubilado/a A (tarjeta)", `$${URBAN_FARES.jubilado_a_stm}`],
-          ["Jubilado/a B (tarjeta)", `$${URBAN_FARES.jubilado_b_stm}`],
-          ["Estudiante A (tarjeta)", `$${URBAN_FARES.estudiante_a}`],
-          ["Estudiante B (tarjeta)", `$${URBAN_FARES.estudiante_b}`],
-          ["Suburbano dentro de MVD", `$${SUBURBAN_FARES.dentro_mvd}`],
+          ["Común / 1 hora — tarjeta STM", `$${URBAN_FARES.hora_stm}`],
+          ["Común / 1 hora — efectivo", `$${URBAN_FARES.hora_efectivo}`],
+          ["Jubilado/a A — tarjeta / efectivo", `$${URBAN_FARES.jubilado_a_stm} / $${URBAN_FARES.jubilado_a_efectivo}`],
+          ["Jubilado/a B — tarjeta / efectivo", `$${URBAN_FARES.jubilado_b_stm} / $${URBAN_FARES.jubilado_b_efectivo}`],
+          ["Estudiante A — tarjeta", `$${URBAN_FARES.estudiante_a}`],
+          ["Estudiante B — tarjeta", `$${URBAN_FARES.estudiante_b}`],
+        ] as const).map(([k, v]) => (
+          <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, font: "var(--font-small)" }}>
+            <span style={{ color: "var(--text-2)" }}>{k}</span>
+            <span style={{ color: "var(--text)", fontWeight: 700, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <p style={{ font: "600 11px/1 var(--ff)", color: "var(--text-3)", letterSpacing: "0.04em", textTransform: "uppercase", margin: "2px 0 4px" }}>Suburbano / metropolitano (desde 01/06/2026)</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "0 0 8px" }}>
+        {([
+          ["Dentro de Montevideo", `$${SUBURBAN_FARES.dentro_mvd}`],
+          ["Hasta 32 km", `$${SUBURBAN_FARES.hasta_32km}`],
+          ["Hasta 40 km", `$${SUBURBAN_FARES.hasta_40km}`],
+          ["Hasta 60 km", `$${SUBURBAN_FARES.hasta_60km}`],
+          ["Jubilado/a", `$${SUBURBAN_FARES.jubilado}`],
         ] as const).map(([k, v]) => (
           <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, font: "var(--font-small)" }}>
             <span style={{ color: "var(--text-2)" }}>{k}</span>
@@ -229,8 +244,8 @@ function DerechosView() {
           </div>
         ))}
       </div>
-      <P muted>El boleto de 1 hora permite 1 transbordo dentro de los 60 min. El suburbano/metropolitano
-        aumentó el 1 de junio de 2026 y varía por distancia. Valores orientativos — la tarifa real la cobra el STM.</P>
+      <P muted>El boleto de 1 hora permite 1 transbordo dentro de los 60 min. Valores
+        orientativos — la tarifa real la cobra el STM según tu tarjeta y categoría.</P>
 
       <H>Convivencia y asientos (todo el país)</H>
       <P>Tenés <b>prioridad de asiento</b> si sos persona mayor, con discapacidad, embarazada o vas

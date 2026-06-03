@@ -13,7 +13,7 @@ import { useWalkingSteps } from "@/hooks/useWalkingSteps";
 import { useRoutePlanner, type PlannedRouteDto, type RouteLegDto } from "@/hooks/useRouteplanner";
 import { setSelectedRoute } from "@/lib/selected-route";
 import { setActiveTab } from "@/lib/active-tab";
-import { fareLabel } from "@/lib/fare";
+import { fareLabel, fareDetail } from "@/lib/fare";
 import { tripImpactLabel } from "@/lib/trip-impact";
 import { SERVICE_ALERT_SOURCES } from "@/lib/service-alerts";
 import { shareTrip } from "@/lib/share-trip";
@@ -1042,6 +1042,14 @@ function GtfsRouteCard({
             </details>
           ) : null;
         })()}
+
+        {/* Detalle de tarifa con VIGENCIA — en la ruta expandida (no en el resumen, para
+            no saturar). Aclara que es estimado y de cuándo son los valores. */}
+        {!isWalkOnly && (
+          <p style={{ font: "500 11px/1.4 var(--ff)", color: "var(--text-3)", marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <span>🎫</span>{fareDetail(route.numTransfers, usesMetro)}
+          </p>
+        )}
 
         {/* Viaje mixto: taxi/Uber para el último tramo (de noche o si la caminata es larga) */}
         <MixedTripOption route={route} destinationName={destinationName} />

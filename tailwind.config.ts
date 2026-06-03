@@ -78,9 +78,16 @@ const config: Config = {
       screens: {
         xs: "375px",
       },
+      // Radios mapeados a la escala ÚNICA de marca (globals.css :root). Así los
+      // `rounded-lg/xl/2xl` que usan los componentes apuntan a los tokens de Cuándo
+      // en vez de a 3 valores casi iguales → coherencia visual sin tocar 58 sitios.
       borderRadius: {
-        "2.5xl": "20px",
-        "3.5xl": "28px",
+        md: "var(--r-chip)",    // 10px
+        lg: "var(--r-chip)",    // 10px (chips, inputs)
+        xl: "var(--r-card)",    // 14px (tarjetas, botones)
+        "2xl": "var(--r-card)", // 14px (unificado con xl — eran casi iguales)
+        "3xl": "var(--r-lg)",   // 18px (sheets)
+        full: "var(--r-pill)",
       },
     },
   },
