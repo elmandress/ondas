@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { reportOccupancy, getRecentOccupancy, recentlyReported, occupancyLabel, type OccupancyLevel, type OccupancySummary } from "@/lib/occupancy";
 import { isSupabaseEnabled } from "@/lib/supabase/client";
 import { haptic } from "@/lib/haptics";
@@ -21,16 +21,17 @@ export default function OccupancySection({ stopId, lines }: { stopId: string; li
   const [summary, setSummary] = useState<Record<string, OccupancySummary>>({});
   const [done, setDone] = useState<Record<string, OccupancyLevel>>({});
   const top = lines.slice(0, 4);
+  const activeRef = useRef(true);
 
   useEffect(() => {
+    activeRef.current = true;
     if (!isSupabaseEnabled() || top.length === 0) return;
-    let active = true;
-    getRecentOccupancy(stopId, top).then((s) => { if (active) setSummary(s); });
+    getRecentOccupancy(stopId, top).then((s) => { if (activeRef.current) setSummary(s); });
     // marcar las ya reportadas hace poco (no repreguntar)
     const pre: Record<string, OccupancyLevel> = {};
     for (const l of top) if (recentlyReported(l, stopId)) pre[l] = 0 as OccupancyLevel;
     setDone(pre);
-    return () => { active = false; };
+    return () => { activeRef.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopId, top.join(",")]);
 
@@ -40,8 +41,9 @@ export default function OccupancySection({ stopId, lines }: { stopId: string; li
     haptic(12);
     setDone((d) => ({ ...d, [line]: level })); // feedback inmediato
     const ok = await reportOccupancy(line, stopId, level);
+    if (!activeRef.current) return;
     if (ok) {
-      getRecentOccupancy(stopId, top).then(setSummary);
+      getRecentOccupancy(stopId, top).then((s) => { if (activeRef.current) setSummary(s); });
     } else {
       // No se guardó (sin backend/tabla) → revertir: no agradecemos algo que no pasó.
       setDone((d) => { const n = { ...d }; delete n[line]; return n; });

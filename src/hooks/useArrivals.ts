@@ -31,6 +31,8 @@ export function useArrivals(stopId: string | null, intervalMs = 20000) {
   const [lastFetchFailed, setLastFetchFailed] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const fetchArrivals = useCallback(async () => {
     if (!stopId) {
@@ -60,6 +62,7 @@ export function useArrivals(stopId: string | null, intervalMs = 20000) {
       setLoading(false);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
+      if (!mountedRef.current) return;
       const offline = !navigator.onLine;
       if (offline) {
         const cached = readCache(stopId);

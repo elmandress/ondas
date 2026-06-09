@@ -21,9 +21,14 @@ function getData(): Record<string, Salida[]> {
 
 // "Lu,Ma,Mi,Ju,Vi,Sa,Do,Fe" → ¿corre hoy? (índice JS: 0=Do..6=Sa)
 const DAY_CODES = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
-function runsToday(dias: string, now: Date): boolean {
-  const code = DAY_CODES[now.getDay()];
+function runsToday(dias: string, mvdDate: Date): boolean {
+  const code = DAY_CODES[mvdDate.getUTCDay()];
   return dias.split(",").map((d) => d.trim()).includes(code);
+}
+
+/** Fecha/hora actual en Montevideo (UTC-3 permanente, sin DST desde 2015). */
+function nowMVD(): Date {
+  return new Date(Date.now() - 3 * 60 * 60 * 1000);
 }
 
 function norm(s: string): string {
@@ -32,7 +37,7 @@ function norm(s: string): string {
 
 export async function GET(req: NextRequest) {
   const dest = req.nextUrl.searchParams.get("dest");
-  if (!dest) return NextResponse.json({ error: "Falta dest" }, { status: 400 });
+  if (!dest || dest.length > 200) return NextResponse.json({ error: "Falta dest" }, { status: 400 });
 
   const data = getData();
   const q = norm(dest);
@@ -42,8 +47,8 @@ export async function GET(req: NextRequest) {
   if (!key) return NextResponse.json({ dest, found: false, salidas: [] });
 
   const [ciudad, depto] = key.split("|");
-  const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const now = nowMVD(); // Siempre hora de Montevideo (UTC-3 permanente)
+  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
   const all = data[key];
 
   // Próximas salidas de HOY (que corren hoy y aún no salieron), ordenadas.

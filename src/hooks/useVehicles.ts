@@ -29,6 +29,7 @@ export function useVehicles(
     }
 
     let cancelled = false;
+    let controller: AbortController | null = null;
     // Si tenemos stopId + lineIds, el server usa la API autenticada con filtro upstream oficial
     const params = new URLSearchParams();
     if (filterKey) params.set("lineIds", filterKey);
@@ -36,8 +37,10 @@ export function useVehicles(
     const url = "/api/stm/vehicles" + (params.toString() ? "?" + params.toString() : "");
 
     const load = () => {
+      controller?.abort();
+      controller = new AbortController();
       setLoading(true);
-      fetch(url)
+      fetch(url, { signal: controller.signal })
         .then((r) => (r.ok ? r.json() : { vehicles: [] }))
         .then((d) => {
           if (cancelled) return;
@@ -72,6 +75,7 @@ export function useVehicles(
     window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
+      controller?.abort();
       stopTimer();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("online", onOnline);

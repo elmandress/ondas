@@ -514,6 +514,7 @@ export default function RouteScreen() {
                       route={r}
                       destinationName={to?.name}
                       safeBadge={saferAlt && saferAlt.idx === i ? saferAlt : null}
+                      departAt={departAt}
                       onTapStop={(id) => setSheetStopId(id)}
                       onShowOnMap={() => {
                         if (!from || !to) return;
@@ -920,17 +921,23 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
 // ─── GtfsRouteCard ──────────────────────────────────────────────────
 // Tarjeta para rutas planificadas con GTFS oficial (FR-4 motor real).
 function GtfsRouteCard({
-  route, onTapStop, onShowOnMap, destinationName, safeBadge,
+  route, onTapStop, onShowOnMap, destinationName, safeBadge, departAt,
 }: {
   route: PlannedRouteDto;
   onTapStop: (id: string) => void;
   onShowOnMap?: () => void;
   destinationName?: string;
   safeBadge?: { savedWalkM: number; extraMin: number } | null;
+  departAt?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const totalMin = Math.max(1, Math.round(route.totalSeconds / 60));
+  const arrivalHHMM = (() => {
+    const base = departAt ? new Date(departAt) : new Date();
+    const arr = new Date(base.getTime() + route.totalSeconds * 1000);
+    return `${arr.getHours().toString().padStart(2, "0")}:${arr.getMinutes().toString().padStart(2, "0")}`;
+  })();
   // Ruta metropolitana (Canelones): usa al menos una variante del GTFS metro (prefijo
   // "M-"). Esas líneas son por HORARIO oficial — no tenemos GPS en vivo de las empresas
   // suburbanas. Lo decimos derecho (honestidad #1).
@@ -982,7 +989,8 @@ function GtfsRouteCard({
           <p style={{ font: "800 24px/1 var(--ff)", letterSpacing: "-0.02em" }}>
             {totalMin}<span style={{ font: "600 13px/1 var(--ff)", color: "var(--text-2)" }}> min</span>
           </p>
-          <p className="text-eyebrow" style={{ marginTop: 4 }}>{headerLabel}</p>
+          <p style={{ font: "600 12px/1 var(--ff)", color: "var(--accent)", marginTop: 2 }}>→ {arrivalHHMM}</p>
+          <p className="text-eyebrow" style={{ marginTop: 3 }}>{headerLabel}</p>
           {/* Costo del boleto (tabla oficial fare.ts). Suburbano usa tarifa metropolitana
               distinta ($86+, aumentó 01/06/2026). Solo rutas con bus. */}
           {!isWalkOnly && (

@@ -71,7 +71,7 @@ export default function RootLayout({
             si no hay preferencia guardada, sigue al dispositivo. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var m=localStorage.getItem('cuando_theme');var t;if(m==='light'||m==='dark'){t=m;}else{var h=new Date().getHours();var night=h>=19||h<7;var lite=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;t=night?'dark':(lite?'light':'dark');}document.documentElement.setAttribute('data-theme',t);if(localStorage.getItem('cuando_text_size')==='grande'){document.documentElement.classList.add('text-grande');}}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
+            __html: `(function(){try{var m=localStorage.getItem('cuando_theme');var t;if(m==='light'||m==='dark'){t=m;}else{var h=new Date().getHours();var night=h>=19||h<7;var lite=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;t=night?'dark':(lite?'light':'dark');}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.background=t==='light'?'#f4f6fa':'#070b14';if(localStorage.getItem('cuando_text_size')==='grande'){document.documentElement.classList.add('text-grande');}}catch(e){document.documentElement.setAttribute('data-theme','dark');document.documentElement.style.background='#070b14';}})();`,
           }}
         />
         <meta name="theme-color" content="#070b14" />

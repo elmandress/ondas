@@ -465,14 +465,18 @@ export function getStopsInBounds(minLat: number, maxLat: number, minLon: number,
  * sin dominar — "Pocitos" muestra primero la parada de Pocitos que tenés al lado, no una
  * cualquiera. Esto es lo que hace que la búsqueda se sienta inteligente.
  */
+function normStr(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
 export function searchStops(query: string, near?: { lat: number; lon: number }): BusStop[] {
   const stops = getStops();
-  const q = query.toLowerCase().trim();
+  const q = normStr(query).trim();
   if (!q) return stops.slice(0, 8);
 
   const scored: Array<{ s: BusStop; score: number; dist: number }> = [];
   for (const s of stops) {
-    const name = s.stopName.toLowerCase();
+    const name = normStr(s.stopName);
     let score = 0;
     if (s.stopCode === q) score = 100;
     else if (s.stopCode.startsWith(q)) score = 88;
