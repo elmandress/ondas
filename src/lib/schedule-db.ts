@@ -41,6 +41,9 @@ function getMetroDb() {
   }
 }
 
+/** Uruguay = UTC-3 permanente (sin DST desde 2015). Devuelve "ahora" en hora MVD. */
+function nowMvd(): Date { return new Date(Date.now() - 3 * 60 * 60 * 1000); }
+
 /** ¿Es una parada metropolitana (Canelones)? Sus stop_id llevan prefijo "M". */
 function isMetroStop(stopId: string): boolean {
   return stopId.startsWith("M");
@@ -125,8 +128,12 @@ function getLineToVariants(): Record<string, string[]> {
 
 export type TipoDia = 1 | 2 | 3; // 1=HABIL, 2=SABADO, 3=DOMINGO
 
-export function getTipoDia(date: Date = new Date()): TipoDia {
-  const day = date.getDay(); // 0=domingo, 6=sábado
+/**
+ * date debe estar en hora MVD (usar nowMvd() o ajustar con -3h). Usa getUTCDay()
+ * para extraer el día correcto sin depender del timezone del servidor.
+ */
+export function getTipoDia(date: Date = nowMvd()): TipoDia {
+  const day = date.getUTCDay(); // 0=domingo, 6=sábado
   if (day === 0) return 3;
   if (day === 6) return 2;
   return 1;
@@ -176,8 +183,8 @@ export function getScheduledArrivals(
   windowMinutes = 120
 ): ScheduledArrival[] {
   const tipo = tipoDia ?? getTipoDia();
-  const now0 = new Date();
-  const currentMin0 = nowMinutes ?? (now0.getHours() * 60 + now0.getMinutes());
+  const mvd0 = nowMvd();
+  const currentMin0 = nowMinutes ?? (mvd0.getUTCHours() * 60 + mvd0.getUTCMinutes());
 
   // Parada metropolitana (Canelones): su horario vive en metro-schedule.db.
   if (isMetroStop(stopId)) {
@@ -189,8 +196,8 @@ export function getScheduledArrivals(
 
   const variantToLine = getVariantToLine();
 
-  const now = new Date();
-  const currentMinutes = nowMinutes ?? (now.getHours() * 60 + now.getMinutes());
+  const mvd = nowMvd();
+  const currentMinutes = nowMinutes ?? (mvd.getUTCHours() * 60 + mvd.getUTCMinutes());
 
   const minHora = currentMinutes - 2;
   const maxHora = currentMinutes + windowMinutes;
@@ -224,8 +231,8 @@ export function getScheduledArrivals(
 
 export function getScheduledArrivalsForStop(stopId: string): ScheduledArrival[] {
   const tipo = getTipoDia();
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const mvd = nowMvd();
+  const currentMinutes = mvd.getUTCHours() * 60 + mvd.getUTCMinutes();
   const isEarlyMorning = currentMinutes < 360;
   const windowMin = isEarlyMorning ? 180 : 120;
   return getScheduledArrivals(stopId, tipo, currentMinutes, windowMin);
@@ -256,8 +263,8 @@ export function getNextScheduledForLine(
 ): ScheduledArrival[] {
   if (!lineCode) return [];
   const tipo0 = getTipoDia();
-  const now0 = new Date();
-  const curMin0 = now0.getHours() * 60 + now0.getMinutes();
+  const mvd0 = nowMvd();
+  const curMin0 = mvd0.getUTCHours() * 60 + mvd0.getUTCMinutes();
 
   // Parada metropolitana: filtrar el metro-schedule por esta línea.
   if (isMetroStop(stopId)) {
@@ -314,8 +321,8 @@ export function getNextScheduledPerLine(
 ): ScheduledArrival[] {
   if (!lineCodes.length) return [];
   const tipo = refTipoDia ?? getTipoDia();
-  const now = new Date();
-  const currentMinutes = refMinutes ?? (now.getHours() * 60 + now.getMinutes());
+  const mvd = nowMvd();
+  const currentMinutes = refMinutes ?? (mvd.getUTCHours() * 60 + mvd.getUTCMinutes());
   const pool = getScheduledArrivals(stopId, tipo, currentMinutes, windowMinutes);
 
   // Mapa línea → próximo horario

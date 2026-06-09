@@ -331,13 +331,18 @@ export function planRoutesGtfs(
   // el filtro de líneas operativas y el cálculo de espera al bus. Así "salir 21:30"
   // refleja qué corre y cuánto se espera a esa hora, no ahora.
   const refDate = departAt ?? (now ?? null);
-  const refMinutes = refDate ? refDate.getHours() * 60 + refDate.getMinutes() : undefined;
-  const refTipoDia: TipoDia | undefined = refDate ? getTipoDia(refDate) : undefined;
+  // Convertir a hora MVD (UTC-3 permanente) antes de extraer horas/día.
+  // El cliente envía ISO UTC; getHours() en el servidor (UTC) daría la hora UTC, no MVD.
+  const refMvd = refDate ? new Date(refDate.getTime() - 3 * 60 * 60 * 1000) : null;
+  const refMinutes = refMvd ? refMvd.getUTCHours() * 60 + refMvd.getUTCMinutes() : undefined;
+  const refTipoDia: TipoDia | undefined = refMvd ? getTipoDia(refMvd) : undefined;
 
   // Filtro de horario operativo: si now === null, no filtramos.
-  // Si no se pasa, usamos new Date() para filtrar líneas que no operan ahora.
+  // Si no se pasa, usamos nowMvd() para filtrar líneas que no operan ahora.
+  const refForHours = departAt ?? now ?? new Date();
+  const refForHoursMvd = new Date(refForHours.getTime() - 3 * 60 * 60 * 1000);
   const hoursLookup: LineHoursLookup | null =
-    now === null ? null : getLineHoursLookup(departAt ?? now ?? new Date());
+    now === null ? null : getLineHoursLookup(refForHoursMvd);
   const isLineOperating = (line: string): boolean => {
     if (!hoursLookup) return true;
     return hoursLookup.operatesNowOrSoon(line, operatingWindowMin);

@@ -66,8 +66,15 @@ export function getServiceWindow(line: string, tipoDia: TipoDia = 1): { first: s
   return { first: fmtMin(firstQ * 15), last: fmtMin((lastQ + 1) * 15) };
 }
 
-export function getTipoDia(date: Date = new Date()): TipoDia {
-  const day = date.getDay();
+/** Uruguay = UTC-3 permanente (sin DST desde 2015). Devuelve "ahora" en hora MVD. */
+function nowMvd(): Date { return new Date(Date.now() - 3 * 60 * 60 * 1000); }
+
+/**
+ * date debe estar en hora MVD (usar nowMvd() o ajustar con -3h). Usa getUTCDay()
+ * para extraer el día correcto sin depender del timezone del servidor.
+ */
+export function getTipoDia(date: Date = nowMvd()): TipoDia {
+  const day = date.getUTCDay();
   if (day === 0) return 3;
   if (day === 6) return 2;
   return 1;
@@ -109,10 +116,14 @@ export interface LineHoursLookup {
  * Devuelve un helper precomputado con el tipoDia y los datos cargados.
  * Hacer 1 sola vez por request para evitar re-lecturas redundantes.
  */
-export function getLineHoursLookup(now: Date = new Date()): LineHoursLookup {
+/**
+ * now debe estar en hora MVD (usar nowMvd() o ajustar con -3h).
+ * Usa getUTCHours/getUTCMinutes para leer la hora MVD correctamente.
+ */
+export function getLineHoursLookup(now: Date = nowMvd()): LineHoursLookup {
   const data = getData();
   const tipo = getTipoDia(now);
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
 
   function bytesFor(line: string): Uint8Array | null {
     const entry = data[line];

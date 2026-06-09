@@ -311,7 +311,10 @@ export async function GET(req: NextRequest) {
     // ─── F1.4: confianza honesta (último bus + atraso observado) ───
     // Por cada línea distinta, su última corrida programada del día (dato duro).
     // Marcamos el PRIMER arrival de cada línea que coincide con esa última hora.
-    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    // UTC-3 permanente (Uruguay sin DST desde 2015). new Date().getHours() usa la TZ
+    // del servidor (normalmente UTC), que da una hora incorrecta en MVD → "último bus" erróneo.
+    const mvdNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const nowMin = mvdNow.getUTCHours() * 60 + mvdNow.getUTCMinutes();
     const lastByLine = new Map<string, number | null>();
     const markedLastLine = new Set<string>();
     for (const a of combined) {
