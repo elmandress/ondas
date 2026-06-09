@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LogoMark } from "@/components/brand/Logo";
 import { Icons } from "@/components/brand/Icons";
@@ -36,8 +36,11 @@ export default function OnboardingFlow({ onDone }: { onDone: () => void }) {
   // Parada de casa elegida (para mostrar datos REALES en el cierre, no un número inventado).
   const [homeStop, setHomeStop] = useState<{ stopName: string; lines: string[]; walkMin: number } | null>(null);
   const next = () => setStep((s) => s + 1);
+  const finishedRef = useRef(false);
 
   function finish() {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
     setOnboardingDone(true);
     onDone();
   }

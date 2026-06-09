@@ -136,7 +136,10 @@ export default function SearchScreen() {
           const lines = [...new Set(v.map((x) => x.lineName))].sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
           setLiveToDest({ count: v.length, lines });
         })
-        .catch(() => setLiveToDest({ count: 0, lines: [] }));
+        .catch((err) => {
+          if (err instanceof Error && err.name === "AbortError") return;
+          setLiveToDest({ count: 0, lines: [] });
+        });
     }, 320);
 
     return () => {

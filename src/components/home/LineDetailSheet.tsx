@@ -156,7 +156,7 @@ export default function LineDetailSheet({
 
           {/* Stop list */}
           <div className="flex-1 overflow-y-auto py-2">
-            {loading ? (
+            {(loading || (!notFound && stops.length === 0)) ? (
               <div className="px-5 space-y-2 py-2">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div key={i} className="h-12 skeleton rounded-xl" />
