@@ -44,6 +44,7 @@ export default function SearchScreen() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const geocodeAbortRef = useRef<AbortController | null>(null);
+  const voiceErrTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Búsqueda pendiente de un deep link /?q= (o el sitelinks searchbox de Google).
   useEffect(() => {
@@ -55,8 +56,13 @@ export default function SearchScreen() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const voice = useVoiceInput({
     onResult: (transcript) => { setQuery(transcript); setVoiceError(null); },
-    onError: (msg) => { setVoiceError(msg); setTimeout(() => setVoiceError(null), 3500); },
+    onError: (msg) => {
+      if (voiceErrTimerRef.current) clearTimeout(voiceErrTimerRef.current);
+      setVoiceError(msg);
+      voiceErrTimerRef.current = setTimeout(() => setVoiceError(null), 3500);
+    },
   });
+  useEffect(() => () => { if (voiceErrTimerRef.current) clearTimeout(voiceErrTimerRef.current); }, []);
 
   const trendingStops = useMemo<BusStop[]>(() => {
     if (!stopsReady) return [];
@@ -76,15 +82,20 @@ export default function SearchScreen() {
     } catch {}
   }, [stopsReady]);
 
-  // LOCAL — INSTANTÁNEO: las paradas están en memoria, no hay razón para esperar la red.
-  // Derivado puro (useMemo, no efecto+setState): aparece en el MISMO frame que tecleás,
-  // rankeado por relevancia + cercanía a tu ubicación. Esa es la "sensación de velocidad".
+  // Debounce de 150 ms para la búsqueda de paradas (itera ~5000 paradas por keystroke).
+  // El input visual sigue respondiendo instantáneamente; solo el cómputo se frena.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 150);
+    return () => clearTimeout(id);
+  }, [query]);
+
   const stopResults = useMemo<BusStop[]>(() => {
-    const q = query.trim();
+    const q = debouncedQuery.trim();
     if (!q || !stopsReady) return [];
     const near = location ? { lat: location.lat, lon: location.lon } : undefined;
     return searchStops(q, near);
-  }, [query, location, stopsReady]);
+  }, [debouncedQuery, location, stopsReady]);
 
   // REMOTO — con debounce: lugares (geocode) y buses al destino. No bloquean a las paradas.
   useEffect(() => {

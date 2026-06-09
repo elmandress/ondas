@@ -116,7 +116,7 @@ export default function AppShell() {
           <LogoMark size={28} ring="var(--text)" dot="var(--accent)" />
           <span className="brand-word">Cuándo</span>
         </div>
-        <nav>
+        <nav aria-label="Navegación principal">
           {NAV.map((n) => (
             <NavButton key={n.id} {...n} />
           ))}
@@ -161,7 +161,7 @@ export default function AppShell() {
       </AnimatePresence>
 
       {/* Bottom nav — mobile. CSS la oculta en tablet/desktop. */}
-      <nav className="bottom-nav">
+      <nav className="bottom-nav" aria-label="Navegación principal móvil">
         {NAV.map((n) => (
           <NavButton key={n.id} {...n} />
         ))}

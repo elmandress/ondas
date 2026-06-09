@@ -49,6 +49,7 @@ async function getAccessToken(): Promise<string | null> {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
       cache: "no-store",
+      signal: AbortSignal.timeout(4000),
     });
 
     if (!res.ok) {
@@ -94,6 +95,7 @@ export async function mvdApiGet<T = unknown>(
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(6000),
     });
 
     if (!res.ok) {

@@ -138,11 +138,11 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
           ) : lastFetchFailed ? (
             <><span className="pip" style={{ background: "var(--warn)" }} />Error al actualizar{lastUpdated ? ` · datos de ${formatRelativeTime(lastUpdated)}` : ""}</>
           ) : lastUpdated ? (
-            <><span className="pip" />En vivo · actualizado {formatRelativeTime(lastUpdated)}</>
+            <><span className="pip" style={{ background: "#10b981" }} />En vivo · actualizado {formatRelativeTime(lastUpdated)}</>
           ) : arrivals.length > 0 ? (
-            <><span className="pip" />Actualizando…</>
+            <><span className="pip" style={{ background: "var(--text-3)" }} />Actualizando…</>
           ) : (
-            <><span className="pip" />Buscando servicios…</>
+            <><span className="pip" style={{ background: "var(--text-3)" }} />Buscando servicios…</>
           )}
         </div>
 
@@ -152,10 +152,10 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
 
         {arrivals.length > 0 && (
           <div className="arrival-filters">
-            <button className={`filter-chip ${fAccess ? "on" : ""}`} onClick={() => setFAccess((v) => !v)} aria-pressed={fAccess}>
+            <button className={`filter-chip ${fAccess ? "on" : ""}`} onClick={() => setFAccess((v) => !v)} aria-pressed={fAccess} aria-label="Mostrar solo buses accesibles con piso bajo">
               <Icons.Wheelchair size={14} /> Accesible
             </button>
-            <button className={`filter-chip ${fAc ? "on" : ""}`} onClick={() => setFAc((v) => !v)} aria-pressed={fAc}>
+            <button className={`filter-chip ${fAc ? "on" : ""}`} onClick={() => setFAc((v) => !v)} aria-pressed={fAc} aria-label="Mostrar solo buses con aire acondicionado">
               <Icons.Ac size={15} /> Con aire
             </button>
           </div>

@@ -72,7 +72,14 @@ export default function ArrivalRow({
         </div>
       </div>
 
-      <span className={`eta tnum ${etaClass}`}>{formatEta(arrival.eta, arrival.etaApprox)}</span>
+      <span className={`eta tnum ${etaClass}`} style={{ textAlign: "right" }}>
+        {formatEta(arrival.eta, arrival.etaApprox)}
+        {arrival.eta >= 0 && Number.isFinite(arrival.eta) && (
+          <span style={{ display: "block", font: "500 11px/1 var(--ff)", color: "var(--text-3)", marginTop: 2 }}>
+            {(() => { const a = new Date(Date.now() + arrival.eta * 60_000); return `${a.getHours().toString().padStart(2,"0")}:${a.getMinutes().toString().padStart(2,"0")}`; })()}
+          </span>
+        )}
+      </span>
 
       {canPage && (
         <button

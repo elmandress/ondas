@@ -52,7 +52,8 @@ export function useInteriorArrivals(
         const buses = (d.buses || []) as InteriorBusDto[];
         const etaOf = (b: InteriorBusDto) => {
           const dist = stopLat != null && stopLon != null ? haversineM(b.lat, b.lon, stopLat, stopLon) : null;
-          const speedMs = (b.speed > 3 ? b.speed : 16) * 1000 / 3600;
+          // 25 km/h = promedio urbano realista MVD (era 57 km/h, causaba ETAs 2-3 min cortos)
+          const speedMs = (b.speed > 3 ? b.speed : 25) * 1000 / 3600;
           return { dist, etaMin: dist != null ? Math.max(0, Math.round(dist / speedMs / 60)) : 0 };
         };
         const toArrival = (b: InteriorBusDto, etaMin: number, approaching: boolean): Arrival => ({

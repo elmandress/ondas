@@ -28,6 +28,9 @@ function legsSummary(route: PlannedRouteDto): string {
 export function buildTripMessage(route: PlannedRouteDto, destinationName?: string): string {
   const totalMin = Math.max(1, Math.round(route.totalSeconds / 60));
   const dest = destinationName ? ` a ${destinationName}` : "";
+  if (!route.legs || route.legs.length === 0) {
+    return `Voy${dest}: ${totalMin} min en total. (vía Cuándo)`;
+  }
   return `Voy${dest}: ${legsSummary(route)}. Son unos ${totalMin} min en total. (vía Cuándo)`;
 }
 
