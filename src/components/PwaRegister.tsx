@@ -21,6 +21,9 @@ export default function PwaRegister() {
     if (process.env.NODE_ENV !== "production") return;
 
     let reg: ServiceWorkerRegistration | null = null;
+    // Chequeo periódico cada 30 min: detecta actualizaciones en pestañas que quedaron abiertas.
+    let periodicInterval: ReturnType<typeof setInterval> | null = null;
+
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((r) => {
@@ -37,6 +40,10 @@ export default function PwaRegister() {
             }
           });
         });
+        // Chequear cada 30 minutos por si el deploy ocurrió mientras la pestaña estaba abierta.
+        periodicInterval = setInterval(() => {
+          if (!document.hidden) r.update().catch(() => {});
+        }, 30 * 60 * 1000);
       })
       .catch((err) => console.warn("[PWA] SW registration failed:", err));
 
@@ -47,6 +54,7 @@ export default function PwaRegister() {
     const onVisible = () => { if (!document.hidden && reg) reg.update().catch(() => {}); };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
+      if (periodicInterval) clearInterval(periodicInterval);
       window.removeEventListener("appinstalled", onInstalled);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -57,7 +65,19 @@ export default function PwaRegister() {
   return (
     <div className="sw-update" role="status">
       <span>Hay una nueva versión de Cuándo</span>
-      <button onClick={() => { track("pwa_update_apply"); window.location.reload(); }}>Actualizar</button>
+      <button onClick={() => {
+        track("pwa_update_apply");
+        // Patrón SKIP_WAITING: le decimos al SW en espera que tome el control ahora,
+        // luego recargamos cuando el SW nuevo realmente controla la página.
+        navigator.serviceWorker.getRegistration().then((r) => {
+          if (r?.waiting) {
+            navigator.serviceWorker.addEventListener("controllerchange", () => window.location.reload(), { once: true });
+            r.waiting.postMessage({ type: "SKIP_WAITING" });
+          } else {
+            window.location.reload();
+          }
+        }).catch(() => window.location.reload());
+      }}>Actualizar</button>
     </div>
   );
 }

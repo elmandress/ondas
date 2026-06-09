@@ -8,14 +8,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatEta(minutes: number, approx = false): string {
-  if (minutes <= 0) return approx ? "~Ya" : "Ahora";
-  // "~" cuando el ETA es estimado por distancia (no por recorrido GTFS) → honestidad:
-  // no prometemos el minuto exacto cuando no podemos ubicar el bus en su recorrido.
+  // Guard: NaN / Infinity / negativo → "ya llegó o llegando"
+  if (!Number.isFinite(minutes) || minutes <= 0) return approx ? "~Ya" : "Ahora";
   const tilde = approx ? "~" : "";
-  if (minutes === 1) return `${tilde}1 min`;
-  if (minutes < 60) return `${tilde}${minutes} min`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const mins = Math.round(minutes); // redondear fracciones (ej. 99.5 → 100, no "1h 39.5m")
+  if (mins < 60) return `${tilde}${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
   return m === 0 ? `${tilde}${h}h` : `${tilde}${h}h ${m}m`;
 }
 

@@ -1,5 +1,51 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime, formatEta } from "@/lib/utils";
+
+describe("formatEta", () => {
+  it("retorna 'Ahora' para 0 y negativo", () => {
+    expect(formatEta(0)).toBe("Ahora");
+    expect(formatEta(-5)).toBe("Ahora");
+    expect(formatEta(-999)).toBe("Ahora");
+  });
+
+  it("retorna '~Ya' para approx=true con valor 0 o negativo", () => {
+    expect(formatEta(0, true)).toBe("~Ya");
+    expect(formatEta(-1, true)).toBe("~Ya");
+  });
+
+  it("retorna 'Ahora' para NaN — regresión crash (era 'NaN min')", () => {
+    expect(formatEta(NaN)).toBe("Ahora");
+    expect(formatEta(NaN, true)).toBe("~Ya");
+  });
+
+  it("retorna 'Ahora' para Infinity — regresión crash (era 'Infinityh NaNm')", () => {
+    expect(formatEta(Infinity)).toBe("Ahora");
+    expect(formatEta(-Infinity)).toBe("Ahora");
+  });
+
+  it("redondea fracciones — regresión (99.5 era '1h 39.5m')", () => {
+    expect(formatEta(99.5)).toBe("1h 40m");
+    expect(formatEta(59.9)).toBe("1h");
+    expect(formatEta(1.4)).toBe("1 min");
+  });
+
+  it("minutos enteros normales", () => {
+    expect(formatEta(1)).toBe("1 min");
+    expect(formatEta(5)).toBe("5 min");
+    expect(formatEta(59)).toBe("59 min");
+  });
+
+  it("horas exactas y con minutos", () => {
+    expect(formatEta(60)).toBe("1h");
+    expect(formatEta(90)).toBe("1h 30m");
+    expect(formatEta(120)).toBe("2h");
+  });
+
+  it("approx agrega tilde", () => {
+    expect(formatEta(5, true)).toBe("~5 min");
+    expect(formatEta(90, true)).toBe("~1h 30m");
+  });
+});
 
 describe("formatRelativeTime", () => {
   afterEach(() => vi.useRealTimers());

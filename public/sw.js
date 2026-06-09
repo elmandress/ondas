@@ -90,3 +90,9 @@ self.addEventListener("fetch", (event) => {
       })
   );
 });
+
+// SKIP_WAITING: cuando PwaRegister.tsx envía este mensaje, el SW en espera
+// toma el control inmediatamente (sin esperar a que se cierren todas las pestañas).
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});

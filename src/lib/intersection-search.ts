@@ -134,6 +134,7 @@ out 10;`;
     const res = await fetch(url, {
       headers: { "User-Agent": "OndasMVD/1.0 (transporte-montevideo@ondas.uy)" },
       next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as OverpassResp;

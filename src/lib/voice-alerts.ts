@@ -26,20 +26,28 @@ export function voiceSupported(): boolean {
   return typeof window !== "undefined" && "speechSynthesis" in window;
 }
 
+// Debounce module-level: coalesces rapid calls (3 en 200ms → solo el último)
+// y da tiempo a cancel() para completar antes de que el nuevo utterance empiece.
+let _speakTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** Dice una frase en español rioplatense si hay una voz es-* disponible. */
 export function speak(text: string): void {
   if (!isVoiceEnabled()) return;
-  try {
-    const synth = window.speechSynthesis;
-    synth.cancel(); // no encimar frases
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "es-UY";
-    // Preferir una voz en español si el sistema la tiene (si no, la default).
-    const esVoice = synth.getVoices().find((v) => v.lang.startsWith("es"));
-    if (esVoice) u.voice = esVoice;
-    u.rate = 1.02;
-    synth.speak(u);
-  } catch {
-    /* TTS no disponible — degradamos en silencio */
-  }
+  if (_speakTimer) clearTimeout(_speakTimer);
+  _speakTimer = setTimeout(() => {
+    _speakTimer = null;
+    try {
+      const synth = window.speechSynthesis;
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "es-UY";
+      // Preferir una voz en español si el sistema la tiene (si no, la default).
+      const esVoice = synth.getVoices().find((v) => v.lang.startsWith("es"));
+      if (esVoice) u.voice = esVoice;
+      u.rate = 1.02;
+      synth.speak(u);
+    } catch {
+      /* TTS no disponible — degradamos en silencio */
+    }
+  }, 80); // 80 ms: coalesce + da tiempo a cancel() en browsers async
 }
