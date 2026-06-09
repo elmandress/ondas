@@ -210,7 +210,7 @@ export async function GET(req: NextRequest) {
   }
 
   const q = req.nextUrl.searchParams.get("q")?.trim();
-  if (!q || q.length < 1) {
+  if (!q || q.length < 1 || q.length > 300) {
     return NextResponse.json({ results: [] });
   }
 

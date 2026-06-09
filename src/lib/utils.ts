@@ -71,7 +71,8 @@ export function formatTime(date: Date): string {
 /** "hace 2 min" / "recién" / "hace 1 h" — para mostrar antigüedad de datos en vivo. */
 export function formatRelativeTime(date: Date): string {
   const sec = Math.round((Date.now() - date.getTime()) / 1000);
-  if (sec < 10) return "recién";
+  // Guarda contra Date inválida (NaN) o fecha futura (sec negativo).
+  if (!Number.isFinite(sec) || sec < 10) return "recién";
   if (sec < 60) return `hace ${sec} s`;
   const min = Math.round(sec / 60);
   if (min < 60) return `hace ${min} min`;

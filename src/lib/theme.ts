@@ -15,15 +15,6 @@ export type Theme = "dark" | "light";
 const KEY = "cuando_theme";
 const listeners = new Set<() => void>();
 
-/** ¿Es de noche en Montevideo? (19:00–07:00) — usado también en trip-safety. */
-export function isNightMVD(date: Date = new Date()): boolean {
-  const h = parseInt(
-    new Intl.DateTimeFormat("en-GB", { timeZone: "America/Montevideo", hour: "2-digit", hour12: false }).format(date),
-    10,
-  );
-  return Number.isFinite(h) ? h >= 19 || h < 7 : true;
-}
-
 export function getMode(): ThemeMode {
   if (typeof window === "undefined") return "auto";
   const v = localStorage.getItem(KEY);

@@ -167,8 +167,8 @@ function scheduledToArrivals(sched: ReturnType<typeof getScheduledArrivalsForSto
 
 export async function GET(req: NextRequest) {
   const stopId = req.nextUrl.searchParams.get("stopId");
-  if (!stopId) {
-    return NextResponse.json({ error: "stopId requerido" }, { status: 400 });
+  if (!stopId || stopId.length > 30) {
+    return NextResponse.json({ error: "stopId requerido o inválido" }, { status: 400 });
   }
 
   try {

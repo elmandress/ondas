@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const runtime = "nodejs";
+
 /**
  * POST /api/occupancy/report
  *
@@ -29,6 +31,11 @@ function getIp(req: NextRequest): string {
 
 function allowRequest(ip: string): boolean {
   const now = Date.now();
+  // Cleanup oportunístico: purgar entradas expiradas en cada request para que el
+  // Map no crezca sin límite dentro de una instancia cálida de la función.
+  if (ipMap.size > 500) {
+    for (const [k, e] of ipMap) if (now >= e.resetAt) ipMap.delete(k);
+  }
   const entry = ipMap.get(ip);
   if (!entry || now >= entry.resetAt) {
     ipMap.set(ip, { count: 1, resetAt: now + WINDOW_MS });
@@ -38,12 +45,6 @@ function allowRequest(ip: string): boolean {
   entry.count++;
   return true;
 }
-
-// Limpiar entradas viejas ocasionalmente para no crecer indefinidamente.
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, e] of ipMap) if (now >= e.resetAt) ipMap.delete(ip);
-}, WINDOW_MS);
 
 export async function POST(req: NextRequest) {
   const ip = getIp(req);

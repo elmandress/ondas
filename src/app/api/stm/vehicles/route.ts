@@ -48,7 +48,7 @@ function norm(s: string): string {
 export async function GET(req: NextRequest) {
   const lineId = req.nextUrl.searchParams.get("lineId") || undefined;
   const lineIdsParam = req.nextUrl.searchParams.get("lineIds");
-  const lineIds = lineIdsParam ? lineIdsParam.split(",").filter(Boolean) : undefined;
+  const lineIds = lineIdsParam ? lineIdsParam.split(",").filter(Boolean).slice(0, 20) : undefined;
   const stopId = req.nextUrl.searchParams.get("stopId");
   const dest = req.nextUrl.searchParams.get("dest"); // "que va a X" en vivo
 

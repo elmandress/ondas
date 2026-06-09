@@ -25,12 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Destino fuera del área de Montevideo o inválido" }, { status: 400 });
     }
 
-    // departAt: ISO string (hora de salida futura). Validamos que sea parseable y
-    // no esté en el pasado lejano; si es inválida, planificamos para ahora.
+    // departAt: ISO string (hora de salida). Parseable + no más de 24h en el pasado
+    // (evita que una fecha 1970 use el día-de-semana incorrecto en los horarios).
     let departDate: Date | undefined;
     if (typeof departAt === "string") {
       const d = new Date(departAt);
-      if (!isNaN(d.getTime())) departDate = d;
+      if (!isNaN(d.getTime()) && d.getTime() >= Date.now() - 24 * 60 * 60 * 1000) {
+        departDate = d;
+      }
     }
 
     // waypoints: hasta 3 paradas intermedias válidas (dentro del área), en orden.
