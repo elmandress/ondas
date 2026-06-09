@@ -116,6 +116,9 @@ async function fetchNominatim(q: string): Promise<GeoResult[]> {
         Accept: "application/json",
       },
       next: { revalidate: 300 },
+      // Sin timeout, si Nominatim cuelga la búsqueda de lugares se queda esperando para
+      // siempre (hasta el límite de la función). 6s y degradamos a los POIs curados.
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -189,6 +192,7 @@ export async function GET(req: NextRequest) {
       });
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
         headers: { "User-Agent": "OndasMVD/1.0 (transporte-montevideo@ondas.uy)" },
+        signal: AbortSignal.timeout(6000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { display_name?: string; address?: Record<string, string>; name?: string };

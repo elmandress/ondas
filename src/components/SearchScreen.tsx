@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { STOPS_DATASET, searchStops, type BusStop } from "@/lib/stm";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
+import { useLocation } from "@/hooks/useLocation";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
 import { setSelectedPlace } from "@/lib/selected-place";
 import { setActiveTab } from "@/lib/active-tab";
@@ -13,6 +14,7 @@ import LineBadge from "@/components/ui/LineBadge";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import VoiceOverlay from "@/components/ui/VoiceOverlay";
 import { useMounted } from "@/hooks/useMounted";
+import { takePendingSearch } from "@/lib/search-query";
 
 interface GeoResult {
   id: string | number;
@@ -28,22 +30,26 @@ interface GeoResult {
 
 const TRENDING_IDS = ["4521", "3301", "3302", "2201", "5501", "1101", "9001", "3003", "7703", "1900"];
 
-type SearchMode = "idle" | "searching" | "stops" | "places" | "empty";
-
 export default function SearchScreen() {
   const { ready: stopsReady } = useStopsDataset();
+  const { location } = useLocation();
   const [query, setQuery] = useState("");
-  const [stopResults, setStopResults] = useState<BusStop[]>([]);
   const [placeResults, setPlaceResults] = useState<GeoResult[]>([]);
+  const [geoLoading, setGeoLoading] = useState(false);
   // Buses EN VIVO que van al destino buscado ("a Pocitos") — lo que la gente ama.
   const [liveToDest, setLiveToDest] = useState<{ count: number; lines: string[] }>({ count: 0, lines: [] });
-  const [mode, setMode] = useState<SearchMode>("idle");
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [history, setHistory] = useState<BusStop[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const geocodeAbortRef = useRef<AbortController | null>(null);
+
+  // Búsqueda pendiente de un deep link /?q= (o el sitelinks searchbox de Google).
+  useEffect(() => {
+    const pending = takePendingSearch();
+    if (pending) setQuery(pending);
+  }, []);
 
   const mounted = useMounted();
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -70,26 +76,34 @@ export default function SearchScreen() {
     } catch {}
   }, [stopsReady]);
 
+  // LOCAL — INSTANTÁNEO: las paradas están en memoria, no hay razón para esperar la red.
+  // Derivado puro (useMemo, no efecto+setState): aparece en el MISMO frame que tecleás,
+  // rankeado por relevancia + cercanía a tu ubicación. Esa es la "sensación de velocidad".
+  const stopResults = useMemo<BusStop[]>(() => {
+    const q = query.trim();
+    if (!q || !stopsReady) return [];
+    const near = location ? { lat: location.lat, lon: location.lon } : undefined;
+    return searchStops(q, near);
+  }, [query, location, stopsReady]);
+
+  // REMOTO — con debounce: lugares (geocode) y buses al destino. No bloquean a las paradas.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const q = query.trim();
     if (!q) {
-      setMode("idle");
-      setStopResults([]);
       setPlaceResults([]);
+      setGeoLoading(false);
       setLiveToDest({ count: 0, lines: [] });
       return;
     }
 
-    setMode("searching");
+    setGeoLoading(true);
 
     debounceRef.current = setTimeout(async () => {
       geocodeAbortRef.current?.abort();
       const geocodeCtrl = new AbortController();
       geocodeAbortRef.current = geocodeCtrl;
-
-      const localStops = searchStops(q);
 
       let places: GeoResult[] = [];
       try {
@@ -100,8 +114,8 @@ export default function SearchScreen() {
         if (err instanceof Error && err.name === "AbortError") return;
       }
 
-      setStopResults(localStops);
       setPlaceResults(places);
+      setGeoLoading(false);
 
       // Buses EN VIVO que van a este destino (F2.3). En paralelo, sin bloquear.
       fetch(`/api/stm/vehicles?dest=${encodeURIComponent(q)}`, { signal: geocodeCtrl.signal })
@@ -112,10 +126,6 @@ export default function SearchScreen() {
           setLiveToDest({ count: v.length, lines });
         })
         .catch(() => setLiveToDest({ count: 0, lines: [] }));
-
-      if (localStops.length === 0 && places.length === 0) setMode("empty");
-      else if (localStops.length > 0 && places.length === 0) setMode("stops");
-      else setMode("places");
     }, 320);
 
     return () => {
@@ -168,7 +178,7 @@ export default function SearchScreen() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Nuevo Centro, Isla de Gorriti, línea 103…"
+          placeholder="Parada, lugar o línea…"
           autoComplete="off"
           spellCheck={false}
           inputMode="search"
@@ -206,24 +216,8 @@ export default function SearchScreen() {
 
       <VoiceOverlay open={voice.state === "listening"} onCancel={() => voice.stop()} />
 
-      {/* Spinner */}
-      {mode === "searching" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 0" }}>
-          <span style={{ display: "grid", color: "var(--accent)", animation: "spin 1s linear infinite" }}><Icons.Refresh size={16} /></span>
-          <p style={{ font: "var(--font-small)", color: "var(--text-2)" }}>Buscando…</p>
-        </div>
-      )}
-
-      {/* Sin resultados */}
-      {mode === "empty" && (
-        <div className="search-empty">
-          <div className="big">No encontramos “{query}”</div>
-          Probá con el número de parada o un nombre más corto.
-        </div>
-      )}
-
       {/* Buses EN VIVO que van al destino buscado (F2.3) — lo que la gente ama. */}
-      {(mode === "stops" || mode === "places") && liveToDest.count > 0 && (
+      {query.trim() && liveToDest.count > 0 && (
         <button
           className="live-to-dest"
           onClick={() => placeResults[0] ? handleSelectPlace(placeResults[0]) : undefined}
@@ -237,8 +231,9 @@ export default function SearchScreen() {
         </button>
       )}
 
-      {/* Resultados — FR-3.7: lugares antes que paradas */}
-      {(mode === "stops" || mode === "places") && (
+      {/* Resultados — las PARADAS salen al instante (local); los LUGARES llegan de la red.
+          FR-3.7: cuando hay lugares, van primero. */}
+      {query.trim() && (placeResults.length > 0 || stopResults.length > 0) && (
         <>
           {placeResults.length > 0 && (
             <>
@@ -256,11 +251,26 @@ export default function SearchScreen() {
               ))}
             </>
           )}
+          {/* Indicador sutil: ya ves las paradas, los lugares siguen cargando. */}
+          {geoLoading && placeResults.length === 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 2px", color: "var(--text-3)" }}>
+              <span style={{ display: "grid", color: "var(--accent)", animation: "spin 1s linear infinite" }}><Icons.Refresh size={14} /></span>
+              <span style={{ font: "var(--font-small)" }}>Buscando lugares…</span>
+            </div>
+          )}
         </>
       )}
 
+      {/* Sin resultados (recién cuando terminó de buscar lugares y no hay nada). */}
+      {query.trim() && !geoLoading && placeResults.length === 0 && stopResults.length === 0 && (
+        <div className="search-empty">
+          <div className="big">No encontramos “{query}”</div>
+          Probá con el número de parada o un nombre más corto.
+        </div>
+      )}
+
       {/* Estado inicial */}
-      {mode === "idle" && (
+      {!query.trim() && (
         <>
           {history.length > 0 && (
             <>

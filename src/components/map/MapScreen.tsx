@@ -447,7 +447,7 @@ export default function MapScreen() {
                     {location && locationIsReal && (
                       <>{distanceTo(location.lat, location.lon, selectedStop.stopLat, selectedStop.stopLon)}m · </>
                     )}
-                    {realLines.length || "—"} líneas
+                    {realLines.length || "—"} {realLines.length === 1 ? "línea" : "líneas"}
                     {arrivalsOffline && <span className="text-amber-600"> · sin conexión</span>}
                     {!arrivalsOffline && lastUpdated && (
                       <span className={arrivalsFetchFailed ? "text-amber-700" : "text-slate-700"}>

@@ -68,6 +68,16 @@ export function formatTime(date: Date): string {
   return date.toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** "hace 2 min" / "recién" / "hace 1 h" — para mostrar antigüedad de datos en vivo. */
+export function formatRelativeTime(date: Date): string {
+  const sec = Math.round((Date.now() - date.getTime()) / 1000);
+  if (sec < 10) return "recién";
+  if (sec < 60) return `hace ${sec} s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `hace ${min} min`;
+  return `hace ${Math.round(min / 60)} h`;
+}
+
 /** Paradas cercanas — funciona en cliente con el cache de stops (lazy-loaded). */
 export function getNearbyStopsClient(lat: number, lon: number, radiusM = 600, limit = 6): BusStop[] {
   const stops = getStopsSync();

@@ -18,11 +18,13 @@ import { tripImpactLabel } from "@/lib/trip-impact";
 import { SERVICE_ALERT_SOURCES } from "@/lib/service-alerts";
 import { useServiceAlerts } from "@/hooks/useServiceAlerts";
 import { shareTrip } from "@/lib/share-trip";
+import { track } from "@/lib/analytics";
+import { saferAlternative } from "@/lib/trip-safety";
 import { useRouteInput, setRouteInput } from "@/lib/route-input";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import { LogoLockup } from "@/components/brand/Logo";
-import { Icons } from "@/components/brand/Icons";
+import { Icons, type IconName } from "@/components/brand/Icons";
 import VoiceOverlay from "@/components/ui/VoiceOverlay";
 import LineBadge from "@/components/ui/LineBadge";
 import MixedTripOption from "@/components/route/MixedTripOption";
@@ -244,6 +246,32 @@ export default function RouteScreen() {
   }, [needHeuristic, from, to]);
 
   const routes = usingGtfs ? [] : heuristicRoutes;
+
+  // Alternativa MÁS SEGURA a pie de noche (motor contextual lib/trip-safety): si por
+  // poco más de tiempo reducís bastante la caminata nocturna, se marca ESA card con un
+  // sello. De día devuelve null → no molesta. Sin reordenar: el usuario ve cuál es.
+  const saferAlt = useMemo(() => {
+    if (sortedRoutes.length < 2) return null;
+    return saferAlternative(sortedRoutes, sortedRoutes.map((r) => r.totalSeconds), 0);
+  }, [sortedRoutes]);
+
+  // Métrica CORE de producto: ¿la gente logra planificar rutas? Es la acción que define
+  // si la app cumple su función. Anónimo: solo fuente + cantidad de opciones + transbordos
+  // del mejor (nada de direcciones ni coordenadas exactas). Una vez por par origen-destino.
+  const planTracked = useRef<string>("");
+  useEffect(() => {
+    if (!from || !to) return;
+    const n = usingGtfs ? sortedRoutes.length : heuristicRoutes.length;
+    if (n === 0) return;
+    const key = `${from.lat.toFixed(3)},${to.lat.toFixed(3)}`;
+    if (planTracked.current === key) return;
+    planTracked.current = key;
+    track("plan_route", {
+      source: usingGtfs ? "gtfs" : "heuristic",
+      options: n,
+      transfers: usingGtfs ? (sortedRoutes[0]?.numTransfers ?? -1) : -1,
+    });
+  }, [from, to, usingGtfs, sortedRoutes, heuristicRoutes]);
 
   const showSuggestions = activeInput !== null;
 
@@ -485,6 +513,7 @@ export default function RouteScreen() {
                       key={r.signature || i}
                       route={r}
                       destinationName={to?.name}
+                      safeBadge={saferAlt && saferAlt.idx === i ? saferAlt : null}
                       onTapStop={(id) => setSheetStopId(id)}
                       onShowOnMap={() => {
                         if (!from || !to) return;
@@ -579,15 +608,35 @@ function PlaceInput({
 }
 
 function EmptyState() {
+  // Empty state que ENSEÑA el valor en vez de pedir trabajo: dice qué vas a obtener,
+  // con pasos claros (para que cualquiera —incluido alguien de 60— entienda sin pensar).
+  const steps: Array<{ icon: IconName; title: string; sub: string }> = [
+    { icon: "Pin", title: "Elegí a dónde vas", sub: "Una dirección, un lugar o una parada" },
+    { icon: "Bus", title: "Te decimos qué bus", sub: "Qué línea tomar y dónde subirte" },
+    { icon: "Clock", title: "Y cuándo salir", sub: "Cuánto falta y cuánto tardás, en vivo" },
+  ];
   return (
-    <div className="flex flex-col items-center text-center py-16 px-6">
+    <div className="flex flex-col items-center text-center py-12 px-6">
       <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "var(--accent-soft)" }}>
-        <svg className="w-8 h-8 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="3 11 22 2 13 21 11 13 3 11" />
-        </svg>
+        <span style={{ color: "var(--accent)" }}><Icons.Route size={30} /></span>
       </div>
-      <h3 className="text-headline mb-1">Planificá tu viaje</h3>
-      <p className="text-body text-slate-500">Ingresá origen y destino para ver qué buses tomar</p>
+      <h3 className="text-headline mb-1">¿A dónde querés ir?</h3>
+      <p className="text-body text-slate-500 mb-7" style={{ maxWidth: 300 }}>Elegí desde dónde salís y a dónde vas. Te armamos el viaje, sin vueltas.</p>
+      <div className="w-full" style={{ maxWidth: 340, display: "flex", flexDirection: "column", gap: 10 }}>
+        {steps.map((s, i) => {
+          const Ico = Icons[s.icon];
+          return (
+            <div key={s.title} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 14px", borderRadius: "var(--r-card)", background: "var(--surface)", border: "1px solid var(--border)", textAlign: "left" }}>
+              <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--accent-soft)", color: "var(--accent)", font: "800 14px/1 var(--ff)" }}>{i + 1}</span>
+              <span style={{ flexShrink: 0, color: "var(--text-2)", display: "grid" }}><Ico size={18} /></span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ font: "700 14px/1.2 var(--ff)", color: "var(--text)" }}>{s.title}</div>
+                <div style={{ font: "var(--font-small)", color: "var(--text-3)", marginTop: 2 }}>{s.sub}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -637,7 +686,7 @@ function NoRoutesState({ from, to }: { from: Place; to: Place }) {
               <div key={s.stopId} className="card-soft p-2.5 flex justify-between items-center">
                 <div className="min-w-0 flex-1 pr-2">
                   <p className="text-sm font-semibold text-white truncate">{s.stopName}</p>
-                  <p className="text-[11px] text-slate-500">{d}m · {s.lines.length} líneas</p>
+                  <p className="text-[11px] text-slate-500">{d}m · {s.lines.length} {s.lines.length === 1 ? "línea" : "líneas"}</p>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
@@ -660,7 +709,7 @@ function NoRoutesState({ from, to }: { from: Place; to: Place }) {
               <div key={s.stopId} className="card-soft p-2.5 flex justify-between items-center">
                 <div className="min-w-0 flex-1 pr-2">
                   <p className="text-sm font-semibold text-white truncate">{s.stopName}</p>
-                  <p className="text-[11px] text-slate-500">{d}m · {s.lines.length} líneas</p>
+                  <p className="text-[11px] text-slate-500">{d}m · {s.lines.length} {s.lines.length === 1 ? "línea" : "líneas"}</p>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
@@ -871,12 +920,13 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
 // ─── GtfsRouteCard ──────────────────────────────────────────────────
 // Tarjeta para rutas planificadas con GTFS oficial (FR-4 motor real).
 function GtfsRouteCard({
-  route, onTapStop, onShowOnMap, destinationName,
+  route, onTapStop, onShowOnMap, destinationName, safeBadge,
 }: {
   route: PlannedRouteDto;
   onTapStop: (id: string) => void;
   onShowOnMap?: () => void;
   destinationName?: string;
+  safeBadge?: { savedWalkM: number; extraMin: number } | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
@@ -948,6 +998,18 @@ function GtfsRouteCard({
           <Icons.Chevron size={18} />
         </span>
       </button>
+
+      {/* Sello "más tranquila de noche": recomendación contextual real (no decorativa) —
+          esta opción reduce la caminata nocturna por poco más de tiempo. */}
+      {safeBadge && (
+        <div className="safe-badge">
+          <span className="sb-moon" aria-hidden>🌙</span>
+          <span>
+            Más tranquila de noche · caminás <b>{safeBadge.savedWalkM} m menos</b>
+            {safeBadge.extraMin > 0 ? <> por solo <b>+{safeBadge.extraMin} min</b></> : null}
+          </span>
+        </div>
+      )}
 
       {!expanded && (
         <div className="px-4 pb-3 -mt-1" style={{ font: "var(--font-small)", color: "var(--text-3)" }}>

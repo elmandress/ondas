@@ -458,18 +458,42 @@ export function getStopsInBounds(minLat: number, maxLat: number, minLon: number,
     .slice(0, limit);
 }
 
-export function searchStops(query: string): BusStop[] {
+/**
+ * Búsqueda de paradas con RANKING real (antes era filter + slice sin orden):
+ *   código exacto > código prefijo > nombre empieza > palabra empieza > incluye > línea.
+ * Si se pasa `near` (ubicación del usuario), suma un boost por cercanía que DESEMPATA
+ * sin dominar — "Pocitos" muestra primero la parada de Pocitos que tenés al lado, no una
+ * cualquiera. Esto es lo que hace que la búsqueda se sienta inteligente.
+ */
+export function searchStops(query: string, near?: { lat: number; lon: number }): BusStop[] {
   const stops = getStops();
   const q = query.toLowerCase().trim();
   if (!q) return stops.slice(0, 8);
-  return stops
-    .filter(
-      (s) =>
-        s.stopName.toLowerCase().includes(q) ||
-        s.stopCode.includes(q) ||
-        s.lines.some((l) => l.toLowerCase().includes(q))
-    )
-    .slice(0, 15);
+
+  const scored: Array<{ s: BusStop; score: number; dist: number }> = [];
+  for (const s of stops) {
+    const name = s.stopName.toLowerCase();
+    let score = 0;
+    if (s.stopCode === q) score = 100;
+    else if (s.stopCode.startsWith(q)) score = 88;
+    else if (name.startsWith(q)) score = 80;
+    else if (q.length >= 2 && name.split(/[\s,–-]+/).some((w) => w.startsWith(q))) score = 66;
+    else if (q.length >= 3 && name.includes(q)) score = 50;
+    else if (s.lines.some((l) => l.toLowerCase() === q)) score = 45;
+    else if (s.lines.some((l) => l.toLowerCase().includes(q))) score = 36;
+    if (score === 0) continue;
+
+    // Boost por proximidad (0..22): solo desempata. 0 m → +22; ~3 km → ~0.
+    let dist = Infinity;
+    if (near) {
+      dist = haversineMeters(near.lat, near.lon, s.stopLat, s.stopLon);
+      score += Math.max(0, 22 - (dist / 3000) * 22);
+    }
+    scored.push({ s, score, dist });
+  }
+
+  scored.sort((a, b) => b.score - a.score || a.dist - b.dist);
+  return scored.slice(0, 15).map((x) => x.s);
 }
 
 // ─────────────────────────────────────────────

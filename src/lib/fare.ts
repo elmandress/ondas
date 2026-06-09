@@ -64,20 +64,21 @@ export function estimateFare(numTransfers: number, suburban = false): FareEstima
   return { stm: URBAN_FARES.hora_stm, cash: URBAN_FARES.hora_efectivo, exact, suburban: false };
 }
 
-/** Texto corto para el resumen de la tarjeta: "~$52 tarjeta" / "~desde $52" / "~$86 suburbano".
- *  El "~" deja claro que es estimado (no afirmamos el cobro exacto). */
+/** Texto corto para el resumen de la tarjeta: "~$64 efectivo" / "~desde $64" / "~$86 suburbano".
+ *  El "~" deja claro que es estimado. Mostramos el EFECTIVO primero (es lo que paga la
+ *  mayoría sin tarjeta STM; con tarjeta sale más barato → buena sorpresa, no mala). */
 export function fareLabel(numTransfers: number, suburban = false): string {
   const f = estimateFare(numTransfers, suburban);
-  if (f.suburban) return `~$${f.stm} suburbano`;
-  return f.exact ? `~$${f.stm} tarjeta` : `~desde $${f.stm} tarjeta`;
+  if (f.suburban) return `~$${f.cash} suburbano`;
+  return f.exact ? `~$${f.cash} efectivo` : `~desde $${f.cash} efectivo`;
 }
 
-/** Detalle completo para la ruta expandida: monto + efectivo + vigencia. */
+/** Detalle completo para la ruta expandida: efectivo primero + tarjeta + vigencia. */
 export function fareDetail(numTransfers: number, suburban = false): string {
   const f = estimateFare(numTransfers, suburban);
   if (f.suburban) {
-    return `Estimado ~$${f.stm} (suburbano, varía por distancia) · valores vigentes a ${FARE_VIGENCIA}`;
+    return `Estimado ~$${f.cash} (suburbano, varía por distancia) · valores vigentes a ${FARE_VIGENCIA}`;
   }
-  const base = f.exact ? `$${f.stm} con tarjeta / $${f.cash} efectivo` : `desde $${f.stm} con tarjeta`;
+  const base = f.exact ? `$${f.cash} efectivo / $${f.stm} con tarjeta` : `desde $${f.cash} efectivo`;
   return `${base} · estimado según tarifas vigentes a ${FARE_VIGENCIA}`;
 }

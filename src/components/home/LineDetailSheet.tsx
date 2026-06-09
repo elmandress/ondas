@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useLineStops } from "@/hooks/useLineStops";
 import { loadOperators, resolveOperator, type OperatorInfo } from "@/lib/operators";
+import { shareLine } from "@/lib/share";
+import { Icons } from "@/components/brand/Icons";
+import { haptic } from "@/lib/haptics";
 
 interface LineDetailSheetProps {
   line: string;
@@ -42,6 +45,14 @@ export default function LineDetailSheet({
   }, [stops, highlightStopId]);
 
   const totalStops = stops.length;
+
+  // Compartir línea → /linea/{line}. Feedback honesto en desktop (copiar).
+  const [copied, setCopied] = useState(false);
+  const handleShare = async () => {
+    haptic(10);
+    const r = await shareLine(line, headsign || destination);
+    if (r === "copied") { setCopied(true); setTimeout(() => setCopied(false), 1800); }
+  };
 
   return (
     <>
@@ -91,15 +102,26 @@ export default function LineDetailSheet({
                   <p className="text-[11px] text-slate-500 mt-0.5">{totalStops} paradas · tiempo desde el inicio del recorrido</p>
                 )}
               </div>
-              <button
-                onClick={onClose}
-                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: "rgba(255,255,255,0.05)" }}
-              >
-                <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={handleShare}
+                  aria-label="Compartir línea"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-300"
+                  style={{ background: "rgba(255,255,255,0.05)" }}
+                >
+                  <Icons.Share size={17} />
+                </button>
+                <button
+                  onClick={onClose}
+                  aria-label="Cerrar"
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400"
+                  style={{ background: "rgba(255,255,255,0.05)" }}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -127,6 +149,8 @@ export default function LineDetailSheet({
               )}
             </div>
           )}
+
+          {copied && <div className="share-copied" role="status">Link copiado ✓</div>}
 
           <div className="h-px mx-5 flex-shrink-0" style={{ background: "rgba(255,255,255,0.05)" }} />
 

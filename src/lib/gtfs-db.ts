@@ -108,6 +108,21 @@ function normalizeLineName(line: string): string {
  * Consumido por bus-direction-gtfs.ts: cada candidato se evalúa proyectando el
  * GPS del bus sobre sus paradas para elegir el recorrido físico real.
  */
+/** Todas las líneas (short_name) del GTFS, ordenadas. Para sitemap / landings. */
+export function getAllLineNames(): string[] {
+  const idx = getIdx();
+  if (!idx) return [];
+  return Object.keys(idx.variantsByLine).sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
+}
+
+/** Headsigns (destinos) de una línea — para describirla en la landing. */
+export function getLineHeadsigns(line: string): string[] {
+  const idx = getIdx();
+  if (!idx) return [];
+  const rows = idx.variantsByLine[normalizeLineName(line)] || [];
+  return [...new Set(rows.map((r) => r.headsign).filter(Boolean))];
+}
+
 export function getVariantsForLine(line: string): VariantCandidate[] {
   const idx = getIdx();
   if (!idx) return [];

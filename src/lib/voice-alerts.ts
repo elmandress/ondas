@@ -19,7 +19,7 @@ export function isVoiceEnabled(): boolean {
 
 export function setVoiceEnabled(on: boolean): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(PREF_KEY, on ? "1" : "0");
+  try { localStorage.setItem(PREF_KEY, on ? "1" : "0"); } catch { /* cuota/modo privado */ }
 }
 
 export function voiceSupported(): boolean {

@@ -159,6 +159,30 @@ comment on table public.interior_stop_observations is 'Observaciones crudas del 
 create index if not exists idx_interior_obs_zone_code
   on public.interior_stop_observations (zone, stop_code);
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- Crowdsourcing de OCUPACIÓN del bus ("¿cómo viene?"). Anónimo y agregado.
+-- 1=vacío · 2=normal · 3=lleno. Lectura pública (todos ven el agregado reciente);
+-- inserta cualquiera (anónimo) con nivel válido. Sin PII. Privacy-first como analytics.
+create table if not exists public.occupancy_reports (
+  id          bigint generated always as identity primary key,
+  line        text not null,
+  stop_id     text not null,
+  level       smallint not null check (level between 1 and 3),
+  session     text,                          -- sesión efímera del cliente (no es el usuario)
+  created_at  timestamptz not null default now()
+);
+comment on table public.occupancy_reports is 'Reportes anónimos de ocupación del bus (crowdsourcing). Sin PII.';
+create index if not exists idx_occupancy_stop_time on public.occupancy_reports (stop_id, created_at desc);
+create index if not exists idx_occupancy_line_stop_time on public.occupancy_reports (line, stop_id, created_at desc);
+alter table public.occupancy_reports enable row level security;
+-- Cualquiera inserta un reporte anónimo (nivel validado por el CHECK); cualquiera lee el agregado.
+drop policy if exists "occupancy anon insert" on public.occupancy_reports;
+create policy "occupancy anon insert" on public.occupancy_reports
+  for insert with check (level between 1 and 3);
+drop policy if exists "occupancy public read" on public.occupancy_reports;
+create policy "occupancy public read" on public.occupancy_reports
+  for select using (true);
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 5. USUARIOS (datos personales — RLS estricta: cada quien ve SOLO lo suyo)
 -- ═══════════════════════════════════════════════════════════════════════════

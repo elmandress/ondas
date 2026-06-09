@@ -14,10 +14,12 @@ interface LeaveNowHeroProps {
   walkMinutes: number;
   stopName?: string;
   stopAlias?: string;
+  /** La ubicación coincide con la parada (≤40 m) → "estás parado acá ahora". */
+  atStop?: boolean;
   onTap: () => void;
 }
 
-export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName, stopAlias, onTap }: LeaveNowHeroProps) {
+export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName, stopAlias, atStop, onTap }: LeaveNowHeroProps) {
   const first = arrivals[0];
 
   // Tick de 1s para re-renderizar el countdown; el valor no se lee directamente.
@@ -47,12 +49,13 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
 
   if (!arrivals.length) {
     return (
-      <div className="hero-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+      <button onClick={onTap} className="hero-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10, cursor: "pointer", width: "100%" }}>
         <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--surface)", display: "grid", placeItems: "center", color: "var(--text-3)" }}>
           <Icons.Bus size={24} />
         </div>
-        <p style={{ font: "var(--font-small)", color: "var(--text-3)" }}>No viene ninguno por ahora</p>
-      </div>
+        <p style={{ font: "700 15px/1.2 var(--ff)", color: "var(--text-2)" }}>No viene ninguno en los próximos 30 min</p>
+        <p style={{ font: "var(--font-small)", color: "var(--text-3)" }}>{(stopAlias || stopName) ? `Tocá para ver ${stopAlias || stopName?.split(" – ")[0]}` : "Tocá para ver la parada o probá otra cercana"}</p>
+      </button>
     );
   }
 
@@ -85,8 +88,17 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
         <div className="hero-label">{label}</div>
         <div className="hero-count">{countNode}</div>
         <div className="hero-walk">
-          <Icons.Walk size={15} />
-          <span><b>{walkMinutes} min</b> a pie{displayName ? ` · ${displayName}` : ""}</span>
+          {atStop ? (
+            <>
+              <Icons.Pin size={15} />
+              <span><b>Estás acá</b>{displayName ? ` · ${displayName}` : ""}</span>
+            </>
+          ) : (
+            <>
+              <Icons.Walk size={15} />
+              <span><b>{walkMinutes} min</b> a pie{displayName ? ` · ${displayName}` : ""}</span>
+            </>
+          )}
         </div>
       </div>
 

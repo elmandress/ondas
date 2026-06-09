@@ -2,11 +2,10 @@
 
 /**
  * theme.ts — Tema con 3 modos: Auto / Claro / Oscuro.
- *  - "auto" (default): DE NOCHE oscuro (descanso visual), de día según el dispositivo.
- *    El oscuro sigue siendo la base de marca; auto solo lo refuerza de noche.
- *  - "light" / "dark": fijo, elegido por el usuario (gana siempre).
- * El diseño ya es 80% tokens (var(--...)), así que el tema se define overrideando
- * esos tokens bajo [data-theme="light"] en globals.css; acá solo resolvemos y aplicamos.
+ *  - "auto" (default): siempre oscuro — identidad dark-first de marca.
+ *  - "light" / "dark": fijo, elegido explícitamente por el usuario.
+ * El diseño es 100% tokens (var(--...)); el tema se define overrideando esos tokens
+ * bajo [data-theme="light"] en globals.css.
  */
 
 import { useSyncExternalStore } from "react";
@@ -16,11 +15,7 @@ export type Theme = "dark" | "light";
 const KEY = "cuando_theme";
 const listeners = new Set<() => void>();
 
-function systemPrefersLight(): boolean {
-  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-color-scheme: light)").matches;
-}
-
-/** ¿Es de noche en Montevideo? (19:00–07:00) → modo oscuro automático. */
+/** ¿Es de noche en Montevideo? (19:00–07:00) — usado también en trip-safety. */
 export function isNightMVD(date: Date = new Date()): boolean {
   const h = parseInt(
     new Intl.DateTimeFormat("en-GB", { timeZone: "America/Montevideo", hour: "2-digit", hour12: false }).format(date),
@@ -39,9 +34,9 @@ export function getMode(): ThemeMode {
 export function resolveTheme(mode: ThemeMode = getMode()): Theme {
   if (mode === "light") return "light";
   if (mode === "dark") return "dark";
-  // auto: de noche oscuro; de día seguí al dispositivo (si no, oscuro = marca).
-  if (isNightMVD()) return "dark";
-  return systemPrefersLight() ? "light" : "dark";
+  // auto = siempre dark (identidad de marca dark-first).
+  // El usuario que quiere light lo elige explícitamente.
+  return "dark";
 }
 
 export function getTheme(): Theme {
@@ -56,7 +51,9 @@ export function applyTheme(t: Theme) {
 }
 
 export function setMode(mode: ThemeMode) {
-  if (typeof window !== "undefined") localStorage.setItem(KEY, mode);
+  if (typeof window !== "undefined") {
+    try { localStorage.setItem(KEY, mode); } catch { /* cuota llena / modo privado: igual aplicamos el tema en memoria */ }
+  }
   applyTheme(resolveTheme(mode));
   listeners.forEach((fn) => fn());
 }

@@ -320,6 +320,60 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* ============== Source selector ============== */
 /* Acción principal del home — grande y obvia para cualquiera. */
+/* ── Preview del mapa en la Home ─────────────────────────────────────── */
+.home-map-preview {
+  position: relative; display: block; width: 100%; height: 188px;
+  border-radius: var(--r-card); overflow: hidden; border: 1px solid var(--border);
+  margin: 4px 0 var(--gap-section); background: var(--bg-elevated); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* El mapa llena el contenedor pero no interactúa (en la preview el tap = abrir). */
+.home-map-preview > :first-child { position: absolute; inset: 0; pointer-events: none; }
+.hmp-skel { width: 100%; height: 188px; }
+.hmp-overlay {
+  position: absolute; inset: 0; z-index: 1200; /* encima de los panes/controles de Leaflet */
+  display: flex; flex-direction: column;
+  justify-content: space-between; padding: 12px; pointer-events: auto;
+  background: linear-gradient(180deg, rgba(0,0,0,0.05) 0%, transparent 28%, transparent 58%, rgba(0,0,0,0.22) 100%);
+}
+/* En la preview no queremos los controles de zoom (el tap = abrir el mapa completo). */
+.home-map-preview .leaflet-control-zoom { display: none; }
+.hmp-chip {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px; border-radius: var(--r-pill);
+  background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border);
+  font: 700 12px/1 var(--ff); box-shadow: var(--shadow-sm);
+}
+.hmp-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--live); box-shadow: 0 0 0 3px rgba(45,191,123,0.22); }
+.hmp-cta {
+  align-self: flex-end; display: inline-flex; align-items: center; gap: 2px;
+  padding: 7px 12px 7px 14px; border-radius: var(--r-pill);
+  background: var(--accent); color: #1a1206; font: 700 12.5px/1 var(--ff);
+  box-shadow: var(--shadow-card);
+}
+.home-map-preview:active { transform: scale(0.992); transition: transform 0.12s ease; }
+@media (prefers-reduced-motion: reduce) { .home-map-preview:active { transform: none; } }
+
+/* ── Banner de incidencias/desvíos en la Home ────────────────────────── */
+.home-alerts {
+  margin: 0 0 14px; border-radius: var(--r-card);
+  background: rgba(240,160,32,0.08); border: 1px solid rgba(240,160,32,0.22);
+  overflow: hidden;
+}
+.home-alerts > summary {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  cursor: pointer; list-style: none; color: var(--text);
+}
+.home-alerts > summary::-webkit-details-marker { display: none; }
+.home-alerts .ha-ico { flex-shrink: 0; color: var(--accent); display: grid; }
+.home-alerts .ha-title { flex: 1; font: 700 14px/1.3 var(--ff); }
+.home-alerts > summary > svg:last-child { color: var(--text-3); transition: transform .18s; }
+.home-alerts[open] > summary > svg:last-child { transform: rotate(90deg); }
+.home-alerts .ha-body { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+.home-alerts .ha-item { font: 400 13px/1.45 var(--ff); color: var(--text-2); }
+.home-alerts .ha-item b { display: block; color: var(--text); font: 700 13.5px/1.3 var(--ff); margin-bottom: 2px; }
+.home-alerts .ha-all { font: 700 13px/1 var(--ff); color: var(--accent); padding-top: 2px; }
+
 .big-action { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
   margin-top: 6px; padding: 18px 18px; border-radius: var(--r-card);
   background: var(--accent-soft); border: 1.5px solid var(--accent-border); color: var(--text); }
@@ -443,7 +497,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .fav-row .eta-unit { font: 500 12px/1 var(--ff); color: var(--text-2); margin-left: 2px; }
 
 /* ============== Bottom sheet ============== */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.74); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
 .bottom-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 101; max-height: 84vh;
@@ -464,7 +518,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .sheet-header .icon { width: 46px; height: 46px; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; color: var(--accent); flex-shrink: 0; }
 .sheet-header .text { flex: 1; min-width: 0; padding-top: 2px; }
 .sheet-header .eyebrow { font: var(--font-label); color: var(--text-3); }
-.sheet-header .name { font: 700 19px/1.2 var(--ff); letter-spacing: -0.01em; margin-top: 4px; }
+.sheet-header .name { font: 700 19px/1.22 var(--ff); letter-spacing: -0.01em; margin-top: 4px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sheet-header .actions { display: flex; gap: 8px; }
 .icon-btn { width: 48px; height: 48px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; color: var(--text-2); }
 .icon-btn:hover { background: var(--surface-hover); color: var(--text); }
@@ -495,7 +550,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .arrival-row .body { flex: 1; min-width: 0; }
 .arrival-row .dest { font: 700 16px/1.3 var(--ff); letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Botón "seguir el bus" — circular, sutil; activo en ámbar de marca. */
-.follow-btn { width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-2); transition: all 0.15s; }
+.follow-btn { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-2); transition: all 0.15s; }
 .follow-btn:hover { color: var(--text); background: var(--surface-hover); }
 .follow-btn.on { background: var(--accent); border-color: var(--accent); color: #1a1206; }
 .arrival-row .badges { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
@@ -679,6 +734,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .nav-safe { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
 .tap-card { transition: transform 0.12s ease, opacity 0.12s ease; }
 .tap-card:active { transform: scale(0.98); opacity: 0.9; }
+
+/* Feedback inmediato al tocar en los tap-targets de lista (búsqueda, chips, filas).
+   Cada tap se SIENTE — toque premium consistente. `transform` no reflowea (barato).
+   Se anula con prefers-reduced-motion (ver bloque al final). */
+.search-result, .stop-chip, .fav-row, .shortcut-card, .live-to-dest {
+  transition: transform 0.13s cubic-bezier(0.2, 0.7, 0.2, 1), background 0.13s ease;
+}
+.search-result:active, .stop-chip:active, .shortcut-card:active, .live-to-dest:active {
+  transform: scale(0.985);
+}
 .divider { height: 1px; background: var(--border); }
 
 /* Cards legacy (bridge para screens no reskineados) */
@@ -728,6 +793,21 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
   background: transparent; overflow: hidden;
 }
 .mixed-trip.recommend { border-color: var(--accent-border); background: var(--accent-soft); }
+/* "info" = caminata por avenida: tono tranquilo (verde-vivo suave), no alarma. */
+.mixed-trip.reassure { border-color: rgba(45,191,123,0.22); background: rgba(45,191,123,0.06); }
+.mixed-trip.reassure .mixed-trip-ico { background: var(--live-soft, rgba(45,191,123,0.16)); color: var(--live, #2dbf7b); }
+
+/* Sello "más tranquila de noche" en la route card recomendada por el motor de seguridad. */
+.safe-badge {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 14px 12px; padding: 8px 11px;
+  border-radius: var(--r-chip, 10px);
+  background: rgba(120,140,255,0.08);
+  border: 1px solid rgba(120,140,255,0.18);
+  font: 500 12px/1.35 var(--ff); color: var(--text-2);
+}
+.safe-badge b { color: var(--text); font-weight: 700; }
+.safe-badge .sb-moon { font-size: 14px; flex-shrink: 0; }
 .mixed-trip-toggle {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   padding: 11px 13px; color: var(--text);
@@ -858,7 +938,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .opt-chip.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
 
 /* Selector de hora de salida — mismo lenguaje que los opt-chip. */
-.depart-row { display: flex; gap: 7px; margin-top: 10px; align-items: center; }
+.depart-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; align-items: center; }
 .depart-chip {
   flex-shrink: 0; padding: 7px 13px; border-radius: 999px;
   font: 600 12.5px/1 var(--ff); color: var(--text-2);
@@ -1009,4 +1089,160 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
     width: 100%;
     height: 100%;
   }
+}
+
+/* ── Aviso de nueva versión (blindaje de deploy) ──────────────────────── */
+.sw-update {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top) + 10px); z-index: 1300;
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 9px 9px 16px; border-radius: var(--r-pill, 999px);
+  background: var(--text, #eef0f5); color: #0a0e16;
+  font: 700 13px/1 var(--ff); box-shadow: var(--shadow-pop, 0 8px 28px rgba(0,0,0,0.45));
+  animation: sw-update-in 0.25s ease-out;
+  max-width: calc(100vw - 24px);
+}
+.sw-update button {
+  flex-shrink: 0; padding: 8px 14px; border-radius: var(--r-pill, 999px);
+  background: var(--accent); color: #1a1206; font: 800 13px/1 var(--ff);
+}
+@keyframes sw-update-in { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .sw-update { animation: none; } }
+
+/* ── Microayuda contextual (Tip) ──────────────────────────────────────── */
+.ctx-tip {
+  display: flex; align-items: flex-start; gap: 9px; margin-bottom: 10px;
+  padding: 10px 12px; border-radius: var(--r-card, 14px);
+  background: var(--accent-soft); border: 1px solid var(--accent-border);
+  animation: tip-in 0.25s ease-out;
+}
+.ctx-tip .ct-ico { font-size: 15px; line-height: 1.4; flex-shrink: 0; }
+.ctx-tip .ct-text { flex: 1; font: 500 13px/1.45 var(--ff); color: var(--text); }
+.ctx-tip .ct-text b { font-weight: 800; }
+.ctx-tip .ct-close { flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); margin: -2px -2px 0 0; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .ctx-tip { animation: none; } }
+
+/* ── Paradas alternativas "a pasos" (StopArrivalSheet) ────────────────── */
+.nearby-alt { margin: 12px 22px 0; padding: 12px 14px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); }
+.na-head { display: flex; align-items: center; gap: 7px; font: 700 12px/1 var(--ff); color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 11px; }
+.na-head svg { color: var(--text-3); }
+.na-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.na-row + .na-row { border-top: 1px solid var(--border); }
+.na-info { min-width: 0; flex: 1; }
+.na-name { font: 600 14px/1.2 var(--ff); color: var(--text); }
+.na-name span { font: 500 12px/1 var(--ff); color: var(--text-3); }
+.na-lines { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.na-more { font: 600 11px/1 var(--ff); color: var(--text-3); align-self: center; }
+
+/* ── Crowdsourcing de ocupación (StopArrivalSheet) ────────────────────── */
+.occ-section { margin: 4px 22px 0; padding: 13px 14px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); }
+.occ-head { font: 700 13px/1 var(--ff); color: var(--text); margin-bottom: 11px; }
+.occ-head span { font: 500 12px/1 var(--ff); color: var(--text-3); }
+.occ-rows { display: flex; flex-direction: column; gap: 9px; }
+.occ-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.occ-btns { display: flex; gap: 6px; flex: 1; }
+.occ-btn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border-radius: var(--r-chip, 10px);
+  background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-2);
+  font: 600 12px/1 var(--ff); transition: transform .12s ease, border-color .12s ease;
+}
+.occ-btn:active { transform: scale(0.95); }
+.occ-btn:hover { border-color: var(--border-strong, rgba(255,255,255,0.2)); color: var(--text); }
+.occ-thanks { font: 700 13px/1 var(--ff); color: var(--live, #2dbf7b); }
+.occ-recent { margin-left: auto; font: 600 12px/1 var(--ff); color: var(--text-3); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .occ-btn:active { transform: none; } }
+
+/* Toast "Link copiado" — feedback honesto al compartir sin Web Share (desktop).
+   Flotante, centrado abajo, por encima de los sheets. Se autodescarta (timeout en JS). */
+.share-copied {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 88px);
+  transform: translateX(-50%);
+  z-index: 1200;
+  padding: 10px 18px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--text, #eef0f5);
+  color: #0a0e16;
+  font: 700 13px/1 var(--ff);
+  box-shadow: var(--shadow-pop, 0 8px 28px rgba(0,0,0,0.45));
+  animation: share-toast-in 0.22s ease-out;
+  pointer-events: none;
+}
+@keyframes share-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-copied { animation: none; }
+}
+
+/* Banner de instalación PWA — discreto, encima de la bottom-nav, descartable.
+   Distribución/retención sin ser intrusivo. */
+.install-prompt {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 76px);
+  z-index: 1150;
+  width: min(440px, calc(100vw - 24px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--r-card, 16px);
+  /* Colores FIJOS (no de tema): es un elemento elevado tipo toast; el fondo oscuro debe
+     llevar siempre texto claro, sin importar si la app está en modo claro u oscuro. */
+  background: #131a2a;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  animation: install-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes install-in {
+  from { opacity: 0; transform: translate(-50%, 14px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.install-prompt .ip-icon {
+  flex-shrink: 0;
+  width: 40px; height: 40px;
+  border-radius: 11px;
+  display: grid; place-items: center;
+  background: var(--accent, #f0a020);
+  color: #1a1206;
+}
+.install-prompt .ip-text { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.25; }
+.install-prompt .ip-text b { font: 700 14px/1.2 var(--ff); color: #f4f6fb; }
+.install-prompt .ip-text span { font: 400 12px/1.3 var(--ff); color: #9aa3b5; margin-top: 2px; }
+.install-prompt .ip-install {
+  flex-shrink: 0;
+  height: 38px; padding: 0 16px;
+  border-radius: 11px;
+  background: var(--accent, #f0a020);
+  color: #1a1206;
+  font: 700 13px/1 var(--ff);
+  cursor: pointer;
+}
+.install-prompt .ip-close {
+  flex-shrink: 0;
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  color: #737c92;
+  border-radius: 9px;
+}
+@media (min-width: 900px) {
+  /* En desktop la bottom-nav no existe; lo bajamos al borde. */
+  .install-prompt { bottom: calc(env(safe-area-inset-bottom) + 20px); left: auto; right: 20px; transform: none; }
+  @keyframes install-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-prompt { animation: none; }
+  /* Sin micro-scale al tocar para quien pide menos movimiento. */
+  .search-result, .stop-chip, .fav-row, .shortcut-card, .live-to-dest,
+  .tap-card, .big-action, .quick-go, .btn-primary { transition: none; }
+  .search-result:active, .stop-chip:active, .shortcut-card:active, .live-to-dest:active,
+  .tap-card:active, .big-action:active, .quick-go:active, .btn-primary:active { transform: none; }
 }

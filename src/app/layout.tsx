@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { jsonLdHtml } from "@/lib/jsonld";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import PwaRegister from "@/components/PwaRegister";
@@ -17,9 +18,18 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// URL pública del sitio (para OG/canonical absolutos). Configurable por env; fallback al
+// dominio de Netlify. Necesaria para que las previews de WhatsApp/X/Telegram resuelvan bien.
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://cuando.uy";
+
 export const metadata: Metadata = {
-  title: "Cuándo — El bondi te espera. Vos no.",
-  description: "Sabé cuándo salir. Llegadas en tiempo real, rutas inteligentes y mapa en vivo del transporte de Montevideo.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Cuándo — El bondi te espera. Vos no.",
+    template: "%s · Cuándo",
+  },
+  description: "Sabé cuándo salir. Llegadas en tiempo real, rutas inteligentes y mapa en vivo del transporte de Montevideo y todo Uruguay.",
+  applicationName: "Cuándo",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -28,8 +38,15 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Cuándo — Transporte de Montevideo",
-    description: "El bondi te espera. Vos no. Tiempo real del STM.",
+    description: "El bondi te espera. Vos no. Llegadas en tiempo real del STM.",
     type: "website",
+    locale: "es_UY",
+    siteName: "Cuándo",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cuándo — Transporte de Montevideo",
+    description: "El bondi te espera. Vos no. Llegadas en tiempo real del STM.",
   },
 };
 
@@ -70,6 +87,30 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://d.basemaps.cartocdn.com" />
         <link rel="dns-prefetch" href="https://routing.openstreetmap.de" />
         <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org" />
+        {/* Identidad del sitio para Google (nombre, logo, sitio oficial). */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: jsonLdHtml({
+              "@context": "https://schema.org",
+              "@graph": [
+                { "@type": "Organization", name: "Cuándo", url: SITE_URL, logo: `${SITE_URL}/icons/icon-512.png` },
+                {
+                  "@type": "WebSite",
+                  name: "Cuándo",
+                  url: SITE_URL,
+                  inLanguage: "es-UY",
+                  description: "Llegadas en tiempo real, rutas inteligentes y mapa en vivo del transporte de Montevideo.",
+                  potentialAction: {
+                    "@type": "SearchAction",
+                    target: { "@type": "EntryPoint", urlTemplate: `${SITE_URL}/?q={search_term_string}` },
+                    "query-input": "required name=search_term_string",
+                  },
+                },
+              ],
+            }),
+          }}
+        />
       </head>
       <body className="h-full antialiased overflow-hidden" style={{ color: "var(--text)" }}>
         <PwaRegister />

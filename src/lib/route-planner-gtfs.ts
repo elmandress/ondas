@@ -574,7 +574,7 @@ export function planRoutesGtfs(
               if (m2.fromVariantId === v1.variantId) continue;
               // Misma línea (183→183) se omite acá: la continuación honesta por
               // truncación de variantes se hará en un paso dedicado y acotado
-              // (ver docs/DIAG-RUTEO-181-183.md) para no explotar la búsqueda.
+              // (ver docs/ARQUITECTURA.md (§7)) para no explotar la búsqueda.
               if (v1.shortName === m2.shortName) continue;
               if (!isLineOperating(m2.shortName)) continue;
               const toNear = toStopById.get(m2.toStopId);
@@ -676,7 +676,7 @@ export function planRoutesGtfs(
   // desde la misma parada" (mismo coche o el próximo de la línea) — NO un transbordo a
   // otra línea, y NO podemos jurar que es el mismo coche físico (el GTFS no da blocks).
   // Lo ofrecemos SOLO si no hay ninguna directa con bus (si la hay, esto sobra), y muy
-  // acotado para no explotar la búsqueda (ver docs/DIAG-RUTEO-181-183.md).
+  // acotado para no explotar la búsqueda (ver docs/ARQUITECTURA.md (§7)).
   const hasDirectBus = candidates.some(
     (c) => c.numTransfers === 0 && c.legs.some((l) => l.type === "bus")
   );

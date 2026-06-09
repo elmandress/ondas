@@ -12,13 +12,18 @@ import LeaveNowHero from "@/components/home/LeaveNowHero";
 import { getNearbyStopsClient, distanceTo, formatEta, walkingMinutes } from "@/lib/utils";
 import { type BusStop, STOPS_DATASET } from "@/lib/stm";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
+import LineDetailSheet from "@/components/home/LineDetailSheet";
+import HomeMapPreview from "@/components/home/HomeMapPreview";
 import RoutesManager from "@/components/home/RoutesManager";
+import { track } from "@/lib/analytics";
 import { LogoLockup } from "@/components/brand/Logo";
 import { Icons } from "@/components/brand/Icons";
 import PeakHint from "@/components/ui/PeakHint";
 import SettingsSheet from "@/components/home/SettingsSheet";
 import HowToSheet from "@/components/home/HowToSheet";
 import { setRouteInput } from "@/lib/route-input";
+import { useServiceAlerts } from "@/hooks/useServiceAlerts";
+import Tip from "@/components/ui/Tip";
 
 type Tab = "home" | "route" | "map" | "search";
 
@@ -37,11 +42,13 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [nearbyStops, setNearbyStops] = useState<BusStop[]>([]);
   const [activeStopId, setActiveStopId] = useState<string | null>(null);
   const [sheetStopId, setSheetStopId] = useState<string | null>(null);
+  const [lineDetail, setLineDetail] = useState<{ line: string; destination?: string } | null>(null);
   const [showRoutesManager, setShowRoutesManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [favorites, setFavorites] = useState<FavoriteRoute[]>([]);
   const favoriteStops = useFavoriteStops();
+  const alerts = useServiceAlerts();
   const [editingAlias, setEditingAlias] = useState<{ stopId: string; stopName: string; alias?: string } | null>(null);
 
   // Abrir un favorito: ruta por dirección → planificador; ruta vieja por parada → sheet de llegadas.
@@ -84,26 +91,29 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [heroIdx, setHeroIdx] = useState(0);
   const heroSources = useMemo(() => {
     if (!mounted) return [];
+    // atStop: la ubicación coincide con la parada (≤40 m) → "estás parado acá ahora".
+    // Esto hace que la app se entienda sola: muestra los buses de DONDE ESTÁS sin pensar.
     return [
       ...shortcuts.slice(0, 2).map((f) => {
         const stopData = STOPS_DATASET.find((s) => s.stopId === f.stopId);
-        const walkMin = location && stopData
-          ? walkingMinutes(distanceTo(location.lat, location.lon, stopData.stopLat, stopData.stopLon))
-          : 5;
-        return { stopId: f.stopId, stopName: f.stopName, alias: f.alias, walkMin };
+        const distM = location && stopData ? distanceTo(location.lat, location.lon, stopData.stopLat, stopData.stopLon) : null;
+        return { stopId: f.stopId, stopName: f.stopName, alias: f.alias, walkMin: distM != null ? walkingMinutes(distM) : 5, atStop: distM != null && distM <= 40 };
       }),
       ...(nearbyStops.length > 0 && !shortcuts.some((s) => s.stopId === nearbyStops[0].stopId)
-        ? [{
-            stopId: nearbyStops[0].stopId,
-            stopName: nearbyStops[0].stopName,
-            alias: undefined as string | undefined,
-            walkMin: location && locationIsReal
-              ? walkingMinutes(distanceTo(location.lat, location.lon, nearbyStops[0].stopLat, nearbyStops[0].stopLon))
-              : 5,
-          }]
+        ? [(() => {
+            const distM = location && locationIsReal ? distanceTo(location.lat, location.lon, nearbyStops[0].stopLat, nearbyStops[0].stopLon) : null;
+            return {
+              stopId: nearbyStops[0].stopId,
+              stopName: nearbyStops[0].stopName,
+              alias: undefined as string | undefined,
+              walkMin: distM != null ? walkingMinutes(distM) : 5,
+              atStop: distM != null && distM <= 40,
+            };
+          })()]
         : []),
-    ];
+    ].sort((a, b) => Number(b.atStop) - Number(a.atStop)); // "estás acá" primero
   }, [mounted, shortcuts, nearbyStops, location, locationIsReal]);
+  const atStopNow = heroSources.some((s) => s.atStop);
   const heroSource = heroSources[Math.min(heroIdx, heroSources.length - 1)] ?? null;
 
   useEffect(() => {
@@ -112,6 +122,22 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     setFavorites(getPrefs().favoriteRoutes);
     const clockId = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(clockId);
+  }, []);
+
+  // Deep links: las landings SEO (/parada/3971, /linea/121) mandan a /?parada=… o
+  // /?linea=… → acá se abre el sheet correspondiente. Así una URL compartida en
+  // WhatsApp aterriza directo en la parada/línea, no en un home genérico. Después
+  // limpiamos el query (replaceState) para que refrescar no reabra y la URL quede prolija.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const parada = sp.get("parada");
+    const linea = sp.get("linea");
+    if (parada) setSheetStopId(parada);
+    else if (linea) setLineDetail({ line: linea });
+    if (parada || linea) {
+      window.history.replaceState(null, "", window.location.pathname);
+      track("deep_link_open", { kind: parada ? "parada" : "linea" });
+    }
   }, []);
 
   useEffect(() => {
@@ -164,6 +190,31 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         </div>
       </div>
 
+      {/* Preview del mapa: apenas abrís, ves TU zona (ubicación + paradas + buses). Un mapa
+          se entiende más rápido que una lista. Tocar abre el mapa completo. */}
+      <HomeMapPreview onOpen={() => onTabChange("map")} />
+
+      {/* Incidencias oficiales (desvíos/obras): si hay, lo decimos ACÁ — te enterás sin
+          buscar. Expandible para no robar protagonismo cuando no es urgente. */}
+      {mounted && alerts.length > 0 && (
+        <details className="home-alerts">
+          <summary>
+            <span className="ha-ico" aria-hidden><Icons.Warn size={15} /></span>
+            <span className="ha-title">{alerts.length === 1 ? "Hay 1 aviso de desvíos" : `Hay ${alerts.length} avisos de desvíos`}</span>
+            <Icons.Chevron size={15} />
+          </summary>
+          <div className="ha-body">
+            {alerts.slice(0, 4).map((a) => (
+              <div key={a.id} className="ha-item">
+                <b>{a.title}</b>
+                {a.body && <span>{a.body}</span>}
+              </div>
+            ))}
+            <a href="/desvios" className="ha-all">Ver todos los desvíos →</a>
+          </div>
+        </details>
+      )}
+
       {/* Acción principal — grande, claro, una sola cosa obvia. Para que cualquiera
           (incluido alguien que no usa apps) sepa qué tocar: "¿A dónde vas?". */}
       <button className="big-action" onClick={() => onTabChange("route")}>
@@ -194,9 +245,9 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         </div>
       )}
 
-      {/* Selector de origen + Hero. El contador de abajo dice cuándo salir para
-          tomar el próximo bus DESDE la parada elegida acá. */}
-      <label className="source-label">¿Cuándo te tenés que ir?</label>
+      {/* Selector de origen + Hero. Si estás PARADO en una parada (≤40m), lo decimos
+          derecho ("Estás en esta parada") y mostramos sus buses sin que toques nada. */}
+      <label className="source-label">{atStopNow && heroSource?.atStop ? "Estás en esta parada" : "¿Cuándo te tenés que ir?"}</label>
       {heroSources.length > 0 && (
         <div className="source-tabs">
           {heroSources.map((src, i) => (
@@ -205,14 +256,17 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
               className={`source-tab ${i === heroIdx ? "active" : ""}`}
               onClick={() => setHeroIdx(i)}
             >
-              <span className="emo">{src.alias ? aliasIcon(src.alias) : "📍"}</span>
-              {src.alias ?? "Parada cercana"}
+              <span className="emo">{src.atStop ? "📍" : src.alias ? aliasIcon(src.alias) : "🚏"}</span>
+              {src.atStop ? "Estás acá" : src.alias ?? "Parada cercana"}
             </button>
           ))}
         </div>
       )}
 
       <div style={{ marginTop: 16, marginBottom: "var(--gap-section)" }}>
+        {heroSource && (
+          <Tip id="leave-now">Te decimos <b>cuándo salir</b> para llegar justo a la parada, sin esperar de gusto.</Tip>
+        )}
         {heroSource ? (
           <LeaveNowHero
             arrivals={heroArrivals}
@@ -220,6 +274,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
             walkMinutes={heroSource.walkMin}
             stopName={heroSource.stopName}
             stopAlias={heroSource.alias}
+            atStop={heroSource.atStop}
             onTap={() => setSheetStopId(heroSource.stopId)}
           />
         ) : (!mounted || !stopsReady || locationStatus === "pending") ? (
@@ -248,15 +303,16 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       {/* Aviso de hora pico (solo dentro de la franja) */}
       <PeakHint />
 
-      {/* Paradas cercanas (chips) */}
-      {nearbyStops.length > 0 && (
+      {/* Paradas cercanas (chips). Si estás PARADO en una parada, estas son ALTERNATIVAS:
+          "si tu bus no para acá, mirá estas otras a pocos metros". */}
+      {nearbyStops.length > (atStopNow ? 1 : 0) && (
         <>
           <div className="section-head">
-            <h2>Paradas cercanas</h2>
+            <h2>{atStopNow ? "Otras paradas cerca" : "Paradas cercanas"}</h2>
             <button className="link" onClick={() => onTabChange("map")}>Ver en mapa <Icons.Chevron size={14} /></button>
           </div>
           <div className="stop-chip-row">
-            {nearbyStops.slice(0, 6).map((stop) => {
+            {nearbyStops.slice(atStopNow ? 1 : 0, atStopNow ? 7 : 6).map((stop) => {
               const dist = location && locationIsReal ? distanceTo(location.lat, location.lon, stop.stopLat, stop.stopLon) : null;
               return (
                 <button
@@ -267,7 +323,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
                   <div className="name">{stop.stopName.split(" – ")[0]}</div>
                   <div className="meta">
                     {dist !== null && <><span>{distStr(dist)}</span><span className="pip" /></>}
-                    <span>{stop.lines.length} líneas</span>
+                    <span>{stop.lines.length} {stop.lines.length === 1 ? "línea" : "líneas"}</span>
                   </div>
                 </button>
               );
@@ -361,6 +417,10 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
 
       <AnimatePresence>
         {sheetStopId && <StopArrivalSheet stopId={sheetStopId} onClose={() => setSheetStopId(null)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {lineDetail && <LineDetailSheet line={lineDetail.line} destination={lineDetail.destination} onClose={() => setLineDetail(null)} />}
       </AnimatePresence>
 
       <AnimatePresence>

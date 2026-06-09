@@ -7,8 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { planRoutesGtfs, planRoutesWithWaypoints, type WaypointPoint } from "@/lib/route-planner-gtfs";
-
-const inMvd = (lat: number, lon: number) => lat <= -34.6 && lat >= -35.0 && lon <= -55.8 && lon >= -56.5;
+import { isValidMvdCoord } from "@/lib/mvd-area";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,20 +17,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { from, to, maxTransfers, departAt, waypoints } = body;
 
-    if (
-      !from || !to ||
-      typeof from.lat !== "number" || typeof from.lon !== "number" ||
-      typeof to.lat !== "number" || typeof to.lon !== "number"
-    ) {
-      return NextResponse.json({ error: "from y to requeridos con lat/lon" }, { status: 400 });
+    // Una sola validación (finitud + bounds) para origen y destino. Rechaza NaN/Infinity.
+    if (!from || !to || !isValidMvdCoord(from.lat, from.lon)) {
+      return NextResponse.json({ error: "Origen fuera del área de Montevideo o inválido" }, { status: 400 });
     }
-
-    // Validación: que estén en el área de MVD+metro
-    if (from.lat > -34.6 || from.lat < -35.0 || from.lon > -55.8 || from.lon < -56.5) {
-      return NextResponse.json({ error: "Origen fuera del área de Montevideo" }, { status: 400 });
-    }
-    if (to.lat > -34.6 || to.lat < -35.0 || to.lon > -55.8 || to.lon < -56.5) {
-      return NextResponse.json({ error: "Destino fuera del área de Montevideo" }, { status: 400 });
+    if (!isValidMvdCoord(to.lat, to.lon)) {
+      return NextResponse.json({ error: "Destino fuera del área de Montevideo o inválido" }, { status: 400 });
     }
 
     // departAt: ISO string (hora de salida futura). Validamos que sea parseable y
@@ -46,8 +37,7 @@ export async function POST(req: NextRequest) {
     const wp: WaypointPoint[] = Array.isArray(waypoints)
       ? waypoints
           .filter((w: unknown): w is WaypointPoint =>
-            !!w && typeof (w as WaypointPoint).lat === "number" && typeof (w as WaypointPoint).lon === "number" &&
-            inMvd((w as WaypointPoint).lat, (w as WaypointPoint).lon))
+            !!w && isValidMvdCoord((w as WaypointPoint).lat, (w as WaypointPoint).lon))
           .slice(0, 3)
       : [];
 

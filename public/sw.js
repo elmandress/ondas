@@ -9,7 +9,9 @@
 //   - /api/*: solo red (nunca cache).
 //   - resto: network-first con fallback a cache.
 
-const CACHE = "cuando-v2";
+// Versión del cache: subir en cada cambio del SW o estrategia. `activate` borra las
+// viejas → garantiza que un deploy no arrastre HTML/assets obsoletos.
+const CACHE = "cuando-v4";
 
 // Datasets que vale la pena tener offline (el catálogo del transporte).
 const DATASETS = ["/stops.json", "/routes.json", "/line-shapes.json", "/operators.json", "/interior-stops.json"];
@@ -54,11 +56,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // App shell y estáticos de Next → cache-first con revalidación.
-  if (url.pathname === "/" || url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
+  // Estáticos de Next (con HASH en el nombre) e iconos → cache-first/SWR (seguro: un
+  // build nuevo genera nombres nuevos, nunca colisiona). El HTML NO va acá a propósito.
+  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
     event.respondWith(staleWhileRevalidate(event.request));
     return;
   }
+
+  // HTML / navegaciones ("/" incluida) → NETWORK-FIRST. Clave para que un DEPLOY no deje
+  // usuarios con la app rota: el HTML viejo cacheado referencia chunks que ya no existen.
+  // Siempre traemos el HTML fresco (que apunta a los chunks actuales); si no hay red,
+  // recién ahí caemos al cache. Cae al "resto" de abajo (que ya es network-first).
 
   // Resto → network-first, cae al cache si no hay red; si tampoco, la home cacheada.
   event.respondWith(

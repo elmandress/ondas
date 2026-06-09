@@ -44,6 +44,7 @@ export const Icons = {
   Star: (p: IconProps) => <Svg {...p}><path d="M12 3.5 L14.4 8.9 L20.3 9.4 L15.8 13.3 L17.2 19.1 L12 16 L6.8 19.1 L8.2 13.3 L3.7 9.4 L9.6 8.9 Z" fill={p.filled ? "currentColor" : "none"} /></Svg>,
   Refresh: (p: IconProps) => <Svg {...p}><path d="M21 12 a9 9 0 1 1 -2.6 -6.4" /><path d="M21 4 V9 H16" /></Svg>,
   Close: (p: IconProps) => <Svg {...p}><path d="M6 6 L18 18" /><path d="M18 6 L6 18" /></Svg>,
+  Share: (p: IconProps) => <Svg {...p}><circle cx="18" cy="5" r="2.6" /><circle cx="6" cy="12" r="2.6" /><circle cx="18" cy="19" r="2.6" /><path d="M8.3 10.8 L15.7 6.2" /><path d="M8.3 13.2 L15.7 17.8" /></Svg>,
   Mic: (p: IconProps) => <Svg {...p}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11 a7 7 0 0 0 14 0" /><path d="M12 18 V21" /></Svg>,
   Chevron: (p: IconProps) => <Svg {...p}><path d="M9 6 L15 12 L9 18" /></Svg>,
   Swap: (p: IconProps) => <Svg {...p}><path d="M7 4 V20" /><path d="M3.5 7.5 L7 4 L10.5 7.5" /><path d="M17 20 V4" /><path d="M13.5 16.5 L17 20 L20.5 16.5" /></Svg>,

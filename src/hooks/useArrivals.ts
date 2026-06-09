@@ -104,12 +104,22 @@ export function useArrivals(stopId: string | null, intervalMs = 20000) {
       else { fetchArrivals(); start(); }
     };
 
+    // Cambios de red reales en la calle (wifi→datos, recuperar señal en el subte/túnel):
+    // al volver "online" refrescamos AL INSTANTE en vez de esperar hasta 20s al próximo
+    // tick. Esto es lo que hace que se sienta viva caminando por la ciudad.
+    const onOnline = () => { if (!document.hidden) { fetchArrivals(); start(); } };
+    const onOffline = () => setIsOffline(true);
+
     if (!document.hidden) start();
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
 
     return () => {
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
       abortRef.current?.abort();
     };
   }, [fetchArrivals, stopId, intervalMs]);

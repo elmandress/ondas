@@ -151,7 +151,7 @@ export default function OnboardingFlow({ onDone }: { onDone: () => void }) {
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ font: "600 13px/1.2 var(--ff)", color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.stopName}</div>
-                      <div style={{ font: "500 12px/1 var(--ff)", color: C.dim2, marginTop: 4 }}>{s.lines.length} líneas</div>
+                      <div style={{ font: "500 12px/1 var(--ff)", color: C.dim2, marginTop: 4 }}>{s.lines.length} {s.lines.length === 1 ? "línea" : "líneas"}</div>
                     </div>
                     <Icons.Star size={18} />
                   </button>

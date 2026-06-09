@@ -1,19 +1,22 @@
 "use client";
 
 import { AnimatePresence } from "framer-motion";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useArrivals } from "@/hooks/useArrivals";
 import { useInteriorArrivals, isInteriorStop } from "@/hooks/useInteriorArrivals";
 import { useStopInfo } from "@/hooks/useStopInfo";
-import { STOPS_DATASET, isAccessibleArrival, arrivalHasAc } from "@/lib/stm";
-import { formatTime } from "@/lib/utils";
+import { STOPS_DATASET, isAccessibleArrival, arrivalHasAc, type BusStop } from "@/lib/stm";
+import { formatRelativeTime, getNearbyStopsClient, distanceTo } from "@/lib/utils";
 import { useFavoriteStops, toggleFavoriteStop } from "@/lib/favorite-stops";
+import { shareStop } from "@/lib/share";
+import { track } from "@/lib/analytics";
 import { haptic } from "@/lib/haptics";
 import LineDetailSheet from "@/components/home/LineDetailSheet";
 import { Icons } from "@/components/brand/Icons";
 import LineBadge from "@/components/ui/LineBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import ArrivalRow from "@/components/ui/ArrivalRow";
+import OccupancySection from "@/components/home/OccupancySection";
 
 interface StopArrivalSheetProps {
   stopId: string;
@@ -64,6 +67,20 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
     // Delight: haptic + un pulso de la estrella al guardar. Pequeño, pero hace que la
     // acción se SIENTA. Antes: guardabas un favorito y no pasaba nada (transaccional).
     if (added) { haptic(15); setFavPulse(true); setTimeout(() => setFavPulse(false), 400); }
+    track("save_favorite", { kind: "stop", on: added }); // retención: guardar = volver
+  };
+
+  // Compartir parada → link limpio /parada/{code}. Feedback honesto: si no hay Web
+  // Share (desktop), copiamos y avisamos "Link copiado".
+  const [copied, setCopied] = useState(false);
+  const handleShare = async () => {
+    if (!stop) return;
+    haptic(10);
+    // Si hay un bus en camino, compartimos la ETA ("el 121 en ~5 min") → mensaje útil.
+    const first = arrivals[0];
+    const next = first ? { line: first.lineName, etaMin: Math.max(0, first.eta) } : undefined;
+    const r = await shareStop(stop.stopId, stop.stopName, stop.stopCode, next);
+    if (r === "copied") { setCopied(true); setTimeout(() => setCopied(false), 1800); }
   };
 
   const firstUrgent = arrivals[0]?.eta <= 3;
@@ -90,6 +107,9 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
             <button className={`icon-btn sm ${isFav ? "active" : ""} ${favPulse ? "fav-pulse" : ""}`} onClick={handleToggleFav} aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}>
               <Icons.Star size={18} filled={isFav} />
             </button>
+            <button className="icon-btn sm" onClick={handleShare} aria-label="Compartir parada">
+              <Icons.Share size={18} />
+            </button>
             <button className="icon-btn sm" onClick={refetch} aria-label="Actualizar">
               <span style={loading ? { animation: "spin 1s linear infinite", display: "grid" } : undefined}><Icons.Refresh size={18} /></span>
             </button>
@@ -97,6 +117,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
               <Icons.Close size={18} />
             </button>
           </div>
+          {copied && <div className="share-copied" role="status">Link copiado ✓</div>}
         </div>
 
         {/* Líneas — tocar para ver recorrido completo */}
@@ -114,8 +135,12 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
         <div className="sheet-status">
           {isOffline ? (
             <><span className="pip" style={{ background: "var(--accent)" }} />Sin conexión · mostrando caché</>
+          ) : lastFetchFailed ? (
+            <><span className="pip" style={{ background: "var(--warn)" }} />Error al actualizar{lastUpdated ? ` · datos de ${formatRelativeTime(lastUpdated)}` : ""}</>
           ) : lastUpdated ? (
-            <><span className="pip" />{lastFetchFailed ? "Error al actualizar · " : "Actualizado "}{formatTime(lastUpdated)}</>
+            <><span className="pip" />En vivo · actualizado {formatRelativeTime(lastUpdated)}</>
+          ) : arrivals.length > 0 ? (
+            <><span className="pip" />Actualizando…</>
           ) : (
             <><span className="pip" />Buscando servicios…</>
           )}
@@ -158,6 +183,12 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
           )}
         </div>
 
+        {arrivals.length > 0 && (
+          <OccupancySection stopId={stopId} lines={[...new Set(arrivals.map((a) => a.lineName))]} />
+        )}
+
+        {stop && <NearbyAlternatives stop={stop} currentLines={realLines.length ? realLines : stop.lines} />}
+
         <div className="sheet-footer">
           {fAccess || fAc ? `${shown.length} de ${arrivals.length}` : arrivals.length} servicios próximos · datos STM Montevideo
         </div>
@@ -175,5 +206,45 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+/**
+ * Paradas a pasos con LÍNEAS QUE ACÁ NO PASAN. Lo "mágico" de la experiencia de parada:
+ * "caminá 90 m y tenés el 121 que por esta no para". Solo aparece si hay líneas extra
+ * reales (sino no aporta). Informativo (no navega) para no romper la animación del sheet.
+ */
+function NearbyAlternatives({ stop, currentLines }: { stop: BusStop; currentLines: string[] }) {
+  const others = useMemo(() => {
+    const cur = new Set(currentLines);
+    return getNearbyStopsClient(stop.stopLat, stop.stopLon, 300, 8)
+      .filter((s) => s.stopId !== stop.stopId)
+      .map((s) => ({
+        s,
+        extra: s.lines.filter((l) => !cur.has(l)),
+        dist: Math.round(distanceTo(stop.stopLat, stop.stopLon, s.stopLat, s.stopLon)),
+      }))
+      .filter((x) => x.extra.length > 0)
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 3);
+  }, [stop, currentLines]);
+
+  if (others.length === 0) return null;
+
+  return (
+    <div className="nearby-alt">
+      <div className="na-head"><Icons.Walk size={14} /> A pasos también pasan</div>
+      {others.map(({ s, extra, dist }) => (
+        <div key={s.stopId} className="na-row">
+          <div className="na-info">
+            <div className="na-name">{s.stopName.split(" – ")[0]} <span>· {dist} m</span></div>
+            <div className="na-lines">
+              {extra.slice(0, 8).map((l) => <LineBadge key={l} num={l} size="xs" />)}
+              {extra.length > 8 && <span className="na-more">+{extra.length - 8}</span>}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

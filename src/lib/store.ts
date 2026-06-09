@@ -59,7 +59,12 @@ export function getPrefs(): UserPrefs {
 
 export function savePrefs(prefs: UserPrefs): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem("ondas_prefs", JSON.stringify(prefs));
+  try {
+    localStorage.setItem("ondas_prefs", JSON.stringify(prefs));
+  } catch {
+    // QuotaExceededError (cuota llena) o Safari en modo privado: no romper el flujo
+    // (guardar favorito, completar onboarding…). Se pierde la persistencia, no la app.
+  }
 }
 
 export function addFavorite(route: FavoriteRoute): void {

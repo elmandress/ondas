@@ -63,14 +63,18 @@ export function useVehicles(
       if (document.hidden) stopTimer();
       else { load(); start(); }
     };
+    // Al recuperar señal en la calle, refrescar los buses al instante (no esperar al tick).
+    const onOnline = () => { if (!document.hidden) { load(); start(); } };
 
     load();
     if (!document.hidden) start();
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
       stopTimer();
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
     };
   }, [enabled, intervalMs, filterKey, stopId]);
 

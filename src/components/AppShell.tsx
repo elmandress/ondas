@@ -10,7 +10,11 @@ import { isOnboardingDone } from "@/lib/store";
 import { LogoMark } from "@/components/brand/Logo";
 import { Icons, type IconName } from "@/components/brand/Icons";
 import OfflineBanner from "@/components/ui/OfflineBanner";
+import InstallPrompt from "@/components/InstallPrompt";
 import { track } from "@/lib/analytics";
+import { getDestino } from "@/lib/destinos";
+import { setRouteInput } from "@/lib/route-input";
+import { setPendingSearch } from "@/lib/search-query";
 
 const OnboardingFlow = dynamic(() => import("@/components/onboarding/OnboardingFlow"), { ssr: false });
 
@@ -49,6 +53,39 @@ export default function AppShell() {
 
   useEffect(() => { track("open_app"); }, []);
 
+  // Shortcuts del manifest PWA (/?tab=map, /?tab=route…) y deep links de pestaña.
+  // Sin esto, los accesos directos "Mapa"/"Ruta" del ícono instalado abrían siempre
+  // Inicio. Leemos ?tab una vez al arrancar y saltamos a esa pestaña.
+  // /?ir=slug → viene de una landing "cómo llegar a X": prefija el destino y planifica
+  // la ruta desde tu ubicación. La landing SEO aterriza directo en el viaje armado.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const t = sp.get("tab");
+    if (t === "home" || t === "map" || t === "route" || t === "search") {
+      setActiveTab(t);
+      track("open_shortcut", { tab: t });
+    }
+    const ir = sp.get("ir");
+    if (ir) {
+      const d = getDestino(ir);
+      if (d) {
+        setRouteInput({ to: { lat: d.lat, lon: d.lon, name: d.name }, fromCurrentLocation: true });
+        setActiveTab("route");
+        track("deep_link_ir", { destino: ir });
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+    // /?q=texto → sitelinks searchbox de Google / búsqueda compartida: aterriza en Buscar
+    // con el término ya cargado.
+    const q = sp.get("q");
+    if (q) {
+      setPendingSearch(q);
+      setActiveTab("search");
+      track("deep_link_search");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [setActiveTab]);
+
   // Onboarding de primer uso (client-only para no romper SSR).
   const [showOnboarding, setShowOnboarding] = useState(false);
   useEffect(() => {
@@ -72,6 +109,7 @@ export default function AppShell() {
   return (
     <div className="app-shell">
       <OfflineBanner />
+      <InstallPrompt />
       {/* Sidebar — tablet (72px) / desktop (220px). CSS la oculta en mobile. */}
       <aside className="sidebar">
         <div className="brand" style={{ marginBottom: 28 }}>

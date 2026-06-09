@@ -42,6 +42,30 @@ function getData(): Record<string, { 1?: string; 2?: string; 3?: string }> {
 /** 1 = HABIL (L-V), 2 = SABADO, 3 = DOMINGO/FERIADO. */
 export type TipoDia = 1 | 2 | 3;
 
+function fmtMin(min: number): string {
+  const h = Math.floor(min / 60), m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Ventana de servicio de una línea para un tipo de día: primer y último horario operativo
+ * (formato HH:MM). Para responder "¿a qué hora pasa el primer/último 103?" — búsqueda real,
+ * con dato del GTFS (no inventado). Devuelve null si no hay datos de esa línea.
+ */
+export function getServiceWindow(line: string, tipoDia: TipoDia = 1): { first: string; last: string } | null {
+  const data = getData();
+  const entry = data[line];
+  const b64 = entry?.[tipoDia];
+  if (!b64) return null;
+  const bytes = decodeBitset(b64);
+  let firstQ = -1, lastQ = -1;
+  for (let q = 0; q < QUARTERS; q++) {
+    if (bitAt(bytes, q)) { if (firstQ === -1) firstQ = q; lastQ = q; }
+  }
+  if (firstQ === -1) return null;
+  return { first: fmtMin(firstQ * 15), last: fmtMin((lastQ + 1) * 15) };
+}
+
 export function getTipoDia(date: Date = new Date()): TipoDia {
   const day = date.getDay();
   if (day === 0) return 3;

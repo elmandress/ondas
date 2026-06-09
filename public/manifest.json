@@ -1,9 +1,12 @@
 {
+  "id": "/",
   "name": "Cuándo — Transporte Montevideo",
   "short_name": "Cuándo",
   "description": "El bondi te espera. Vos no. Llegadas en tiempo real, rutas inteligentes y mapa en vivo del transporte de Montevideo.",
   "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#070b14",
   "theme_color": "#070b14",
   "orientation": "portrait-primary",

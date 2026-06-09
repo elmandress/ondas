@@ -3,7 +3,7 @@
 /**
  * Tamaño de texto accesible. Para que la app la pueda usar cualquiera — sobre todo
  * adultos mayores, el segmento que TODAS las apps de transporte abandonan (ver
- * docs/RESEARCH-COMPETENCIA-2026.md). Aplica una clase al <html> que escala el
+ * docs/AUDITORIA-MAESTRA.md). Aplica una clase al <html> que escala el
  * font-size base; el resto del CSS usa rem/em y escala solo.
  *
  * Persistente en localStorage. Sin cuenta.
