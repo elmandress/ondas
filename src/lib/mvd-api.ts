@@ -229,6 +229,7 @@ export async function getGtfsVersion(): Promise<string | null> {
     const res = await fetch(`${API_BASE}/buses/gtfs/static/latest/version.txt`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
     return (await res.text()).trim();

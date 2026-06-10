@@ -18,6 +18,7 @@ async function getAlerts(): Promise<Alert[]> {
     const r = await fetch("https://api.montevideo.gub.uy/notificacion/mensajes", {
       headers: { "User-Agent": "Cuando/1.0", Accept: "application/json" },
       next: { revalidate: 300 },
+      signal: AbortSignal.timeout(6000),
     });
     if (!r.ok) return [];
     const d = (await r.json()) as { messages?: Array<Record<string, unknown>> };
