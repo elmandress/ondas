@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 
-const HAS_GTFS = fs.existsSync(path.join(process.cwd(), "data", "gtfs.db"));
+const HAS_GTFS = fs.existsSync(path.join(process.cwd(), "data", "gtfs-v2.json"));
 const HAS_STOPS = fs.existsSync(path.join(process.cwd(), "public", "stops.json"));
 
 describe.skipIf(!HAS_GTFS || !HAS_STOPS)("route-planner-gtfs", async () => {

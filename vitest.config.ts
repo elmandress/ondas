@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
+    // GTFS tests open SQLite cold on first run — 5s default is too tight.
+    testTimeout: 20000,
   },
   resolve: {
     alias: {
