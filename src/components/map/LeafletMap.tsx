@@ -257,15 +257,18 @@ export default function LeafletMap({
         resizeObsRef.current.observe(mapRef.current);
       }
 
-      // Exponer API imperativa al padre
+      // Exponer API imperativa al padre. Con prefers-reduced-motion saltamos
+      // las animaciones de vuelo/zoom (framer-motion ya lo respeta; Leaflet no solo).
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
       onReadyRef.current?.({
         flyTo: (lat, lon, zoom = 16) => {
-          map.flyTo([lat, lon], zoom, { duration: 0.8 });
+          if (reducedMotion) map.setView([lat, lon], zoom, { animate: false });
+          else map.flyTo([lat, lon], zoom, { duration: 0.8 });
         },
         fitBounds: (coords, padding = 60) => {
           if (!coords.length) return;
           const bounds = L.latLngBounds(coords);
-          map.fitBounds(bounds, { padding: [padding, padding], maxZoom: 16 });
+          map.fitBounds(bounds, { padding: [padding, padding], maxZoom: 16, animate: !reducedMotion });
         },
       });
     });

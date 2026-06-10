@@ -1,8 +1,17 @@
 "use client";
 
+/**
+ * Pestaña Mapa — ORQUESTADOR. Mantiene el estado interconectado (parada,
+ * vehículo seguido, filtro de línea, ruta/lugar globales, pin de long-press)
+ * y la lógica de merge de fuentes en vivo; la UI de cada panel vive en
+ * ./panels/* (StopPanel, RoutePanel, PlacePanel, VehicleCard, PinDropPopup).
+ *
+ * Los paneles son mutuamente excluyentes — el AnimatePresence de cada uno
+ * acá es la clave de esa coordinación. No mover esa lógica a los hijos.
+ */
 import dynamic from "next/dynamic";
 import { useState, useEffect, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { useVehicles } from "@/hooks/useVehicles";
 import { useInteriorBuses } from "@/hooks/useInteriorBuses";
 import { useLocation } from "@/hooks/useLocation";
@@ -15,17 +24,15 @@ import { loadRoutesCache, type RoutesIndex } from "@/lib/routes-cache";
 import { filterUpstreamBuses } from "@/lib/bus-direction";
 import { useSelectedPlace, setSelectedPlace } from "@/lib/selected-place";
 import { useSelectedRoute, setSelectedRoute } from "@/lib/selected-route";
-import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
 import { useEnrichedRouteLegs } from "@/hooks/useEnrichedRouteLegs";
-import { setRouteInput } from "@/lib/route-input";
-import { setActiveTab } from "@/lib/active-tab";
 import { speak } from "@/lib/voice-alerts";
 import { haptic } from "@/lib/haptics";
-import LineBadge from "@/components/ui/LineBadge";
-import ArrivalRow from "@/components/ui/ArrivalRow";
-import { Icons } from "@/components/brand/Icons";
-import EmptyState from "@/components/ui/EmptyState";
 import LineDetailSheet from "@/components/home/LineDetailSheet";
+import StopPanel from "@/components/map/panels/StopPanel";
+import RoutePanel from "@/components/map/panels/RoutePanel";
+import PlacePanel from "@/components/map/panels/PlacePanel";
+import VehicleCard from "@/components/map/panels/VehicleCard";
+import PinDropPopup from "@/components/map/panels/PinDropPopup";
 
 const LeafletMap = dynamic(() => import("@/components/map/LeafletMap"), {
   ssr: false,
@@ -132,6 +139,7 @@ export default function MapScreen() {
 
   const selectedStop = useMemo(
     () => (selectedStopId ? STOPS_DATASET.find((s) => s.stopId === selectedStopId) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedStopId, stopsReady]
   );
 
@@ -184,17 +192,6 @@ export default function MapScreen() {
       : null,
     [selectedRoute]
   );
-
-  // Paradas en radio 400m del lugar (FR-3.8)
-  const placeNearbyStops = useMemo<{ stop: BusStop; distanceM: number }[]>(() => {
-    if (!selectedPlace || !stopsReady) return [];
-    const RADIUS_M = 400;
-    return STOPS_DATASET
-      .map((s) => ({ stop: s, distanceM: distanceTo(selectedPlace.lat, selectedPlace.lon, s.stopLat, s.stopLon) }))
-      .filter((x) => x.distanceM <= RADIUS_M)
-      .sort((a, b) => a.distanceM - b.distanceM)
-      .slice(0, 8);
-  }, [selectedPlace, stopsReady]);
 
   // Cuál línea(s) pedimos al hook de buses
   // - Sin parada: nada (devuelve [])
@@ -287,9 +284,6 @@ export default function MapScreen() {
     return all;
   }, [filteredVehicles, arrivals, filterLine, selectedVehicleId, interiorBuses]);
 
-  // Paradas que se renderizan en el mapa
-  // - Si hay parada seleccionada: solo esa (limpio, no satura)
-  // - Si no: paradas del viewport
   // Paradas a renderizar en el mapa:
   //  - Si hay parada seleccionada → solo esa (limpio)
   //  - Si hay ruta planificada o lugar buscado → NINGUNA (saturan visualmente,
@@ -301,9 +295,20 @@ export default function MapScreen() {
     return visibleStops;
   }, [selectedStop, selectedRoute, selectedPlace, visibleStops]);
 
-  const selectedVehicle = selectedVehicleId
+  // FIX MAP-2: arrivals y vehicles refrescan en momentos distintos → el bus elegido
+  // puede desaparecer del merge por un ciclo (GPS stale, fuente que no lo trajo) y
+  // la card moría ("toco el bus y no carga"). Retenemos la última posición conocida
+  // mientras el seguimiento siga activo; cuando vuelve el dato fresco, se actualiza.
+  const liveVehicle = selectedVehicleId
     ? vehiclesForMap.find((v) => v.vehicleId === selectedVehicleId)
     : undefined;
+  const [lastVehicle, setLastVehicle] = useState<VehiclePosition | null>(null);
+  useEffect(() => {
+    if (liveVehicle) setLastVehicle(liveVehicle);
+    else if (!selectedVehicleId) setLastVehicle(null);
+  }, [liveVehicle, selectedVehicleId]);
+  const selectedVehicle: VehiclePosition | undefined =
+    liveVehicle ?? (lastVehicle && lastVehicle.vehicleId === selectedVehicleId ? lastVehicle : undefined);
 
   // Seguimiento del bus elegido hacia la parada: ETA + paradas restantes (dato GTFS).
   // La cuenta regresiva de paradas ("faltan 3 paradas") es la feature estrella de
@@ -342,6 +347,16 @@ export default function MapScreen() {
     setSelectedPlace(null);
     setSelectedRoute(null);
   }
+
+  function selectStop(id: string) {
+    setSelectedStopId(id);
+    setSelectedVehicleId(null);
+    setFilterLine(null);
+  }
+
+  const userDistanceM = selectedStop && location && locationIsReal
+    ? distanceTo(location.lat, location.lon, selectedStop.stopLat, selectedStop.stopLon)
+    : null;
 
   return (
     <div className="map-fullbleed flex flex-col h-full relative" style={{ background: "var(--bg)" }}>
@@ -382,7 +397,7 @@ export default function MapScreen() {
                 </>
               )}
             </div>
-            {(selectedStop || selectedRoute || selectedPlace) && (
+            {(selectedRoute || selectedPlace) && (
               <button
                 onClick={clearSelections}
                 className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center"
@@ -395,8 +410,6 @@ export default function MapScreen() {
             )}
           </div>
         </div>
-
-        {/* El filtro de líneas ahora vive DENTRO de la hoja de parada (menos chrome flotante). */}
       </div>
       )}
 
@@ -417,11 +430,7 @@ export default function MapScreen() {
           }
           routeLegs={routeLegsForMap}
           routeEndpoints={routeEndpointsForMap}
-          onStopSelect={(id) => {
-            setSelectedStopId(id);
-            setSelectedVehicleId(null);
-            setFilterLine(null);
-          }}
+          onStopSelect={selectStop}
           onVehicleSelect={setSelectedVehicleId}
           onMapClick={() => setSelectedVehicleId(null)}
           onMapLongPress={(lat, lon) => setPinDrop({ lat, lon })}
@@ -433,422 +442,73 @@ export default function MapScreen() {
       {/* ── PANEL DE PARADA ── */}
       <AnimatePresence>
         {selectedStop && !selectedVehicleId && (
-          <div className="map-stop-panel absolute bottom-0 left-0 right-0 z-[1001]">
-            <div className="map-stop-panel-inner bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
-              <div className="map-panel-handle flex justify-center pt-2.5 pb-1.5">
-                <div className="w-9 h-[3px] rounded-full bg-white/15" />
-              </div>
-
-              <div className="px-4 pb-2 flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-amber-400">Parada #{selectedStop.stopCode}</p>
-                  <p className="text-[16px] font-bold text-white leading-tight mt-1 truncate">{selectedStop.stopName}</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {location && locationIsReal && (
-                      <>{distanceTo(location.lat, location.lon, selectedStop.stopLat, selectedStop.stopLon)}m · </>
-                    )}
-                    {realLines.length || "—"} {realLines.length === 1 ? "línea" : "líneas"}
-                    {arrivalsOffline && <span className="text-amber-600"> · sin conexión</span>}
-                    {!arrivalsOffline && lastUpdated && (
-                      <span className={arrivalsFetchFailed ? "text-amber-700" : "text-slate-700"}>
-                        {" · "}{arrivalsFetchFailed ? "Error " : ""}{new Date(lastUpdated).toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <button onClick={refetch} className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center flex-shrink-0" aria-label="Refrescar">
-                  <svg className={`w-3.5 h-3.5 text-slate-400 ${arrivalsLoading ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                    <polyline points="23 4 23 10 17 10" />
-                    <polyline points="1 20 1 14 7 14" />
-                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-                  </svg>
-                </button>
-                <button onClick={clearSelections} className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center flex-shrink-0" aria-label="Cerrar">
-                  <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Filtro de líneas DENTRO de la hoja (antes flotaba sobre el mapa) */}
-              {realLines.length > 1 && (
-                <div className="px-4 pb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
-                  <button
-                    onClick={() => setFilterLine(null)}
-                    className="flex-shrink-0 px-3 h-8 rounded-lg text-[12px] font-bold flex items-center"
-                    style={!filterLine ? { background: "var(--accent)", color: "#1a1206" } : { background: "var(--surface)", color: "var(--text-2)", border: "1px solid var(--border-strong)" }}
-                  >
-                    Todas
-                  </button>
-                  {realLines.slice(0, 16).map((l) => {
-                    const on = filterLine === l;
-                    return (
-                      <button
-                        key={l}
-                        onClick={() => setFilterLine(on ? null : l)}
-                        className="flex-shrink-0 px-3 h-8 rounded-lg text-[12px] font-bold flex items-center"
-                        style={on ? { background: "var(--accent)", color: "#1a1206" } : { background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border-strong)" }}
-                      >
-                        {l}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="map-panel-scroll px-4 max-h-[44vh] overflow-y-auto"
-                   style={{ paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }}>
-                {arrivalsLoading && !arrivals.length ? (
-                  [1, 2, 3, 4].map((i) => <div key={i} className="h-14 skeleton rounded-xl" />)
-                ) : arrivals.length === 0 ? (
-                  arrivalsOffline ? (
-                    <EmptyState emoji="📡" title="Sin conexión" sub="No hay internet ahora. Cuando vuelva, actualizamos solos." onRetry={refetch} />
-                  ) : arrivalsFetchFailed ? (
-                    <EmptyState emoji="💤" title="Los servidores del STM están durmiendo" sub="No pudimos traer las llegadas ahora. Probá de nuevo." onRetry={refetch} />
-                  ) : (
-                    <EmptyState icon={<Icons.Bus size={28} />} title="Sin buses próximamente" sub="No hay servicios en los próximos minutos." />
-                  )
-                ) : (
-                  arrivals.map((a, i) => {
-                    const liveBus = a.vehicleId ? vehiclesForMap.find((v) => v.vehicleId === a.vehicleId) : undefined;
-                    // Seguir funciona para CUALQUIER bus en vivo usando su propia posición
-                    // (no depende de que esté en filteredVehicles → trackeable en toda parada).
-                    const followLat = liveBus?.lat ?? a.lat;
-                    const followLon = liveBus?.lon ?? a.lon;
-                    const canFollow = a.realtime && typeof followLat === "number" && typeof followLon === "number" && !!mapApi;
-                    return (
-                      <ArrivalRow
-                        key={`${a.lineId}-${a.vehicleId || i}-${a.eta}`}
-                        arrival={a}
-                        stopId={selectedStopId ?? undefined}
-                        onLinePress={(line, destination, company) => setLineDetail({ line, destination, company })}
-                        following={!!a.vehicleId && selectedVehicleId === a.vehicleId}
-                        onFollow={canFollow ? () => {
-                          haptic(); // confirmación táctil sutil (premium, sin ruido visual)
-                          mapApi!.flyTo(followLat!, followLon!, 17);
-                          if (a.vehicleId) setSelectedVehicleId(a.vehicleId);
-                        } : undefined}
-                      />
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+          <StopPanel
+            stop={selectedStop}
+            userDistanceM={userDistanceM}
+            realLines={realLines}
+            filterLine={filterLine}
+            onFilterLine={setFilterLine}
+            arrivals={arrivals}
+            arrivalsLoading={arrivalsLoading}
+            lastUpdated={lastUpdated}
+            arrivalsFetchFailed={arrivalsFetchFailed}
+            arrivalsOffline={arrivalsOffline}
+            refetch={refetch}
+            vehiclesForMap={vehiclesForMap}
+            selectedVehicleId={selectedVehicleId}
+            onFollowBus={mapApi ? (lat, lon, vehicleId) => {
+              haptic(); // confirmación táctil sutil (premium, sin ruido visual)
+              mapApi.flyTo(lat, lon, 17);
+              if (vehicleId) setSelectedVehicleId(vehicleId);
+            } : null}
+            onLinePress={(line, destination, company) => setLineDetail({ line, destination, company })}
+            onClose={clearSelections}
+          />
         )}
       </AnimatePresence>
 
       {/* ── PANEL DE RUTA PLANIFICADA (FR-4) ── */}
       <AnimatePresence>
         {selectedRoute && !selectedStop && (
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 320 }}
-            className="map-overlay-card absolute bottom-0 left-0 right-0 z-[1001]"
-            style={{ maxHeight: "70vh" }}
-          >
-            <div
-              className="bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden flex flex-col"
-              style={{ maxHeight: "70vh", boxShadow: "var(--shadow-sheet)" }}
-            >
-              <div className="flex justify-center pt-2.5 pb-1.5">
-                <div className="w-9 h-[3px] rounded-full bg-white/15" />
-              </div>
-
-              <div className="px-4 pb-3 flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
-                     style={{ background: "rgba(240,160,32,0.15)", border: "1px solid rgba(240,160,32,0.3)" }}>
-                  <svg className="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <polygon points="3 11 22 2 13 21 11 13 3 11"/>
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-400">Ruta</p>
-                  <p className="text-sm text-white font-bold truncate">
-                    {selectedRoute.origin.name || "Origen"} → {selectedRoute.destination.name || "Destino"}
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    {Math.max(1, Math.round(selectedRoute.route.totalSeconds / 60))} min ·{" "}
-                    {selectedRoute.route.numTransfers === 0 ? "directa" : `${selectedRoute.route.numTransfers} transbordo${selectedRoute.route.numTransfers > 1 ? "s" : ""}`}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelectedRoute(null)}
-                  className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center flex-shrink-0"
-                  aria-label="Cerrar ruta"
-                >
-                  <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="px-4 overflow-y-auto flex-1 min-h-0"
-                   style={{ paddingBottom: "calc(24px + env(safe-area-inset-bottom))" }}>
-                {selectedRoute.route.legs.map((leg, i) => {
-                  const minutes = Math.max(1, Math.round(leg.durationS / 60));
-                  if (leg.type === "walk") {
-                    const isLast = i === selectedRoute.route.legs.length - 1;
-                    return (
-                      <div key={i} className="flex items-center gap-3 py-3.5" style={{ borderBottom: "1px solid var(--border)" }}>
-                        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "var(--surface)", color: "var(--text-2)" }}>
-                          <Icons.Walk size={17} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[15px] font-semibold text-white">Caminá {minutes} min</p>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {leg.distanceM}m {isLast ? "hasta el destino" : leg.toStopName ? `hasta ${leg.toStopName}` : "hasta la parada"}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <BusLegRow
-                      key={i}
-                      lines={leg.lines || []}
-                      headsign={leg.headsign || ""}
-                      fromStopId={leg.fromStopId}
-                      fromStopName={leg.fromStopName}
-                      numStops={leg.numStops}
-                      minutes={minutes}
-                      onTapStop={(id) => setSelectedStopId(id)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
+          <RoutePanel
+            selectedRoute={selectedRoute}
+            onClose={() => setSelectedRoute(null)}
+            onTapStop={(id) => setSelectedStopId(id)}
+          />
         )}
       </AnimatePresence>
 
       {/* ── PANEL DE LUGAR BUSCADO (FR-3.8) ── */}
-      {/* Aparece cuando el usuario selecciona un lugar desde el buscador.
-          Muestra el lugar pineado en el mapa y la lista de paradas cercanas con sus líneas. */}
       <AnimatePresence>
         {selectedPlace && !selectedStop && !selectedRoute && (
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 320 }}
-            className="map-overlay-card absolute bottom-0 left-0 right-0 z-[1001]"
-          >
-            <div className="bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
-              <div className="flex justify-center pt-2.5 pb-1.5">
-                <div className="w-9 h-[3px] rounded-full bg-white/15" />
-              </div>
-
-              <div className="px-4 pb-3 flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl"
-                     style={{ background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)" }}>
-                  {selectedPlace.icon || "📍"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-red-400">Lugar</p>
-                  <p className="text-sm text-white font-bold truncate">{selectedPlace.name}</p>
-                  {selectedPlace.fullName && (
-                    <p className="text-[10px] text-slate-600 truncate">{selectedPlace.fullName.split(",").slice(0, 2).join(",")}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => setSelectedPlace(null)}
-                  className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center flex-shrink-0"
-                  aria-label="Cerrar lugar"
-                >
-                  <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="px-4 pb-5 max-h-[44vh] overflow-y-auto">
-                {placeNearbyStops.length === 0 ? (
-                  <div className="py-6 text-center">
-                    <p className="text-slate-500 text-sm">Sin paradas a menos de 400m</p>
-                    <p className="text-slate-700 text-xs mt-1">Probá un lugar más cercano al centro</p>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
-                      Paradas cercanas ({placeNearbyStops.length})
-                    </p>
-                    <div className="space-y-1.5">
-                      {placeNearbyStops.map(({ stop, distanceM }, i) => (
-                        <motion.button
-                          key={stop.stopId}
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.03 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => {
-                            setSelectedStopId(stop.stopId);
-                            setSelectedVehicleId(null);
-                            setFilterLine(null);
-                          }}
-                          className="w-full text-left bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-xl px-3 py-2.5 flex items-center gap-3"
-                        >
-                          <div className="w-9 h-9 rounded-lg bg-white/[0.06] flex items-center justify-center flex-shrink-0">
-                            <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                              <rect x="2" y="6" width="20" height="12" rx="2"/>
-                              <path d="M22 10H2"/>
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white truncate">{stop.stopName}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] text-amber-400 font-medium">{distanceM}m</span>
-                              <span className="text-[10px] text-slate-700">·</span>
-                              <span className="text-[10px] text-slate-500">#{stop.stopCode}</span>
-                              <div className="flex gap-1 ml-1">
-                                {stop.lines.slice(0, 5).map((l) => (
-                                  <span key={l} className="text-[9px] font-bold text-slate-300 px-1 py-0 rounded bg-white/[0.06]">{l}</span>
-                                ))}
-                                {stop.lines.length > 5 && (
-                                  <span className="text-[9px] text-slate-700">+{stop.lines.length - 5}</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <svg className="w-4 h-4 text-slate-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                            <polyline points="9 18 15 12 9 6"/>
-                          </svg>
-                        </motion.button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </motion.div>
+          <PlacePanel
+            place={selectedPlace}
+            stopsReady={stopsReady}
+            onClose={() => setSelectedPlace(null)}
+            onSelectStop={selectStop}
+          />
         )}
       </AnimatePresence>
 
       {/* ── INFO VEHÍCULO SELECCIONADO (sobre el panel de parada si hay) ── */}
       <AnimatePresence>
         {selectedVehicle && (
-          <motion.div
-            initial={{ y: 80, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 80, opacity: 0 }}
-            transition={{ type: "spring", damping: 26, stiffness: 280 }}
-            className={`map-overlay-card map-vehicle-card absolute left-3 right-3 z-[1002] ${selectedStop ? "above-panel" : ""}`}
-            style={{ bottom: "calc(20px + env(safe-area-inset-bottom))" }}
-          >
-            {/* Alerta "prepárate / ¡bajate!": el bus seguido está por llegar a tu parada.
-                Combina paradas restantes + minutos (patrón Amap "a 3 paradas · ~6 min"):
-                dos referencias reducen la ansiedad de "¿cuánto falta?". Cae a lo que haya. */}
-            {followAlert && (
-              <div className={`follow-alert ${followAlert}`}>
-                <Icons.Bus size={16} />
-                <span>{followAlert === "now"
-                  ? "¡Está llegando! Salí a la parada ahora"
-                  : (() => {
-                      const stopsTxt = followedStops != null && followedStops > 0
-                        ? `Faltan ${followedStops} parada${followedStops > 1 ? "s" : ""}` : null;
-                      const minTxt = followedEta != null ? `~${followedEta} min` : null;
-                      const both = [stopsTxt, minTxt].filter(Boolean).join(" · ");
-                      return both ? `${both} — prepárate` : "Tu bus se acerca — prepárate";
-                    })()}</span>
-              </div>
-            )}
-            <div className="bg-[#0a0f1c]/95 backdrop-blur-xl p-3 border border-amber-500/30" style={{ borderRadius: "var(--r-card)", boxShadow: "var(--shadow-card)" }}>
-              <div className="flex items-center justify-between gap-2">
-                {/* Tocar el bus/badge → abre el MISMO detalle de línea que en Inicio:
-                    recorrido completo, paradas, tiempos, empresa, web, wifi. */}
-                <button
-                  className="flex items-center gap-3 min-w-0 flex-1 text-left"
-                  onClick={() => setLineDetail({ line: selectedVehicle.lineName, destination: selectedVehicle.destinoDesc, company: selectedVehicle.company })}
-                >
-                  <LineBadge num={selectedVehicle.lineName} size="md" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white font-bold text-sm truncate">{selectedVehicle.destinoDesc || `Línea ${selectedVehicle.lineName}`}</p>
-                    {/* Datos ricos del GPS del interior (próxima parada / atraso / ocupación). */}
-                    {(selectedVehicle.nextStop || selectedVehicle.delayMin != null || selectedVehicle.occupancy != null) && (
-                      <p className="text-[11px] truncate mt-0.5">
-                        {selectedVehicle.nextStop && <span className="text-slate-300">→ {selectedVehicle.nextStop}</span>}
-                        {selectedVehicle.delayMin != null && Math.abs(selectedVehicle.delayMin) >= 1 && (
-                          <span className={selectedVehicle.delayMin > 0 ? "text-amber-400" : "text-emerald-400"}>
-                            {" · "}{selectedVehicle.delayMin > 0 ? `${selectedVehicle.delayMin} min tarde` : `${-selectedVehicle.delayMin} min adelantado`}
-                          </span>
-                        )}
-                        {selectedVehicle.occupancy != null && selectedVehicle.occupancy > 0 && (
-                          <span className="text-slate-400">{" · "}~{selectedVehicle.occupancy} pasajeros</span>
-                        )}
-                      </p>
-                    )}
-                    <p className="text-slate-500 text-[11px] truncate">
-                      Bus #{selectedVehicle.vehicleId}
-                      {selectedVehicle.speed > 0 && <> · {Math.round(selectedVehicle.speed)} km/h</>}
-                      <span className="text-amber-400 font-semibold"> · Ver recorrido ›</span>
-                    </p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setSelectedVehicleId(null)}
-                  className="w-8 h-8 rounded-xl bg-white/[0.06] flex items-center justify-center flex-shrink-0"
-                  aria-label="Cerrar"
-                >
-                  <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </motion.div>
+          <VehicleCard
+            vehicle={selectedVehicle}
+            followAlert={followAlert}
+            followedStops={followedStops}
+            followedEta={followedEta}
+            abovePanel={!!selectedStop}
+            onOpenLineDetail={(line, destination, company) => setLineDetail({ line, destination, company })}
+            onClose={() => setSelectedVehicleId(null)}
+          />
         )}
       </AnimatePresence>
 
       {/* ── POPUP LONG-PRESS (FR-4.1): elegir punto como origen/destino ── */}
       <AnimatePresence>
         {pinDrop && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="absolute left-3 right-3 z-[1005]"
-            style={{ top: "calc(env(safe-area-inset-top) + 70px)" }}
-          >
-            <div className="bg-[#0a0f1c]/97 backdrop-blur-xl p-3 border border-amber-500/30" style={{ borderRadius: "var(--r-card)", boxShadow: "var(--shadow-card)" }}>
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-400 mb-1">Punto seleccionado</p>
-              <p className="text-[12px] text-white font-semibold mb-0.5 truncate">
-                {pinName ?? "Buscando dirección…"}
-              </p>
-              <p className="text-[10px] text-slate-500 mb-2.5">
-                {pinDrop.lat.toFixed(4)}, {pinDrop.lon.toFixed(4)}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setRouteInput({ slot: "from", point: { lat: pinDrop.lat, lon: pinDrop.lon, name: pinName ?? "Punto en el mapa" } });
-                    setPinDrop(null);
-                    setActiveTab("route");
-                  }}
-                  className="flex-1 py-2 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30"
-                >
-                  Desde aquí
-                </button>
-                <button
-                  onClick={() => {
-                    setRouteInput({ slot: "to", point: { lat: pinDrop.lat, lon: pinDrop.lon, name: pinName ?? "Punto en el mapa" } });
-                    setPinDrop(null);
-                    setActiveTab("route");
-                  }}
-                  className="flex-1 py-2 rounded-xl text-xs font-bold text-red-300 bg-red-500/15 border border-red-500/30"
-                >
-                  Hasta aquí
-                </button>
-                <button
-                  onClick={() => setPinDrop(null)}
-                  className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 bg-white/[0.05]"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-          </motion.div>
+          <PinDropPopup pin={pinDrop} pinName={pinName} onClose={() => setPinDrop(null)} />
         )}
       </AnimatePresence>
 
@@ -891,66 +551,5 @@ export default function MapScreen() {
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-// ─── BusLegRow ─────────────────────────────────────────────────────
-// Fila del panel de ruta para un leg de bus, con ETA en vivo (FR-4.4).
-function BusLegRow({
-  lines, headsign, fromStopId, fromStopName, numStops, minutes, onTapStop,
-}: {
-  lines: string[];
-  headsign: string;
-  fromStopId?: string;
-  fromStopName?: string;
-  numStops?: number;
-  minutes: number;
-  onTapStop: (id: string) => void;
-}) {
-  const primary = lines[0] || "?";
-  const { etaMin, realtime, loading } = useNextArrivalForLine(fromStopId, primary);
-
-  // "Tomá el 64, 76 o 187" — múltiples alternativas como en Rutas.
-  const linesLabel = lines.length === 0
-    ? primary
-    : lines.length === 1
-      ? lines[0]
-      : `${lines.slice(0, -1).join(", ")} o ${lines[lines.length - 1]}`;
-  const dest = headsign.split(" ").slice(0, 4).join(" ");
-
-  return (
-    <button
-      onClick={() => fromStopId && onTapStop(fromStopId)}
-      className="w-full text-left flex items-center gap-3 py-3.5"
-      style={{ borderBottom: "1px solid var(--border)" }}
-    >
-      <div className="flex items-center gap-1.5 flex-shrink-0">
-        {(lines.length ? lines : [primary]).slice(0, 3).map((l) => (
-          <LineBadge key={l} num={l} size="sm" />
-        ))}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[15px] font-semibold text-white truncate">
-          Tomá el {linesLabel}{dest ? <span className="text-slate-400 font-normal"> · {dest}</span> : null}
-        </p>
-        <p className="text-xs text-slate-500 mt-0.5 truncate">
-          {fromStopName} · {numStops} paradas · {minutes} min
-        </p>
-        {/* ETA EN VIVO */}
-        {loading ? (
-          <p className="text-[11px] text-slate-600 mt-1">Buscando próximo…</p>
-        ) : etaMin !== null ? (
-          <p className={`text-[11px] font-semibold mt-1 ${etaMin <= 3 ? "text-emerald-400" : "text-slate-300"}`}>
-            {realtime ? "● " : "○ "}
-            Próximo en {etaMin === 0 ? "<1" : etaMin} min{realtime ? "" : " (horario)"}
-          </p>
-        ) : (
-          <p className="text-[11px] text-slate-600 mt-1">Sin próximos por ahora</p>
-        )}
-      </div>
-      <svg className="w-4 h-4 text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
-    </button>
   );
 }

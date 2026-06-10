@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { haversineMeters as distM } from "@/lib/geo";
 
 export interface Location {
   lat: number;
@@ -13,16 +14,6 @@ export interface Location {
 export type LocationStatus = "pending" | "ok" | "denied" | "unavailable" | "timeout";
 
 const MVD_CENTER = { lat: -34.9058, lon: -56.1882, accuracy: 5000 };
-
-// Distancia en metros entre dos coords (haversine).
-function distM(aLat: number, aLon: number, bLat: number, bLon: number): number {
-  const R = 6371000;
-  const dLat = ((bLat - aLat) * Math.PI) / 180;
-  const dLon = ((bLon - aLon) * Math.PI) / 180;
-  const x = Math.sin(dLat / 2) ** 2 +
-    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
 
 // Umbral de movimiento real: watchPosition emite muchísimos updates con micro-drift
 // del GPS aunque estés quieto. Si propagáramos cada uno, la home recalcula la parada

@@ -36,7 +36,7 @@
 | 13 | Experiencia parada: paradas equivalentes + agrupar destinos | P2 | bajo | ⏳ |
 | 8 | Decisión dark-first vs pulir tema light | P2 | medio | ⏳ |
 | 9 | Estados de error consistentes + "datos de hace X" | P2 | bajo | ⏳ |
-| 10 | Partir monolitos RouteScreen/MapScreen | P3 | medio | ⏳ |
+| 10 | Partir monolitos RouteScreen/MapScreen | P3 | medio | ✅ hecho R51 (Fable) |
 
 ### Hallazgos de la auditoría visual R40 (defectos reales)
 - ✅ Nombre de parada se partía en 4 líneas (medio sheet desperdiciado) → line-clamp 2.
@@ -171,6 +171,21 @@
 - **Impacto:** **todo el SEO vale 0 sin esto.** **Prioridad P0.**
 
 ---
+
+## 🛡️ QA R51 (2026-06-10) — Fable 5: monolitos partidos + MAP-1/MAP-2 + accesibilidad
+- **PG-1 + PG-2 ejecutados**: MapScreen (957→~490) y RouteScreen (1498→~430) partidos en orquestador + componentes presentacionales. Comportamiento verificado idéntico (E2E smoke Playwright: mapa monta, búsqueda 3 sugerencias, 4 rutas a Tres Cruces, 0 errores JS).
+- **MAP-2 RESUELTO** (causa raíz confirmada): arrivals y vehicles refrescan desfasados → el bus seguido desaparecía del merge un ciclo y la card moría. Fix: retener última posición conocida mientras siga el seguimiento.
+- **MAP-1 RESUELTO** (hardening): layers de tabs inactivos con `visibility:hidden` además de `opacity:0` (capas compuestas de Leaflet podían quedar pintadas sobre el mapa real).
+- **PG-4 primera pasada**: live regions `role="status"` (StopPanel + StopArrivalSheet), sr-only "llega en X minutos" (ArrivalRow), aria-label contextual (LeaveNowHero), Leaflet respeta `prefers-reduced-motion`. Falta: contraste AA light, textos 11-12px, lector real.
+- **DT-9 + QW-4**: haversine 5 copias → `lib/geo.ts`; unused var fuera. `classifyArea` extraída a `lib/route-area.ts` (pura) con **9 tests nuevos**.
+- **Estado QA**: tsc 0 · **151/151 tests** · build OK · ESLint 57 warnings (antes 59), 0 errores.
+- **Deploy observado**: Netlify conectado (commits de redeploy) pero `cuando.uy` no resuelve — falta dominio/DNS/Search Console. Confirmar URL con el usuario y verificar SCH-1 en prod.
+
+## 🛡️ QA R50 (2026-06-10) — auditoría total + FABLE.md
+- **Auditoría total** realizada por Claude Sonnet 4.6 — ver [FABLE.md](FABLE.md) para el documento maestro completo.
+- **Estado QA verificado**: TypeScript 0 errores · ESLint 59 warnings 0 errores · 142/142 tests verdes.
+- **Nuevos hallazgos**: DT-9 (haversine duplicada en arrivals/route.ts + lib/utils.ts) — riesgo bajo, refactor candidato.
+- **Ideas nuevas documentadas en FABLE.md §11**: "Modo frío", modo terminal/quiosco, compartir countdown real.
 
 ## 🛡️ QA R49 (2026-06-04) — testabilidad + cobertura (degradación + adversarial)
 - **Mejora**: extraída la validación de coords de `route/plan` (estaba duplicada e inconsistente: `inMvd` sin finitud + bounds inline que dejaban pasar NaN) a `src/lib/mvd-area.ts` → `isValidMvdCoord` (pura, `Number.isFinite` + bounds, usada también en waypoints). Menos código, una sola fuente, testeable.

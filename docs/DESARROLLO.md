@@ -10,7 +10,7 @@ npm run build    # build de producción (genera SSG: ~240 /linea, /barrio, etc.)
 npm start        # servir el build (prod local)
 npx tsc --noEmit # typecheck
 npx eslint src/  # lint
-npx vitest run   # tests (89)
+npx vitest run   # tests (151)
 ```
 > ⚠️ El proyecto vive en `D:\comoire\ondas` (NO en `D:\comoire`, que tiene otro repo). Todo se corre parado ahí.
 
@@ -37,7 +37,7 @@ La estrategia es **PWA + SEO + web** (Play Store documentada como objetivo futur
 - Para activar **crowdsourcing de ocupación**: aplicar la tabla `occupancy_reports` del schema en el SQL editor de Supabase (el código degrada sin ella).
 - La app corre **sin Supabase** (favoritos solo en localStorage; sin sync ni analytics).
 
-## Testing (89 tests)
+## Testing (151 tests)
 - **Unit/lógica** (`tests/*.test.ts`, vitest): ruteo, horarios, seguridad-zonas, trip-safety, fares, intersection.
 - **Seguridad**: `jsonld.test.ts` (anti-XSS del JSON-LD).
 - **Validación adversarial**: `mvd-area.test.ts` (NaN/Infinity/null/fuera de área/invertidos).

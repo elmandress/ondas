@@ -2,7 +2,7 @@
 
 > Fuente de verdad **técnica**. Para QA/riesgos/historial ver [AUDITORIA-MAESTRA.md](AUDITORIA-MAESTRA.md).
 > Para deploy/comandos/testing ver [DESARROLLO.md](DESARROLLO.md).
-> Última actualización: 2026-06-04.
+> Última actualización: 2026-06-10.
 
 ## 1. Qué es y qué resuelve
 PWA mobile-first de transporte público de Uruguay (Montevideo STM + interior). Responde la
@@ -16,7 +16,7 @@ privacidad (sin trackers de terceros) y SEO de intención (páginas por línea/p
 - **Leaflet** (mapa, dynamic `ssr:false`) sobre tiles **CARTO**.
 - **framer-motion** (sheets/transiciones) · **Supabase** (auth + favoritos sync + analytics, degradable).
 - **better-sqlite3** solo en build/scripts (NO en runtime serverless — ver §5).
-- **vitest** (89 tests).
+- **vitest** (151 tests, 23 archivos).
 - Deploy: **Netlify** (OpenNext). Ver DESARROLLO.md.
 
 ## 3. Estructura
@@ -29,7 +29,11 @@ src/
     sitemap.ts, robots.ts
     api/                  → route handlers (runtime nodejs)
   components/
-    AppShell · home/ · map/ · route/ · onboarding/ · ui/ · brand/
+    AppShell · home/ · onboarding/ · ui/ · brand/
+    map/                 → MapScreen (orquestador) + LeafletMap + panels/
+                           {StopPanel, RoutePanel, PlacePanel, VehicleCard, PinDropPopup}
+    route/               → RouteScreen (orquestador) + RouteInputs + PlaceSearch +
+                           GtfsRouteCard + HeuristicRouteCard + RouteStates + ServiceAlertsNote
   hooks/                 → useArrivals, useVehicles, useLocation, useServiceAlerts…
   lib/                   → lógica pura/datos (ver §6)
 data/                    → datasets (algunos bundled a las functions, otros solo build)
@@ -67,7 +71,8 @@ andaban en prod pero **las rutas no**. Solución: `scripts/export-gtfs-json.mjs`
 - `trip-safety.ts` — seguridad contextual nocturna (hora granular, avenidas, taxi por tramo). Puro, testeado.
 - `fare.ts` — tarifas (efectivo primero); `occupancy.ts` — crowdsourcing ocupación.
 - `jsonld.ts` — serialización segura de JSON-LD (anti-XSS, §AUDITORIA).
-- `geo.ts` — haversine unificado.
+- `geo.ts` — haversine unificado (única copia; R51 eliminó las 5 locales restantes).
+- `route-area.ts` — clasificación de cobertura/interdept del planificador (pura, testeada).
 
 ## 7. Problemas técnicos resueltos (con datos, no suposiciones)
 - **181/183 y continuaciones de línea**: una línea que sigue con otro nº/destino se trataba como

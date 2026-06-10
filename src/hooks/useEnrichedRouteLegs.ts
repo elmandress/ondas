@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import type { PlannedRouteDto, RouteLegDto } from "@/hooks/useRouteplanner";
 import { loadRoutesCache, loadLineShapes, type RoutesIndex } from "@/lib/routes-cache";
+import { haversineMeters } from "@/lib/geo";
 // line-shapes.json (línea → cod_variantes con shape) ahora vive en routes-cache.ts,
 // compartido con el recorrido del bus del mapa. Necesario porque el variantId del
 // motor ("181-0-1") no es la key de routes.json (cod_variante numérico "8389").
@@ -30,14 +31,9 @@ function keyFor(from: [number, number], to: [number, number]): string {
  * actual solo devuelve steps — pero OSRM público devuelve también geometry.
  * Hacemos fetch directo a OSRM aquí para tener las coords del path.
  */
-// Distancia haversine entre 2 puntos (metros)
+// Distancia haversine entre 2 puntos [lat, lon] (metros)
 function haversineM(a: [number, number], b: [number, number]): number {
-  const R = 6371000;
-  const dLat = ((b[0] - a[0]) * Math.PI) / 180;
-  const dLon = ((b[1] - a[1]) * Math.PI) / 180;
-  const x = Math.sin(dLat / 2) ** 2 +
-    Math.cos((a[0] * Math.PI) / 180) * Math.cos((b[0] * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  return haversineMeters(a[0], a[1], b[0], b[1]);
 }
 
 // Largo total de una polyline (suma haversine entre puntos consecutivos)

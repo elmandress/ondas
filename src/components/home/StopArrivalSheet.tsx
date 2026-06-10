@@ -161,6 +161,14 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
           </div>
         )}
 
+        {/* Live region (PG-4): anuncia el próximo bus al lector de pantalla cuando los
+            datos del refresh cambian (polite, una línea — no satura cada 15s). */}
+        {arrivals.length > 0 && (
+          <p className="sr-only" role="status">
+            Próximo bus: línea {arrivals[0].lineName} hacia {arrivals[0].destination},{" "}
+            {!Number.isFinite(arrivals[0].eta) || arrivals[0].eta <= 0 ? "llegando ahora" : `en ${Math.round(arrivals[0].eta)} minutos`}
+          </p>
+        )}
         <div className="sheet-arrivals scrollbar-none">
           {loading && !arrivals.length ? (
             Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel" style={{ height: 64, marginBottom: 8 }} />)

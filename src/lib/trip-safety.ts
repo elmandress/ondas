@@ -124,7 +124,6 @@ export function assessTripSafety(trip: SafetyTrip, now: Date = new Date()): Trip
   trip.legs.forEach((leg, idx) => {
     if (leg.type !== "walk" || leg.distanceM < 80) return;
     const end = leg.polyline?.[leg.polyline.length - 1];
-    const start = leg.polyline?.[0];
     const inZone = end ? isCautionNightZone(end[0], end[1]) : false;
     // "Sobre avenida" si el tramo empieza o termina sobre una vía principal.
     const onAvenue = isOnAvenue(leg.fromStopName) || isOnAvenue(leg.toStopName);

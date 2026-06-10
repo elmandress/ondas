@@ -77,10 +77,17 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
     );
   }
 
+  // Label contextual para lector de pantalla (PG-4): el contador grande ("¡Ya!", "5")
+  // no dice qué significa. Acá sí: cuándo salir, cuánto caminás y qué bus viene.
+  const heroAria = urgency === "now"
+    ? `Salí ahora para tomar el ${first.lineName}${displayName ? ` desde ${displayName}` : ""}`
+    : `Te quedan ${leaveInMin} minutos para salir. ${atStop ? "Estás en la parada" : `${walkMinutes} minutos a pie`}${displayName ? ` ${atStop ? "" : "hasta "}${displayName}` : ""}. Próximo ${first.lineName} ${formatEta(first.eta, first.etaApprox)}.`;
+
   return (
     <motion.button
       whileTap={{ scale: 0.985 }}
       onClick={onTap}
+      aria-label={heroAria}
       className={`hero-card state-${urgency}`}
       style={{ display: "grid", width: "100%", cursor: "pointer", textAlign: "left", "--progress": `${progressPct * 100}%` } as React.CSSProperties}
     >

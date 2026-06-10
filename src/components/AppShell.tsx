@@ -140,7 +140,11 @@ export default function AppShell() {
                 className={`screen-layer scrollbar-none ${tab === "map" ? "map" : ""}`}
                 style={{
                   opacity: active ? 1 : 0,
-                  transition: "opacity 0.18s ease-out",
+                  // visibility además de opacity (MAP-1): el layer inactivo tiene capas
+                  // compuestas de Leaflet (translate3d) que podían quedar pintadas sobre
+                  // el mapa real al cambiar de tab. hidden corta el paint al terminar el fade.
+                  visibility: active ? "visible" : "hidden",
+                  transition: "opacity 0.18s ease-out, visibility 0.18s",
                   pointerEvents: active ? "auto" : "none",
                   zIndex: active ? 1 : 0,
                 }}

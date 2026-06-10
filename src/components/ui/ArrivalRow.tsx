@@ -73,12 +73,21 @@ export default function ArrivalRow({
       </div>
 
       <span className={`eta tnum ${etaClass}`} style={{ textAlign: "right" }}>
-        {formatEta(arrival.eta, arrival.etaApprox)}
-        {arrival.eta >= 0 && Number.isFinite(arrival.eta) && (
-          <span style={{ display: "block", font: "500 11px/1 var(--ff)", color: "var(--text-3)", marginTop: 2 }}>
-            {(() => { const a = new Date(Date.now() + arrival.eta * 60_000); return `${a.getHours().toString().padStart(2,"0")}:${a.getMinutes().toString().padStart(2,"0")}`; })()}
-          </span>
-        )}
+        {/* Texto para lector de pantalla: el número grande solo ("5 min") no dice
+            QUÉ significa. Acá sí: "llega en 5 minutos" (PG-4 accesibilidad). */}
+        <span className="sr-only">
+          {!Number.isFinite(arrival.eta) || arrival.eta <= 0
+            ? "llegando ahora"
+            : `llega en ${arrival.etaApprox ? "aproximadamente " : ""}${Math.round(arrival.eta)} ${Math.round(arrival.eta) === 1 ? "minuto" : "minutos"}`}
+        </span>
+        <span aria-hidden="true">
+          {formatEta(arrival.eta, arrival.etaApprox)}
+          {arrival.eta >= 0 && Number.isFinite(arrival.eta) && (
+            <span style={{ display: "block", font: "500 11px/1 var(--ff)", color: "var(--text-3)", marginTop: 2 }}>
+              {(() => { const a = new Date(Date.now() + arrival.eta * 60_000); return `${a.getHours().toString().padStart(2,"0")}:${a.getMinutes().toString().padStart(2,"0")}`; })()}
+            </span>
+          )}
+        </span>
       </span>
 
       {canPage && (
