@@ -83,28 +83,43 @@ describe("geocode — q validation", () => {
 
 // ── vehicles lineIds ──────────────────────────────────────────────────────────
 
+function validateLineIdsParam(raw: string | null): string[] | undefined {
+  // Replica la lógica actual de vehicles/route.ts (incluye el guard de longitud)
+  if (!raw) return undefined;
+  if (raw.length > 200) return undefined;
+  return raw.split(",").filter(Boolean).slice(0, 20);
+}
+
 describe("vehicles — lineIds limit (VEH-1)", () => {
   it("acepta hasta 20 lineIds", () => {
     const param = Array.from({ length: 20 }, (_, i) => String(i + 1)).join(",");
-    const ids = validateLineIds(param);
-    expect(ids.length).toBe(20);
+    const ids = validateLineIdsParam(param);
+    expect(ids?.length).toBe(20);
   });
 
-  it("trunca a 20 cuando se pasan más", () => {
-    const param = Array.from({ length: 100 }, (_, i) => String(i + 1)).join(",");
-    const ids = validateLineIds(param);
-    expect(ids.length).toBe(20);
-    expect(ids[0]).toBe("1");
-    expect(ids[19]).toBe("20");
+  it("trunca a 20 cuando se pasan más (con param corto)", () => {
+    // 25 IDs de 1 char cada uno = ~49 chars (bien < 200)
+    const param = Array.from({ length: 25 }, (_, i) => String(i + 1)).join(",");
+    expect(param.length).toBeLessThan(200);
+    const ids = validateLineIdsParam(param);
+    expect(ids?.length).toBe(20);
+    expect(ids?.[0]).toBe("1");
+    expect(ids?.[19]).toBe("20");
   });
 
   it("filtra IDs vacíos (doble coma)", () => {
-    const ids = validateLineIds("121,,183,");
+    const ids = validateLineIdsParam("121,,183,");
     expect(ids).toEqual(["121", "183"]);
   });
 
-  it("devuelve vacío para null", () => {
-    expect(validateLineIds(null)).toEqual([]);
+  it("devuelve undefined para null", () => {
+    expect(validateLineIdsParam(null)).toBeUndefined();
+  });
+
+  it("rechaza lineIdsParam demasiado largo (> 200 chars)", () => {
+    const long = Array.from({ length: 30 }, (_, i) => `line${i}`).join(","); // ~180 chars before joining
+    const veryLong = "1".repeat(201);
+    expect(validateLineIdsParam(veryLong)).toBeUndefined();
   });
 });
 
