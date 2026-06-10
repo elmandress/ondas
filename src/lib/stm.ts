@@ -140,6 +140,7 @@ export async function getStopVariants(stopId: string | number): Promise<StopInfo
     const res = await fetch(`${MVD_HOST}/transporteRest/variantes/${stopId}`, {
       headers: MVD_HEADERS,
       next: { revalidate: 60 },
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -194,6 +195,7 @@ export async function getRealtimeArrivals(stopId: string | number, lineCodes: st
       headers: MVD_HEADERS,
       body: JSON.stringify(body),
       next: { revalidate: 0 },
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -371,6 +373,7 @@ export async function getVehiclePositions(
       headers: MVD_HEADERS,
       body: JSON.stringify(body),
       next: { revalidate: 0 },
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -410,7 +413,7 @@ export async function geocodeAddress(query: string): Promise<GeoAddress[]> {
     url.searchParams.set("tipo", "D");
     url.searchParams.set("limit", "5");
 
-    const res = await fetch(url.toString(), { next: { revalidate: 300 } });
+    const res = await fetch(url.toString(), { next: { revalidate: 300 }, signal: AbortSignal.timeout(6000) });
     if (!res.ok) return [];
     const data = await res.json();
 

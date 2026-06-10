@@ -6,6 +6,10 @@ import type { VehiclePosition, BusStop } from "@/lib/stm";
 import { loadRoutesCache, loadLineShapes } from "@/lib/routes-cache";
 import { getNetInfo } from "@/lib/network";
 
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 // Unified bus icon — white bus silhouette on a dark pill, with line number below
 /** Color determinístico para una línea (hash → HSL). Igual que lineColorFromCode pero local. */
 function colorForLine(line: string): string {
@@ -48,7 +52,7 @@ function busIconHtml(lineName: string, isSelected: boolean): string {
           <circle cx="7" cy="19" r="1.5" fill="${isSelected ? "white" : color}"/>
           <circle cx="17" cy="19" r="1.5" fill="${isSelected ? "white" : color}"/>
         </svg>
-        <span style="color:${isSelected ? "white" : "rgba(255,255,255,0.95)"};font-weight:900;font-size:${isSelected ? 10 : 8}px;font-family:system-ui,-apple-system,sans-serif;letter-spacing:-0.3px;line-height:1;">${lineName}</span>
+        <span style="color:${isSelected ? "white" : "rgba(255,255,255,0.95)"};font-weight:900;font-size:${isSelected ? 10 : 8}px;font-family:system-ui,-apple-system,sans-serif;letter-spacing:-0.3px;line-height:1;">${esc(lineName)}</span>
       </div>
     </div>
     <style>
@@ -344,7 +348,7 @@ export default function LeafletMap({
 
     placeMarkerRef.current.bindTooltip(
       `<div style="font-family:system-ui;color:#f1f5f9;min-width:140px">
-        <div style="font-weight:700;font-size:12px;color:#fca5a5;">${placePin.name}</div>
+        <div style="font-weight:700;font-size:12px;color:#fca5a5;">${esc(placePin.name)}</div>
       </div>`,
       { direction: "top", className: "leaflet-tooltip-dark", offset: [0, -38], permanent: false }
     );
@@ -409,8 +413,8 @@ export default function LeafletMap({
 
         marker.bindTooltip(
           `<div style="font-family:system-ui;color:#f1f5f9;min-width:140px">
-            <div style="font-weight:700;font-size:12px;margin-bottom:3px;color:#f8fafc">${stop.stopName}</div>
-            <div style="font-size:9px;color:#64748b">Parada #${stop.stopCode} · Tocá para ver buses</div>
+            <div style="font-weight:700;font-size:12px;margin-bottom:3px;color:#f8fafc">${esc(stop.stopName)}</div>
+            <div style="font-size:9px;color:#64748b">Parada #${esc(stop.stopCode)} · Tocá para ver buses</div>
           </div>`,
           { direction: "top", className: "leaflet-tooltip-dark", offset: [0, -10] }
         );
@@ -567,8 +571,8 @@ export default function LeafletMap({
           });
           dot.bindTooltip(
             `<div style="font-family:system-ui;color:#f1f5f9;min-width:140px">
-              <div style="font-weight:600;font-size:11px;">${stop.name}</div>
-              <div style="font-size:9px;color:#64748b">#${stop.code} · parada ${stop.sequence}</div>
+              <div style="font-weight:600;font-size:11px;">${esc(stop.name)}</div>
+              <div style="font-size:9px;color:#64748b">#${esc(stop.code)} · parada ${stop.sequence}</div>
             </div>`,
             { direction: "top", className: "leaflet-tooltip-dark", offset: [0, -6] }
           );
@@ -702,7 +706,7 @@ export default function LeafletMap({
             iconAnchor: [9, 11], // ancla en el centro del círculo (la parada)
           });
           const m = L.marker(start, { icon: boardIcon, zIndexOffset: 1700 });
-          if (boardName) m.bindTooltip(`Parada: ${boardName}`, { direction: "top", offset: [0, -10] });
+          if (boardName) m.bindTooltip(`Parada: ${esc(boardName)}`, { direction: "top", offset: [0, -10] });
           layer.addLayer(m);
         }
 
@@ -725,7 +729,7 @@ export default function LeafletMap({
             iconAnchor: [8, 11],
           });
           const m = L.marker(end, { icon: alightIcon, zIndexOffset: 1650 });
-          if (alightName) m.bindTooltip(`Parada: ${alightName}`, { direction: "top", offset: [0, -10] });
+          if (alightName) m.bindTooltip(`Parada: ${esc(alightName)}`, { direction: "top", offset: [0, -10] });
           layer.addLayer(m);
         }
       }
