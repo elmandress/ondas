@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const stopId = req.nextUrl.searchParams.get("stop");
-  if (!stopId) {
+  if (!stopId || stopId.length > 30) {
     return NextResponse.json({ error: "Missing stop param" }, { status: 400 });
   }
 

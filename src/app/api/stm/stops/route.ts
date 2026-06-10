@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
   const radius = req.nextUrl.searchParams.get("radius");
 
   if (q !== null) {
+    if (q.length > 100) return NextResponse.json({ stops: [] });
     const stops = searchStops(q);
     return NextResponse.json({ stops });
   }

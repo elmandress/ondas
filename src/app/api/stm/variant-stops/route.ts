@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const line = req.nextUrl.searchParams.get("line");
   const destination = req.nextUrl.searchParams.get("destination") || "";
 
-  if (!line) {
+  if (!line || line.length > 20) {
     return NextResponse.json({ error: "line requerido" }, { status: 400 });
   }
 

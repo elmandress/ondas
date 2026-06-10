@@ -3,7 +3,7 @@ import { geocodeAddress } from "@/lib/stm";
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q");
-  if (!q?.trim()) {
+  if (!q?.trim() || q.length > 200) {
     return NextResponse.json({ results: [] });
   }
   try {
