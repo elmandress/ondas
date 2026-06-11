@@ -67,9 +67,12 @@ interior-stops-raw.json
 
 # Carpetas de trabajo temporales de los scripts de investigación
 /tmp_gtfs/
+/tmp_gtfs_latest/
 /tmp_nac/
 /tmp_work/
 /tmp_inspect/
+# Snapshot transitorio del merge metro durante la regeneración GTFS (preserve-metro.mjs)
+/tmp_metro_snapshot.json
 
 # Carpeta de diseño (vive fuera de ondas/, pero por las dudas)
 *Cuándo - Design*
