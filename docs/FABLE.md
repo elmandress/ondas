@@ -627,3 +627,34 @@ Hay commits "ci: trigger Netlify redeploy" → el repo está conectado a Netlify
 | **Onboarding inteligente** | 🟡 Incremental | El sistema `Tip` (R45) ya es la base correcta. Agregar tips contextuales puntuales, no rehacer. |
 
 **Próximo orden recomendado**: (1) confirmar deploy + dominio + Search Console [usuario], (2) PG-3 pipeline GTFS con validación/diff [Sonnet], (3) "Modo frío" proactivo [Sonnet/Fable], (4) QW-2 contraste light + resto de PG-4 [Sonnet], (5) PG-7 asistente cuando haya tracción [Fable].
+
+---
+
+## 14. Sesión Fable R52 (2026-06-10) — modo frío + PG-3 v1
+
+### Hecho y verificado (tsc 0 · 162/162 tests · build OK)
+
+1. **"Modo frío" proactivo** (`451ffc4`): cuando el primer bus tarda >15 min (o no hay
+   servicio), el StopArrivalSheet consulta llegadas EN VIVO de hasta 3 paradas a ≤300 m
+   y muestra alternativas alcanzables: "a 120 m el 405 llega en ~6 min (3 min a pie)".
+   - `lib/cold-mode.ts` (lógica pura, +11 tests) · `hooks/useColdAlternatives.ts` (fetch,
+     cache 60 s por parada, refresh 60 s) · `components/home/ColdModeSuggestion.tsx`.
+   - Reglas: solo líneas que NO pasan acá (la misma línea "antes" en parada vecina suele
+     ser sentido contrario), solo alcanzables (ETA ≥ caminata con sinuosidad), ahorro ≥5 min.
+   - **Pendiente**: integrarlo también en `map/panels/StopPanel.tsx` (mismo componente).
+
+2. **PG-3 v1 — detectar, no auto-reemplazar** (`c1e7503`):
+   - `scripts/pipeline/validate-gtfs-data.mjs` (npm run validate:data): estructura+umbrales
+     de gtfs-v2.json / stops.json / line-hours.json + cruce variantes↔paradas.
+   - `scripts/pipeline/check-gtfs-freshness.mjs` (npm run gtfs:freshness): version.txt del
+     STM vs `data/gtfs-version.json`; `--save` registra tras regenerar.
+   - `.github/workflows/ci.yml`: PRIMER CI del repo (tsc+vitest+eslint+validate en push/PR).
+   - `.github/workflows/gtfs-freshness.yml`: cron semanal, abre UN issue si hay GTFS nuevo.
+     **Requiere secrets** `MVD_API_CLIENT_ID/SECRET` en GitHub Actions [usuario].
+
+### ⚠ Hallazgo: GTFS desactualizado AHORA
+
+El primer run real del check: STM publicó **20260608**; nuestros datos son del ~2026-06-01.
+Regenerar con los pasos del header de `check-gtfs-freshness.mjs` y registrar con `--save`.
+`data/gtfs-version.json` queda sin crear a propósito (sin registro = stale = el workflow
+lo reclama hasta que se regenere de verdad — honestidad también con nosotros mismos).
