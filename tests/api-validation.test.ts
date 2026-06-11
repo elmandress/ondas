@@ -16,11 +16,6 @@ function validateGeocode(q: string | null | undefined): boolean {
   return t.length >= 1 && t.length <= 300;
 }
 
-function validateLineIds(raw: string | null): string[] {
-  if (!raw) return [];
-  return raw.split(",").filter(Boolean).slice(0, 20);
-}
-
 function validateDepartAt(departAt: unknown): Date | undefined {
   if (typeof departAt !== "string") return undefined;
   const d = new Date(departAt);
@@ -117,7 +112,6 @@ describe("vehicles — lineIds limit (VEH-1)", () => {
   });
 
   it("rechaza lineIdsParam demasiado largo (> 200 chars)", () => {
-    const long = Array.from({ length: 30 }, (_, i) => `line${i}`).join(","); // ~180 chars before joining
     const veryLong = "1".repeat(201);
     expect(validateLineIdsParam(veryLong)).toBeUndefined();
   });
