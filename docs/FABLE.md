@@ -699,3 +699,47 @@ después de PG-5 y de confirmar deploy.
 Descartado por ahora (impacto/esfuerzo peor): push "salí ahora" (requiere HTTPS+infra
 push, post-deploy), CSP nonces (DT-8, riesgo de romper el script de tema pre-paint, sin
 beneficio visible al usuario), clustering/heatmap del mapa (estética antes que utilidad).
+
+---
+
+## 16. Sesión R55 (2026-06-11) — auditoría visual + inventario de APIs UY
+
+### Auditoría UX multimodal (capturas reales 390px → análisis visual → fix → re-captura)
+
+6 fixes commiteados en `1fda0a5` (hero chips sin destino truncado, picker "Más tarde"
+sin guiones nativos, dedup del geocoder por nombre+distancia con `lib/place-dedup.ts`
++8 tests, "Tres Cruces, Tres Cruces", Cancelar recortado, pill "+N").
+
+**Backlog UX detectado, no resuelto aún** (orden de valor):
+- **Mapa: muro de íconos idénticos** a zoom bajo (71 paradas iguales) — bajar peso
+  visual de paradas con zoom <15.5 (dot chico) y reservar el ícono completo para
+  zoom cercano. Contenido en `LeafletMap.tsx` (stopIcon según zoom).
+- Paradas duplicadas por sentido sin desambiguar en Buscar ("Basilea – Av Juan M
+  Ferrari" ×2, #3301/#3302) — agregar pista de dirección (primera línea-destino GTFS).
+- ETA "1h 54m" en chips del hero ocupa mucho — considerar tope "≥60 min → +1h".
+
+### Inventario de APIs/fuentes de datos UY (investigación R55)
+
+**En uso** (10): STM OAuth2 (`api.montevideo.gub.uy/api/transportepublico` — buses,
+busstopId, GTFS zip+version), `m.montevideo.gub.uy` legacy (variantes, nextETA,
+stm-online GPS), avisos (`api.montevideo.gub.uy/notificacion/mensajes`), IDE.uy
+(geocode direcciones + intersecciones), Nominatim, OSRM (routing.openstreetmap.de,
+foot), shapefile SIT (`intgis.montevideo.gub.uy` v_uptu_lsv), Busmatick interior
+(CODESA/Sol Antigua/COPAY/IM Rocha), CARTO tiles, Overpass (build de POIs).
+
+**Confirmadas disponibles, a integrar**:
+- **MTOP interdept** (PG-5): dataset oficial en catalogodatos.gub.uy
+  ("horarios-de-omnibus-en-lineas-interdepartamentales") con recursos CSV
+  nacionales + `horarios_metropolitanos_dnt.csv` + GTFS metropolitano. ESTA es la
+  fuente para ambos sentidos + entre departamentos.
+- **Recorridos ómnibus suburbanos** (MTOP, catalogodatos) — shapes suburbanos para
+  pintar recorridos metro en el mapa.
+
+**Evaluadas y descartadas/limitadas**:
+- **Saldo STM**: NO hay API pública; solo web con login (`stm.gub.uy/app/mistm`).
+  Manejar credenciales del usuario está en "Qué NO hacer" → la acción "Saldo STM"
+  de Home queda como deep-link oficial (correcto así).
+- **Inumet**: catálogo abierto = observaciones horarias (histórico), no pronóstico
+  estructurado; las alertas no tienen API limpia. Un hint de lluvia en "cuándo
+  salir" requeriría scrapear el JSON interno de la app → frágil. Reevaluar si
+  publican pronóstico abierto.
