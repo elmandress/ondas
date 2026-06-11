@@ -1,0 +1,35 @@
+# CI básico: tipos + tests + lint + validación de datos GTFS en cada push/PR.
+# Antes no había NINGÚN workflow — un dato corrupto o una regresión de tipos
+# llegaba a Netlify sin red de seguridad.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: TypeScript (0 errores)
+        run: npx tsc --noEmit
+
+      - name: Tests (vitest)
+        run: npx vitest run
+
+      - name: ESLint (0 errores; warnings legacy tolerados)
+        run: npx eslint .
+
+      - name: Validar datos GTFS pre-procesados
+        run: node scripts/pipeline/validate-gtfs-data.mjs

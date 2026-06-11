@@ -1,0 +1,74 @@
+# PG-3: vigilancia semanal de frescura del GTFS oficial.
+# Si el STM publica una versión más nueva que la registrada en data/gtfs-version.json,
+# abre UN issue (sin duplicar) con los pasos de regeneración. "Los datos no
+# envejecen en silencio" — FABLE.md §13.
+#
+# Secrets requeridos (Settings → Secrets → Actions):
+#   MVD_API_CLIENT_ID / MVD_API_CLIENT_SECRET  (los mismos del deploy en Netlify)
+name: GTFS freshness
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # lunes 09:00 UTC (06:00 MVD)
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validar datos actuales
+        run: node scripts/pipeline/validate-gtfs-data.mjs
+
+      - name: Comparar versión GTFS upstream vs local
+        id: fresh
+        env:
+          MVD_API_CLIENT_ID: ${{ secrets.MVD_API_CLIENT_ID }}
+          MVD_API_CLIENT_SECRET: ${{ secrets.MVD_API_CLIENT_SECRET }}
+        # exit 3 = desactualizado (señal, no error del job); 1 = error real.
+        run: |
+          set +e
+          node scripts/pipeline/check-gtfs-freshness.mjs
+          code=$?
+          if [ "$code" = "1" ]; then exit 1; fi
+          exit 0
+
+      - name: Abrir issue si está desactualizado (sin duplicar)
+        if: steps.fresh.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM: ${{ steps.fresh.outputs.upstream }}
+          LOCAL: ${{ steps.fresh.outputs.local }}
+        run: |
+          TITLE="GTFS desactualizado: STM publicó $UPSTREAM (local: $LOCAL)"
+          EXISTING=$(gh issue list --state open --search "GTFS desactualizado in:title" --json number --jq 'length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Ya hay un issue abierto de GTFS desactualizado — no se duplica."
+            exit 0
+          fi
+          gh issue create --title "$TITLE" --body "$(cat <<'EOF'
+          El check semanal detectó que el STM publicó una versión del GTFS más nueva que la usada para generar los datos de la app.
+
+          **Regenerar** (pasos completos en `scripts/pipeline/check-gtfs-freshness.mjs`):
+
+          1. Descargar y extraer el ZIP GTFS oficial
+          2. `node scripts/build-gtfs-db.mjs <gtfsDir> data/gtfs-v2.db`
+          3. `node scripts/export-gtfs-json.mjs`
+          4. `node scripts/build-stops-json.mjs <gtfsDir> public/stops.json`
+          5. `node scripts/merge-metro-gtfs.mjs` (si cambió el GTFS metropolitano)
+          6. `node scripts/pipeline/validate-gtfs-data.mjs`
+          7. `node scripts/pipeline/check-gtfs-freshness.mjs --save`
+          8. Commit + push (CI valida los datos de nuevo)
+
+          _Issue creado automáticamente por `.github/workflows/gtfs-freshness.yml`._
+          EOF
+          )"

@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "validate:data": "node scripts/pipeline/validate-gtfs-data.mjs",
+    "gtfs:freshness": "node scripts/pipeline/check-gtfs-freshness.mjs"
   },
   "dependencies": {
     "@netlify/plugin-nextjs": "^5.15.11",
