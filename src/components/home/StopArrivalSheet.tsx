@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useArrivals } from "@/hooks/useArrivals";
 import { useInteriorArrivals, isInteriorStop } from "@/hooks/useInteriorArrivals";
 import { useStopInfo } from "@/hooks/useStopInfo";
+import { useColdAlternatives } from "@/hooks/useColdAlternatives";
 import { STOPS_DATASET, isAccessibleArrival, arrivalHasAc, type BusStop } from "@/lib/stm";
 import { formatRelativeTime, getNearbyStopsClient, distanceTo } from "@/lib/utils";
 import { useFavoriteStops, toggleFavoriteStop } from "@/lib/favorite-stops";
@@ -17,6 +18,7 @@ import LineBadge from "@/components/ui/LineBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import ArrivalRow from "@/components/ui/ArrivalRow";
 import OccupancySection from "@/components/home/OccupancySection";
+import ColdModeSuggestion from "@/components/home/ColdModeSuggestion";
 
 interface StopArrivalSheetProps {
   stopId: string;
@@ -85,6 +87,17 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
 
   const firstUrgent = arrivals[0]?.eta <= 3;
 
+  // Modo frío proactivo: espera larga acá (>15 min o sin servicio) → alternativas
+  // alcanzables a pasos con ETA en vivo. Solo con datos frescos, online y STM (las
+  // paradas del interior usan otra fuente y no tienen densidad de paradas vecinas).
+  const coldActive = !interior && !isOffline && !lastFetchFailed && lastUpdated !== null;
+  const coldSuggestions = useColdAlternatives(
+    stop,
+    arrivals.length > 0 ? arrivals[0].eta : null,
+    realLines,
+    coldActive,
+  );
+
   // Filtros por comodidad (dato oficial por bus). Independientes y acumulables.
   const [fAccess, setFAccess] = useState(false);
   const [fAc, setFAc] = useState(false);
@@ -149,6 +162,8 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
         {firstUrgent && (
           <div className="urgent-banner"><Icons.Bus size={18} /><span>El bus está llegando — preparate para salir</span></div>
         )}
+
+        <ColdModeSuggestion suggestions={coldSuggestions} />
 
         {arrivals.length > 0 && (
           <div className="arrival-filters">
