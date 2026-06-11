@@ -21,7 +21,7 @@
   /* Text — higher contrast, fewer layers */
   --text: #eef0f5;
   --text-2: #9aa3b5;   /* lightened from spec for WCAG AA on dark */
-  --text-3: #737c92;   /* subido de #5c647a (3.34:1, fallaba WCAG AA) a 4.71:1 — pasa AA */
+  --text-3: #8a93a8;   /* #737c92 daba 4.0-4.4:1 sobre surface (axe) → fallaba AA en texto chico; #8a93a8 ≈ 4.9:1 */
 
   /* Accent — amber, used sparingly */
   --accent: #f0a020;          /* slightly brightened for AA contrast */
@@ -326,6 +326,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
   border-radius: var(--r-card); overflow: hidden; border: 1px solid var(--border);
   margin: 4px 0 var(--gap-section); background: var(--bg-elevated); cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  /* CLAVE: aísla el stacking context. Sin esto, el z-index:1200 del overlay y los
+     panes internos de Leaflet (z 400-700) se escapan al contexto raíz y tapan los
+     bottom-sheets (Ajustes / Cómo funciona, z~40-50). Con isolation, todo eso queda
+     contenido y el preview se apila en su lugar normal del flujo (debajo de los sheets). */
+  isolation: isolate;
 }
 /* El mapa llena el contenedor pero no interactúa (en la preview el tap = abrir). */
 .home-map-preview > :first-child { position: absolute; inset: 0; pointer-events: none; }

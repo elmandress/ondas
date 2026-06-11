@@ -163,7 +163,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {locationStatus === "pending"
             ? <span style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Ubicando…</span>
-            : <span className="gps-dot" aria-label="GPS activo" />}
+            : <span className="gps-dot" role="img" aria-label="GPS activo" />}
           <button onClick={() => setShowHowTo(true)} aria-label="Cómo usar" style={{ color: "var(--text-2)", display: "grid", placeItems: "center", width: 32, height: 32 }}>
             <Icons.Help size={20} />
           </button>

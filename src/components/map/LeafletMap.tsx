@@ -119,6 +119,10 @@ interface LeafletMapProps {
   }> | null;
   /** Origen y destino de la ruta planificada (para marcadores especiales). */
   routeEndpoints?: { origin: [number, number]; destination: [number, number] } | null;
+  /** false en el preview de Home: los markers no son focusables ni interactivos
+   *  (todo el preview es un botón que abre el mapa) → evita nested-interactive y
+   *  markers sin nombre accesible (WCAG). Default true. */
+  markersInteractive?: boolean;
   onStopSelect: (stopId: string) => void;
   onVehicleSelect: (vehicleId: string | null) => void;
   onMapClick: () => void;
@@ -142,6 +146,7 @@ export default function LeafletMap({
   placePin,
   routeLegs,
   routeEndpoints,
+  markersInteractive = true,
   onStopSelect,
   onVehicleSelect,
   onMapClick,
@@ -189,9 +194,20 @@ export default function LeafletMap({
         center,
         zoom: 14,
         zoomControl: false,
-        attributionControl: true,
+        // En el preview (botón) la atribución lleva un <a> focusable → nested-interactive.
+        // La mostramos solo en el mapa completo (a un toque); ahí cumple la atribución CARTO/OSM.
+        attributionControl: markersInteractive,
         preferCanvas: true, // mejor performance para muchos marcadores
       });
+
+      // Preview de Home (markersInteractive=false): es un BOTÓN que abre el mapa.
+      // Desactivamos toda interacción para que no haya controles/gestos focusables
+      // anidados dentro del botón (WCAG nested-interactive) ni scroll accidental.
+      const previewMode = !markersInteractive;
+      if (previewMode) {
+        map.dragging.disable(); map.scrollWheelZoom.disable(); map.touchZoom.disable();
+        map.doubleClickZoom.disable(); map.boxZoom.disable(); map.keyboard.disable();
+      }
 
       // Tiles CARTO según TEMA (oscuro = dark matter, claro = positron) y RED:
       //  - celular/Data Saver: 1 sola capa con labels + tiles 1x (la mitad de tiles, sin @2x).
@@ -220,8 +236,8 @@ export default function LeafletMap({
         }).addTo(map);
       }
 
-      // Controles de zoom en posición no molesta
-      L.control.zoom({ position: "bottomright" }).addTo(map);
+      // Controles de zoom en posición no molesta (no en el preview, que es un botón)
+      if (!previewMode) L.control.zoom({ position: "bottomright" }).addTo(map);
 
       // Click en mapa cierra selecciones
       map.on("click", onMapClick);
@@ -352,11 +368,17 @@ export default function LeafletMap({
     if (userMarkerRef.current) {
       userMarkerRef.current.setLatLng(center);
     } else {
-      userMarkerRef.current = L.marker(center, { icon: userIcon, zIndexOffset: 2000 })
+      // En el preview no es focusable (todo es un botón); en el mapa completo lleva
+      // nombre accesible (divIcon → aria-label en el elemento, no por tooltip).
+      userMarkerRef.current = L.marker(center, {
+        icon: userIcon, zIndexOffset: 2000,
+        interactive: markersInteractive, keyboard: markersInteractive,
+      })
         .addTo(map)
         .bindTooltip("Tu ubicación", { permanent: false, direction: "top" });
+      if (markersInteractive) userMarkerRef.current.getElement()?.setAttribute("aria-label", "Tu ubicación");
     }
-  }, [center]);
+  }, [center, markersInteractive]);
 
   // Pin para lugar buscado (FR-3.8) — marker rojo destacado encima de todo
   const placeMarkerRef = useRef<L.Marker | null>(null);
@@ -436,12 +458,17 @@ export default function LeafletMap({
         const marker = L.marker([stop.stopLat, stop.stopLon], {
           icon: stopIcon,
           zIndexOffset: isSelected ? 500 : 100,
+          interactive: markersInteractive,
+          keyboard: markersInteractive,
         })
           .addTo(map)
           .on("click", (e: L.LeafletMouseEvent) => {
             L.DomEvent.stopPropagation(e);
             onStopSelect(stop.stopId);
           });
+        // Nombre accesible: en divIcon el `alt` de Leaflet no aplica → seteamos aria-label
+        // en el elemento (role="button" que agrega Leaflet a markers interactivos).
+        if (markersInteractive) marker.getElement()?.setAttribute("aria-label", `Parada ${stop.stopName}`);
 
         marker.bindTooltip(
           `<div style="font-family:system-ui;color:#f1f5f9;min-width:140px">
@@ -454,7 +481,7 @@ export default function LeafletMap({
         stopMarkersRef.current.set(stop.stopId, marker);
       }
     });
-  }, [stops, selectedStopId, onStopSelect, stopIconMode]);
+  }, [stops, selectedStopId, onStopSelect, stopIconMode, markersInteractive]);
 
   // Actualizar marcadores de BUSES en tiempo real
   useEffect(() => {
@@ -489,17 +516,20 @@ export default function LeafletMap({
         const marker = L.marker([vehicle.lat, vehicle.lon], {
           icon: busIcon,
           zIndexOffset: isSelected ? 1000 : 200,
+          interactive: markersInteractive,
+          keyboard: markersInteractive,
         })
           .addTo(map)
           .on("click", (e: L.LeafletMouseEvent) => {
             L.DomEvent.stopPropagation(e);
             onVehicleSelect(vehicle.vehicleId === selectedVehicleId ? null : vehicle.vehicleId);
           });
+        if (markersInteractive) marker.getElement()?.setAttribute("aria-label", `Bus línea ${vehicle.lineName}`);
 
         vehicleMarkersRef.current.set(vehicle.vehicleId, marker);
       }
     });
-  }, [vehicles, selectedVehicleId, onVehicleSelect]);
+  }, [vehicles, selectedVehicleId, onVehicleSelect, markersInteractive]);
 
   // Dibujar recorrido del bus seleccionado (polyline)
   // routes.json se cachea a nivel módulo para no re-descargarlo en cada click.

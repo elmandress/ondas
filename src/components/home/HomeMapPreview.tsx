@@ -62,6 +62,7 @@ export default function HomeMapPreview({ onOpen }: { onOpen: () => void }) {
         vehicles={nearbyVehicles}
         selectedStopId={null}
         selectedVehicleId={null}
+        markersInteractive={false}
         onStopSelect={open}
         onVehicleSelect={() => {}}
         onMapClick={open}

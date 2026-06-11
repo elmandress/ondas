@@ -53,8 +53,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // Permitir zoom (WCAG 2.1 AA · 1.4.4): bloquearlo con maximumScale/userScalable
+  // excluye a quien necesita agrandar. Vale más la accesibilidad que el look "nativo".
   themeColor: "#070b14",
   viewportFit: "cover",
 };

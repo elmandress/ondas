@@ -298,7 +298,7 @@ export default function RouteScreen() {
       {/* Header mobile */}
       <div className="app-header mobile-only" style={{ paddingLeft: 0, paddingRight: 0 }}>
         <LogoLockup size={24} ring="var(--text)" dot="var(--accent)" />
-        <span className="gps-dot" aria-label="GPS activo" />
+        <span className="gps-dot" role="img" aria-label="GPS activo" />
       </div>
       {/* Header desktop */}
       <div className="desktop-header desktop-only">

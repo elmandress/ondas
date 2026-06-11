@@ -26,7 +26,7 @@ export function PlannerEmptyState() {
         <span style={{ color: "var(--accent)" }}><Icons.Route size={30} /></span>
       </div>
       <h3 className="text-headline mb-1">¿A dónde querés ir?</h3>
-      <p className="text-body text-slate-500 mb-7" style={{ maxWidth: 300 }}>Elegí desde dónde salís y a dónde vas. Te armamos el viaje, sin vueltas.</p>
+      <p className="text-body text-slate-400 mb-7" style={{ maxWidth: 300 }}>Elegí desde dónde salís y a dónde vas. Te armamos el viaje, sin vueltas.</p>
       <div className="w-full" style={{ maxWidth: 340, display: "flex", flexDirection: "column", gap: 10 }}>
         {steps.map((s, i) => {
           const Ico = Icons[s.icon];
@@ -76,7 +76,7 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-headline">No encontramos una ruta directa</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-400 mt-0.5">
             {directDist < 1000 ? "Está muy cerca, considerá caminar." : `Distancia directa: ${(directDist/1000).toFixed(1)} km.`}
             {" "}Tocá una parada para ver llegadas o probá otro destino.
           </p>
@@ -91,14 +91,14 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
               <div key={s.stopId} className="card-soft p-2.5 flex justify-between items-center">
                 <div className="min-w-0 flex-1 pr-2">
                   <p className="text-sm font-semibold text-white truncate">{s.stopName}</p>
-                  <p className="text-[11px] text-slate-500">{d}m · {s.lines.length} {s.lines.length === 1 ? "línea" : "líneas"}</p>
+                  <p className="text-[11px] text-slate-400">{d}m · {s.lines.length} {s.lines.length === 1 ? "línea" : "líneas"}</p>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
                      <span key={l} className="text-[10px] font-black px-1.5 py-0.5 rounded text-white"
                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
                   ))}
-                  {s.lines.length > 3 && <span className="text-[10px] text-slate-500">+{s.lines.length - 3}</span>}
+                  {s.lines.length > 3 && <span className="text-[10px] text-slate-400">+{s.lines.length - 3}</span>}
                 </div>
               </div>
             ))}
@@ -114,14 +114,14 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
               <div key={s.stopId} className="card-soft p-2.5 flex justify-between items-center">
                 <div className="min-w-0 flex-1 pr-2">
                   <p className="text-sm font-semibold text-white truncate">{s.stopName}</p>
-                  <p className="text-[11px] text-slate-500">{d}m · {s.lines.length} {s.lines.length === 1 ? "línea" : "líneas"}</p>
+                  <p className="text-[11px] text-slate-400">{d}m · {s.lines.length} {s.lines.length === 1 ? "línea" : "líneas"}</p>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
                      <span key={l} className="text-[10px] font-black px-1.5 py-0.5 rounded text-white"
                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
                   ))}
-                  {s.lines.length > 3 && <span className="text-[10px] text-slate-500">+{s.lines.length - 3}</span>}
+                  {s.lines.length > 3 && <span className="text-[10px] text-slate-400">+{s.lines.length - 3}</span>}
                 </div>
               </div>
             ))}
@@ -130,7 +130,7 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
       )}
 
       {fromStops.length === 0 && toStops.length === 0 && (
-        <p className="text-body text-slate-500 text-center mt-2">
+        <p className="text-body text-slate-400 text-center mt-2">
           No hay paradas STM cerca. Probá un punto más cercano al centro de Montevideo.
         </p>
       )}
@@ -190,12 +190,12 @@ export function OutOfAreaState({ info, destName, onPlanToTerminal }: { info: Are
             </div>
           )}
           {inter.empresas && inter.empresas.length > 0 && (
-            <p className="text-[12px] text-slate-500 mb-2">
+            <p className="text-[12px] text-slate-400 mb-2">
               {inter.empresas.length === 1 ? "Compañía: " : `${inter.empresas.length} compañías: `}
               <span className="text-slate-300">{inter.empresas.join(" · ")}</span>
             </p>
           )}
-          <p className="text-body text-slate-500 mb-3">
+          <p className="text-body text-slate-400 mb-3">
             Próximas salidas desde Montevideo hacia <b className="text-slate-300">{inter.ciudad}</b>:
           </p>
           <div className="interdept-list">
@@ -238,7 +238,7 @@ export function OutOfAreaState({ info, destName, onPlanToTerminal }: { info: Are
         </div>
       ) : (
         <>
-          <p className="text-body text-slate-500 leading-relaxed max-w-sm">
+          <p className="text-body text-slate-400 leading-relaxed max-w-sm">
             {isInterdept ? (
               <>{whichLabel} {info.which === "both" ? "están" : "está"} a más de 80km de Montevideo. Es un viaje interdepartamental — salís desde el Terminal Tres Cruces.</>
             ) : (
