@@ -13,6 +13,7 @@ import fs from "fs";
 import path from "path";
 import { searchPois, getIconForCategory, type ScoredPoi } from "@/lib/poi-search";
 import { tryResolveIntersection } from "@/lib/intersection-search";
+import { dedupePlaces } from "@/lib/place-dedup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -132,8 +133,10 @@ async function fetchNominatim(q: string): Promise<GeoResult[]> {
       const number = a.house_number ? ` ${a.house_number}` : "";
       const area = a.neighbourhood || a.suburb || a.city_district || a.quarter || "";
 
+      // No repetir el barrio cuando coincide con el nombre ("Tres Cruces, Tres Cruces")
+      const areaDistinct = area && area.toLowerCase() !== (primary || "").toLowerCase() ? area : "";
       const displayName = primary && primary.length > 2
-        ? (area ? `${primary}, ${area}` : primary)
+        ? (areaDistinct ? `${primary}, ${areaDistinct}` : primary)
         : street
         ? `${street}${number}${area ? `, ${area}` : ""}`
         : item.display_name.split(",").slice(0, 2).join(",").trim();
@@ -262,16 +265,10 @@ export async function GET(req: NextRequest) {
   // 1. POIs curados (instantáneo, sin red)
   const curatedRaw = searchPois(q, 8).map(poiToResult);
 
-  // Dedupe curados por proximidad (≈ <50m) — eliminamos POIs OSM duplicados
-  // y el hand-curated cuando hay un OSM equivalente cercano.
-  const curated: GeoResult[] = [];
-  for (const c of curatedRaw) {
-    const dup = curated.find(
-      (e) => Math.abs(e.lat - c.lat) < 0.0005 && Math.abs(e.lon - c.lon) < 0.0005
-    );
-    if (!dup) curated.push(c);
-    if (curated.length >= 6) break;
-  }
+  // Dedupe curados: mismo punto (<55m) o mismo nombre normalizado a <300m
+  // (lib/place-dedup — el dedup solo-proximidad dejaba pasar el mismo lugar con
+  // coords distintas, ej. terminal vs centroide OSM del edificio).
+  const curated = dedupePlaces([], curatedRaw).slice(0, 6);
 
   // Detectar si el query parece dirección (números o palabras de vía)
   const looksLikeAddress = /\b\d{2,4}\b|\b(calle|avenida|av|bulevar|bvar|rambla|paso|camino|ruta|km)\b/i.test(q);
@@ -286,11 +283,9 @@ export async function GET(req: NextRequest) {
     combined = curated;
   } else {
     const nominatim = await fetchNominatim(q);
-    // Dedupe por proximidad (mismo lugar ≈ <50m)
-    const seen: Array<{ lat: number; lon: number }> = curated.map((c) => ({ lat: c.lat, lon: c.lon }));
-    const nominatimFiltered = nominatim.filter((n) => {
-      return !seen.some((s) => Math.abs(s.lat - n.lat) < 0.0005 && Math.abs(s.lon - n.lon) < 0.0005);
-    });
+    // Dedupe contra los curados: mismo punto O mismo nombre cercano. Arregla el
+    // caso visible "Shopping Tres Cruces" + "Tres Cruces Shopping" juntos.
+    const nominatimFiltered = dedupePlaces(curated, nominatim);
     // Si parece dirección, las direcciones de Nominatim van PRIMERO
     combined = looksLikeAddress ? [...nominatimFiltered, ...curated] : [...curated, ...nominatimFiltered];
   }

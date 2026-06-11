@@ -334,8 +334,14 @@ function StopRow({ stop, onTap, isHistory, query }: { stop: BusStop; onTap: () =
         <div className="name"><Highlight text={stop.stopName} q={query} /></div>
         <div className="meta" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <span>#{stop.stopCode}</span>
-          {stop.lines.slice(0, 6).map((l) => <LineBadge key={l} num={l} size="xs" />)}
-          {stop.lines.length > 6 && <span>+{stop.lines.length - 6}</span>}
+          {stop.lines.slice(0, 5).map((l) => <LineBadge key={l} num={l} size="xs" />)}
+          {/* Pill (no texto suelto): si la fila envuelve, el "+N" sigue pareciendo
+              parte del set de chips y no un residuo perdido abajo a la izquierda. */}
+          {stop.lines.length > 5 && (
+            <span style={{ font: "700 10px/1 var(--ff)", color: "var(--text-3)", padding: "4px 7px", borderRadius: 7, background: "var(--surface)", border: "1px solid var(--border)" }}>
+              +{stop.lines.length - 5}
+            </span>
+          )}
         </div>
       </div>
       <Icons.Chevron size={16} />

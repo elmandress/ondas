@@ -4,7 +4,7 @@
  * Inputs del planificador: fila de lugar (Desde/Hacia/waypoint) y selector de
  * hora de salida. Componentes presentacionales — el estado vive en RouteScreen.
  */
-import { useState } from "react";
+import { useRef } from "react";
 import { Icons } from "@/components/brand/Icons";
 import type { Place } from "@/components/route/types";
 
@@ -49,7 +49,15 @@ export function PlaceInput({
 // "Salir ahora" / "Salir a las HH:MM". Cuando hay hora, construye un ISO para hoy;
 // si la hora ya pasó hoy, asume mañana (planificás el primer viaje de mañana).
 export function DepartTimePicker({ value, onChange, children }: { value: string | null; onChange: (iso: string | null) => void; children?: React.ReactNode }) {
-  const [editing, setEditing] = useState(false);
+  // Input nativo OCULTO: un <input type=time> vacío renderiza "--:-- --" (parece un
+  // bug, no un placeholder). El botón abre su picker con showPicker() (gesto válido);
+  // fallback focus() para navegadores viejos (en iOS focus ya abre la rueda).
+  const timeRef = useRef<HTMLInputElement>(null);
+  const openPicker = () => {
+    const el = timeRef.current;
+    if (!el) return;
+    try { el.showPicker(); } catch { el.focus(); }
+  };
 
   // value (ISO) → "HH:MM" para mostrar y para el <input type=time>.
   const hhmm = value ? new Date(value).toTimeString().slice(0, 5) : "";
@@ -69,29 +77,31 @@ export function DepartTimePicker({ value, onChange, children }: { value: string 
     <div className="depart-row">
       <button
         className={`depart-chip ${!value ? "on" : ""}`}
-        onClick={() => { onChange(null); setEditing(false); }}
+        onClick={() => onChange(null)}
         aria-pressed={!value}
       >
         <Icons.Clock size={14} /> Salir ahora
       </button>
 
-      {value && !editing ? (
-        <button className="depart-chip on" onClick={() => setEditing(true)} aria-label="Cambiar hora de salida">
-          Salida {hhmm}
-          {new Date(value).getDate() !== new Date().getDate() && <span className="depart-day"> mañana</span>}
-        </button>
-      ) : (
-        <label className={`depart-chip ${value ? "on" : ""}`}>
-          {!value && <span style={{ opacity: 0.85 }}>Más tarde</span>}
-          <input
-            type="time"
-            value={hhmm}
-            onChange={(e) => { setFromHHMM(e.target.value); setEditing(false); }}
-            className="depart-time-input"
-            aria-label="Hora de salida"
-          />
-        </label>
-      )}
+      <button className={`depart-chip ${value ? "on" : ""}`} onClick={openPicker} aria-label={value ? "Cambiar hora de salida" : "Elegir hora de salida"}>
+        {value ? (
+          <>
+            Salida {hhmm}
+            {new Date(value).getDate() !== new Date().getDate() && <span className="depart-day"> mañana</span>}
+          </>
+        ) : (
+          <><Icons.Clock size={14} /> Más tarde</>
+        )}
+      </button>
+      <input
+        ref={timeRef}
+        type="time"
+        value={hhmm}
+        onChange={(e) => setFromHHMM(e.target.value)}
+        aria-hidden="true"
+        tabIndex={-1}
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+      />
       {children}
     </div>
   );

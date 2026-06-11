@@ -110,10 +110,16 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
       </div>
 
       <div className="hero-right">
+        {/* Solo badge + ETA: el destino completo NO entra en ~160px y truncado a
+            "CURV…" no informa y parece roto. Va en title/aria; el detalle, al tocar. */}
         {arrivals.slice(0, 3).map((a, i) => (
-          <div key={i} className={`hero-chip ${a.realtime ? "" : "sched"}`}>
+          <div
+            key={i}
+            className={`hero-chip ${a.realtime ? "" : "sched"}`}
+            title={a.destination ? `${a.lineName} → ${a.destination}` : a.lineName}
+            aria-label={`Línea ${a.lineName}${a.destination ? ` hacia ${a.destination}` : ""}, ${formatEta(a.eta)}`}
+          >
             <LineBadge num={a.lineName} size="sm" color={a.lineColor} />
-            <span className="hc-dest">{a.destination || a.lineName}</span>
             <span className="hc-eta">{formatEta(a.eta)}<span className="live-dot" /></span>
           </div>
         ))}

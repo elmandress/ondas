@@ -428,8 +428,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 .hero-right { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 8px; padding-top: 2px; position: relative; z-index: 1; }
 .hero-chip { display: flex; align-items: center; gap: 9px; }
-.hero-chip .hc-dest { font: var(--font-small); color: var(--text-2); max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hero-chip .hc-eta { margin-left: auto; font: 600 14px/1 var(--ff); color: var(--text); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 6px; }
+.hero-chip .hc-eta { margin-left: auto; font: 600 15px/1 var(--ff); color: var(--text); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 6px; }
 .hero-chip .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); position: relative; flex-shrink: 0; }
 .hero-chip .live-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--live); animation: live-ping 1.9s infinite; }
 .hero-chip.sched .live-dot { background: transparent; border: 1.5px solid var(--text-3); }
@@ -947,12 +946,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 }
 .depart-chip.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
 .depart-chip .depart-day { font-weight: 700; margin-left: 3px; }
-/* El <input type=time> vive dentro del chip; sin caja propia, hereda el look. */
-.depart-time-input {
-  background: transparent; border: none; color: inherit; font: inherit;
-  padding: 0; outline: none; cursor: pointer; min-width: 64px;
-}
-.depart-time-input::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: pointer; }
+/* La fila ancla al <input type=time> oculto (1×1, opacity 0) cuyo showPicker()
+   abre el selector nativo — un input vacío visible mostraba "--:--" feo. */
+.depart-row { position: relative; }
 
 /* ============== Timeline del paso a paso (Cómo ir) ============== */
 /* Línea vertical conectora + nodos: queda claro que caminás a la parada, ahí

@@ -44,7 +44,7 @@ export default function PlaceSearch({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={placeholder}
-          className="flex-1 bg-transparent outline-none text-body text-white placeholder:text-slate-600"
+          className="flex-1 min-w-0 bg-transparent outline-none text-body text-white placeholder:text-slate-600"
         />
         {voiceReady && (
           <button
