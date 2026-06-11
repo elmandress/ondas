@@ -33,3 +33,34 @@ jobs:
 
       - name: Validar datos GTFS pre-procesados
         run: node scripts/pipeline/validate-gtfs-data.mjs
+
+  # Smoke E2E contra el build de producción REAL, sin credenciales STM:
+  # prueba que la app bootea, los 4 tabs funcionan y la degradación es correcta.
+  # La suite unitaria no puede detectar "la app no abre" (hydration, chunks, etc.).
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar Chromium (Playwright)
+        run: npx playwright install --with-deps chromium
+
+      - name: Build de producción
+        run: npm run build
+
+      - name: Levantar server y correr smoke
+        run: |
+          npx next start -p 3000 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/ && break
+            sleep 1
+          done
+          node scripts/pipeline/e2e-smoke.mjs
