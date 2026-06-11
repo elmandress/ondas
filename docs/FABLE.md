@@ -194,8 +194,11 @@ supabase/schema.sql      → Esquema completo PostgreSQL+PostGIS (preparado, no 
 
 ### 4.3 Gaps de testing (priority order)
 
-1. Tests de degradación de proveedores externos (STM caído, Nominatim timeout, Supabase error)
-2. Tests E2E de flujos críticos (planificar ruta, abrir parada, instalar PWA)
+1. ✅ R54: degradación cubierta en parte por el smoke E2E de CI (corre SIN credenciales
+   STM contra el build real — prueba que la app funciona completa degradada). Falta:
+   degradación de Nominatim/Supabase a nivel unit (tests/degradation.test.ts cubre parte).
+2. ✅ R54: smoke E2E en CI (`scripts/pipeline/e2e-smoke.mjs`, job `e2e-smoke`): bootea,
+   4 tabs, cero pageerrors, gate duro. Falta: flujo completo "planificar ruta" E2E.
 3. Tests de API routes con inputs extremos (todos los endpoints, no solo los cubiertos)
 4. Tests de accesibilidad (contraste, lector de pantalla)
 5. Tests de performance/CWV (requieren deploy)
@@ -663,3 +666,36 @@ build→restore→export→validate, diff vs baseline (0 líneas perdidas), 162/
 datos nuevos, build OK. `data/gtfs-version.json` registra 20260608.
 **Proceso documentado en el header de `check-gtfs-freshness.mjs`** — la próxima versión
 del STM la reclama el workflow semanal y se regenera con esa misma secuencia.
+
+---
+
+## 15. Sesión R54 (2026-06-11) — robustez + análisis competitivo
+
+### Hecho y verificado
+
+1. **QA post-R53**: el SW sirve `stops.json` con stale-while-revalidate → la actualización
+   de datos llega sola a usuarios existentes (primera visita refresca en background). Sin regresión.
+2. **Smoke E2E en CI** (`9bee05f`): gate duro contra el build de producción real y SIN
+   credenciales STM (= prueba de degradación). Cubre los gaps #1/#2 de testing en parte.
+3. Lint 59→57 (`c6a0680`): residuos de sesiones previas en tests.
+
+### Análisis competitivo (pedido del usuario: criterio, no lluvia)
+
+Veredicto: **el roadmap actual sigue siendo correcto; PG-5 (interdepartamental completo,
+CSV MTOP) es el próximo gran paso** con la mejor relación impacto/esfuerzo:
+- Es el ÚNICO espacio donde nadie compite bien (Google: horarios pobres; Moovit: sin
+  interdept; Maprab: solo MVD). "ómnibus a Punta del Este / horarios COT" = volumen real.
+- Datos oficiales abiertos (catalogodatos.gub.uy MTOP), riesgo bajo, degradable.
+- Habilita landings SEO por corredor (`/interdepartamental/montevideo-maldonado`) que
+  multiplican la distribución una vez deployado.
+
+**Idea nueva incorporada al backlog** (analizada vs existentes): *horarios offline de
+favoritos* — cachear los horarios programados de las paradas favoritas para que sin señal
+la app siga respondiendo "cuándo pasa". Ningún competidor lo hace en UY; refuerza PWA +
+honestidad. **Bloqueada por SCH-1**: primero verificar en prod que metro-schedule.db
+carga en Netlify Functions; sin eso el endpoint de schedule no es confiable. Prioridad:
+después de PG-5 y de confirmar deploy.
+
+Descartado por ahora (impacto/esfuerzo peor): push "salí ahora" (requiere HTTPS+infra
+push, post-deploy), CSP nonces (DT-8, riesgo de romper el script de tema pre-paint, sin
+beneficio visible al usuario), clustering/heatmap del mapa (estética antes que utilidad).
