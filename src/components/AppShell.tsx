@@ -15,6 +15,7 @@ import { track } from "@/lib/analytics";
 import { getDestino } from "@/lib/destinos";
 import { setRouteInput } from "@/lib/route-input";
 import { setPendingSearch } from "@/lib/search-query";
+import { APP_VERSION } from "@/lib/app-meta";
 
 const OnboardingFlow = dynamic(() => import("@/components/onboarding/OnboardingFlow"), { ssr: false });
 
@@ -122,7 +123,7 @@ export default function AppShell() {
           ))}
         </nav>
         <div className="footer-meta">
-          <span className="v">v0.8 · build STM</span>
+          <span className="v">v{APP_VERSION} · build STM</span>
           Datos STM Montevideo
         </div>
       </aside>

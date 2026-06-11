@@ -73,6 +73,16 @@ export function fareLabel(numTransfers: number, suburban = false): string {
   return f.exact ? `~$${f.cash} efectivo` : `~desde $${f.cash} efectivo`;
 }
 
+/**
+ * Cuántos boletos comunes (con tarjeta STM) rinde un saldo dado. Para la pantalla de
+ * Saldo: el usuario teclea su saldo y le decimos cuántos viajes le quedan. Devuelve
+ * null si el saldo no es un número válido y positivo (no asumir 0 viajes ante basura).
+ */
+export function boletosFromSaldo(saldo: number): number | null {
+  if (!Number.isFinite(saldo) || saldo < 0) return null;
+  return Math.floor(saldo / URBAN_FARES.hora_stm);
+}
+
 /** Detalle completo para la ruta expandida: efectivo primero + tarjeta + vigencia. */
 export function fareDetail(numTransfers: number, suburban = false): string {
   const f = estimateFare(numTransfers, suburban);

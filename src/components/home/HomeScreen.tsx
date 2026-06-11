@@ -21,6 +21,7 @@ import { Icons } from "@/components/brand/Icons";
 import PeakHint from "@/components/ui/PeakHint";
 import SettingsSheet from "@/components/home/SettingsSheet";
 import HowToSheet from "@/components/home/HowToSheet";
+import SaldoSheet from "@/components/home/SaldoSheet";
 import { setRouteInput } from "@/lib/route-input";
 import { useServiceAlerts } from "@/hooks/useServiceAlerts";
 import Tip from "@/components/ui/Tip";
@@ -46,6 +47,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [showRoutesManager, setShowRoutesManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
+  const [showSaldo, setShowSaldo] = useState(false);
   const [favorites, setFavorites] = useState<FavoriteRoute[]>([]);
   const favoriteStops = useFavoriteStops();
   const alerts = useServiceAlerts();
@@ -385,13 +387,13 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       {/* Acciones STM */}
       <div className="section-head"><h2>Acciones STM</h2></div>
       <div className="shortcut-grid">
-        <a href="https://montevideo.gub.uy/stm-en-linea" target="_blank" rel="noopener noreferrer" className="shortcut-card tap-card">
+        <button onClick={() => { setShowSaldo(true); track("open_saldo_stm"); }} className="shortcut-card tap-card" style={{ textAlign: "left" }}>
           <div className="top">
             <span className="emo" style={{ background: "var(--live-soft)", color: "var(--live)" }}>💳</span>
             <span className="alias">Saldo STM</span>
           </div>
           <div className="nextline">Consultar y recargar</div>
-        </a>
+        </button>
         <a href="https://montevideo.gub.uy/buzon-ciudadano" target="_blank" rel="noopener noreferrer" className="shortcut-card tap-card">
           <div className="top">
             <span className="emo" style={{ background: "var(--sched-soft)", color: "var(--sched)" }}>📣</span>
@@ -438,6 +440,10 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
 
       <AnimatePresence>
         {showHowTo && <HowToSheet onClose={() => setShowHowTo(false)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSaldo && <SaldoSheet onClose={() => setShowSaldo(false)} />}
       </AnimatePresence>
     </div>
   );

@@ -7,6 +7,7 @@
  */
 import { motion } from "framer-motion";
 import { Icons } from "@/components/brand/Icons";
+import { APP_VERSION, APP_UPDATED, WE_DO, WE_DONT } from "@/lib/app-meta";
 
 interface HowToSheetProps { onClose: () => void }
 
@@ -104,6 +105,29 @@ export default function HowToSheet({ onClose }: HowToSheetProps) {
             <span>Nunca inventamos datos. El punto <span style={{ color: "var(--live)" }}>verde “en vivo”</span> es
             posición real por GPS (Montevideo y varias ciudades del interior); si decimos
             <b> “horario”</b> es el oficial programado. Cuando algo es estimado, te lo decimos.</span>
+          </div>
+
+          {/* Sobre Cuándo: qué hacemos / qué no (principios verificables) + versión. */}
+          <div className="howto-about">
+            <h3 className="howto-about-title">Sobre Cuándo</h3>
+            <p className="howto-about-lead">
+              Una app independiente para moverte en transporte público en Uruguay. Sin ánimo de
+              reemplazar a la Intendencia ni a las empresas: tomamos sus datos oficiales y te los
+              damos claros, rápidos y honestos.
+            </p>
+
+            <div className="howto-cols">
+              <div className="howto-col do">
+                <div className="howto-col-head"><Icons.Star size={14} /> Qué hacemos</div>
+                <ul>{WE_DO.map((t) => <li key={t}>{t}</li>)}</ul>
+              </div>
+              <div className="howto-col dont">
+                <div className="howto-col-head"><Icons.Close size={14} /> Qué no hacemos</div>
+                <ul>{WE_DONT.map((t) => <li key={t}>{t}</li>)}</ul>
+              </div>
+            </div>
+
+            <p className="howto-version">Cuándo · v{APP_VERSION} · {APP_UPDATED} · hecho en Montevideo 🇺🇾</p>
           </div>
         </div>
       </motion.div>

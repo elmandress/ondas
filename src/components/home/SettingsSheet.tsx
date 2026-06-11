@@ -8,11 +8,9 @@ import { useTextSize, setTextSize, type TextSize } from "@/lib/text-size";
 import { isVoiceEnabled, setVoiceEnabled, voiceSupported, speak } from "@/lib/voice-alerts";
 import { FARE_VIGENCIA, URBAN_FARES, SUBURBAN_FARES } from "@/lib/fare";
 import { useAuth, signInWithEmail, signOut } from "@/lib/auth";
+import { APP_VERSION, APP_UPDATED as UPDATED, APP_CONTACT as CONTACT } from "@/lib/app-meta";
 
 const CLOSE_MS = 340;
-const APP_VERSION = "0.8";
-const UPDATED = "mayo 2026";
-const CONTACT = "neptuno.rossello@gmail.com";
 
 type View = "main" | "comofunciona" | "privacidad" | "terminos" | "datos" | "derechos";
 
