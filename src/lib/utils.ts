@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatEta(minutes: number, approx = false): string {
+export function formatEta(minutes: number, approx = false, compact = false): string {
   // Guard: NaN / Infinity / negativo → "ya llegó o llegando"
   if (!Number.isFinite(minutes) || minutes <= 0) return approx ? "~Ya" : "Ahora";
   const tilde = approx ? "~" : "";
@@ -15,6 +15,8 @@ export function formatEta(minutes: number, approx = false): string {
   if (mins < 60) return `${tilde}${mins} min`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
+  // Compacto (chips angostos): "1h 54m" no entra → "1h+" (señal honesta de "lejos").
+  if (compact) return `${tilde}${h}h+`;
   return m === 0 ? `${tilde}${h}h` : `${tilde}${h}h ${m}m`;
 }
 

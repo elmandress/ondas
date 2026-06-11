@@ -120,7 +120,7 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
             aria-label={`Línea ${a.lineName}${a.destination ? ` hacia ${a.destination}` : ""}, ${formatEta(a.eta)}`}
           >
             <LineBadge num={a.lineName} size="sm" color={a.lineColor} />
-            <span className="hc-eta">{formatEta(a.eta)}<span className="live-dot" /></span>
+            <span className="hc-eta">{formatEta(a.eta, false, true)}<span className="live-dot" /></span>
           </div>
         ))}
       </div>

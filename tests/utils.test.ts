@@ -45,6 +45,14 @@ describe("formatEta", () => {
     expect(formatEta(5, true)).toBe("~5 min");
     expect(formatEta(90, true)).toBe("~1h 30m");
   });
+
+  it("compacto: <60 min igual; >=60 colapsa a 'Xh+' (chips angostos del hero)", () => {
+    expect(formatEta(45, false, true)).toBe("45 min"); // corto no cambia
+    expect(formatEta(90, false, true)).toBe("1h+");     // 1h 30m → 1h+
+    expect(formatEta(114, false, true)).toBe("1h+");    // 1h 54m → 1h+
+    expect(formatEta(125, false, true)).toBe("2h+");
+    expect(formatEta(90, true, true)).toBe("~1h+");     // approx + compacto
+  });
 });
 
 describe("formatRelativeTime", () => {

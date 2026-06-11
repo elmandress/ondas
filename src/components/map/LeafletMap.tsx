@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type * as L from "leaflet";
 import type { VehiclePosition, BusStop } from "@/lib/stm";
 import { loadRoutesCache, loadLineShapes } from "@/lib/routes-cache";
@@ -8,6 +8,40 @@ import { getNetInfo } from "@/lib/network";
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// A partir de este zoom mostramos el ícono completo de parada; por debajo, un punto
+// chico (evita el "muro de íconos idénticos" cuando hay decenas de paradas a la vista).
+// El mapa abre en zoom 16 centrado en el usuario: a ese zoom el Centro muestra ~70
+// paradas = muro. Umbral 17 → la vista por defecto va con puntos limpios (patrón
+// Google/Citymapper) y el ícono-bus aparece al acercarte. La seleccionada va completa.
+const STOP_FULL_ICON_ZOOM = 17;
+
+/** HTML del ícono de parada. mode "dot" = punto minimal; "full" = pastilla con bus. */
+function stopIconHtml(isSelected: boolean, mode: "dot" | "full"): string {
+  if (mode === "dot" && !isSelected) {
+    return `<div style="width:9px;height:9px;border-radius:50%;background:rgba(148,163,184,0.55);border:1.5px solid rgba(18,24,38,0.9);box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>`;
+  }
+  const sz = isSelected ? 38 : 26;
+  return `
+    <div style="
+      width:${sz}px;height:${sz}px;
+      background:${isSelected ? "rgba(240,160,32,0.92)" : "rgba(18,24,38,0.88)"};
+      border:${isSelected ? "2px solid rgba(255,255,255,0.9)" : "1.5px solid rgba(148,163,184,0.35)"};
+      border-radius:${isSelected ? "50%" : "8px"};
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:${isSelected ? "0 0 0 5px rgba(240,160,32,0.28),0 4px 16px rgba(0,0,0,0.5)" : "0 2px 8px rgba(0,0,0,0.4)"};
+      cursor:pointer;
+      backdrop-filter:blur(6px);
+    ">
+      <svg width="${isSelected ? 17 : 12}" height="${isSelected ? 17 : 12}" viewBox="0 0 24 24" fill="none" stroke="${isSelected ? "white" : "#94a3b8"}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="14" rx="2"/>
+        <path d="M22 9H2"/>
+        <circle cx="7" cy="19" r="1.5" fill="${isSelected ? "white" : "#94a3b8"}"/>
+        <circle cx="17" cy="19" r="1.5" fill="${isSelected ? "white" : "#94a3b8"}"/>
+      </svg>
+    </div>
+  `;
 }
 
 // Unified bus icon — white bus silhouette on a dark pill, with line number below
@@ -128,6 +162,9 @@ export default function LeafletMap({
   const userMarkerRef = useRef<L.Marker | null>(null);
   const initializedRef = useRef(false);
   const resizeObsRef = useRef<ResizeObserver | null>(null);
+  // "dot" lejos / "full" cerca. Arranca en dot (zoom inicial 14 < umbral). Solo cambia
+  // al CRUZAR el umbral → no re-renderiza paradas en cada tick de zoom.
+  const [stopIconMode, setStopIconMode] = useState<"dot" | "full">("dot");
 
   // Inicialización del mapa — solo una vez
   useEffect(() => {
@@ -232,6 +269,11 @@ export default function LeafletMap({
       };
       map.on("moveend", emitBounds);
       map.on("zoomend", emitBounds);
+      // Modo de ícono de parada según zoom (setState es no-op si no cambia el valor →
+      // el efecto de paradas solo corre al cruzar el umbral, no en cada zoom).
+      const syncStopMode = () => setStopIconMode(map.getZoom() >= STOP_FULL_ICON_ZOOM ? "full" : "dot");
+      map.on("zoomend", syncStopMode);
+      syncStopMode();
       // emit inicial
       setTimeout(emitBounds, 0);
 
@@ -371,31 +413,18 @@ export default function LeafletMap({
       }
     });
 
+    // Zoom VIVO del mapa (no el estado, que puede estar atrasado por la carga async de
+    // paradas o un flyTo intermedio). El estado stopIconMode solo dispara el re-render.
+    const liveMode: "dot" | "full" = map.getZoom() >= STOP_FULL_ICON_ZOOM ? "full" : "dot";
+
     stops.forEach((stop) => {
       const isSelected = stop.stopId === selectedStopId;
 
-      const sz = isSelected ? 38 : 26;
+      const dot = liveMode === "dot" && !isSelected;
+      const sz = dot ? 9 : isSelected ? 38 : 26;
       const stopIcon = L.divIcon({
         className: "",
-        html: `
-          <div style="
-            width:${sz}px;height:${sz}px;
-            background:${isSelected ? "rgba(240,160,32,0.92)" : "rgba(18,24,38,0.88)"};
-            border:${isSelected ? "2px solid rgba(255,255,255,0.9)" : "1.5px solid rgba(148,163,184,0.35)"};
-            border-radius:${isSelected ? "50%" : "8px"};
-            display:flex;align-items:center;justify-content:center;
-            box-shadow:${isSelected ? "0 0 0 5px rgba(240,160,32,0.28),0 4px 16px rgba(0,0,0,0.5)" : "0 2px 8px rgba(0,0,0,0.4)"};
-            cursor:pointer;
-            backdrop-filter:blur(6px);
-          ">
-            <svg width="${isSelected ? 17 : 12}" height="${isSelected ? 17 : 12}" viewBox="0 0 24 24" fill="none" stroke="${isSelected ? "white" : "#94a3b8"}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="4" width="20" height="14" rx="2"/>
-              <path d="M22 9H2"/>
-              <circle cx="7" cy="19" r="1.5" fill="${isSelected ? "white" : "#94a3b8"}"/>
-              <circle cx="17" cy="19" r="1.5" fill="${isSelected ? "white" : "#94a3b8"}"/>
-            </svg>
-          </div>
-        `,
+        html: stopIconHtml(isSelected, liveMode),
         iconSize: [sz, sz],
         iconAnchor: [sz / 2, sz / 2],
       });
@@ -425,7 +454,7 @@ export default function LeafletMap({
         stopMarkersRef.current.set(stop.stopId, marker);
       }
     });
-  }, [stops, selectedStopId, onStopSelect]);
+  }, [stops, selectedStopId, onStopSelect, stopIconMode]);
 
   // Actualizar marcadores de BUSES en tiempo real
   useEffect(() => {
