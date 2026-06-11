@@ -710,13 +710,12 @@ beneficio visible al usuario), clustering/heatmap del mapa (estética antes que 
 sin guiones nativos, dedup del geocoder por nombre+distancia con `lib/place-dedup.ts`
 +8 tests, "Tres Cruces, Tres Cruces", Cancelar recortado, pill "+N").
 
-**Backlog UX detectado, no resuelto aún** (orden de valor):
-- **Mapa: muro de íconos idénticos** a zoom bajo (71 paradas iguales) — bajar peso
-  visual de paradas con zoom <15.5 (dot chico) y reservar el ícono completo para
-  zoom cercano. Contenido en `LeafletMap.tsx` (stopIcon según zoom).
+**Backlog UX** (orden de valor):
+- ✅ R56: **muro de íconos del mapa** resuelto — paradas como punto chico a zoom <17,
+  ícono-bus completo al acercarse (`LeafletMap.tsx`, `STOP_FULL_ICON_ZOOM`). Verificado.
+- ✅ R56: ETA largo en chips del hero → modo `compact` de `formatEta` ("1h+").
 - Paradas duplicadas por sentido sin desambiguar en Buscar ("Basilea – Av Juan M
   Ferrari" ×2, #3301/#3302) — agregar pista de dirección (primera línea-destino GTFS).
-- ETA "1h 54m" en chips del hero ocupa mucho — considerar tope "≥60 min → +1h".
 
 ### Inventario de APIs/fuentes de datos UY (investigación R55)
 
@@ -736,9 +735,15 @@ foot), shapefile SIT (`intgis.montevideo.gub.uy` v_uptu_lsv), Busmatick interior
   pintar recorridos metro en el mapa.
 
 **Evaluadas y descartadas/limitadas**:
-- **Saldo STM**: NO hay API pública; solo web con login (`stm.gub.uy/app/mistm`).
-  Manejar credenciales del usuario está en "Qué NO hacer" → la acción "Saldo STM"
-  de Home queda como deep-link oficial (correcto así).
+- **Saldo STM**: investigado a fondo en R56. La consulta pública
+  (`montevideo.gub.uy/app/stm/beneficios`) es un form **JSF/PrimeFaces** que pide
+  tipo+nº de documento (cédula) + código mifare de la tarjeta y responde HTML parcial
+  vía POST con `ViewState` por sesión. Proxearlo es frágil (el ViewState/jsessionid
+  cambia, se rompe en cada deploy de ellos) y obliga a manejar PII (cédula) en nuestro
+  server. La cuenta personal (`stm.gub.uy/app/mistm`) requiere login. **Decisión
+  (R56): NO scrapear; la acción "Saldo STM" de Home queda como deep-link oficial.**
+  Si el usuario insiste, la vía sostenible sería un WebView a la página oficial (la IM
+  maneja sus credenciales), nunca nuestro server intermediando la cédula.
 - **Inumet**: catálogo abierto = observaciones horarias (histórico), no pronóstico
   estructurado; las alertas no tienen API limpia. Un hint de lluvia en "cuándo
   salir" requeriría scrapear el JSON interno de la app → frágil. Reevaluar si
