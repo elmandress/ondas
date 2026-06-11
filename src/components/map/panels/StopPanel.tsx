@@ -9,6 +9,9 @@
 import type { Arrival, BusStop, VehiclePosition } from "@/lib/stm";
 import ArrivalRow from "@/components/ui/ArrivalRow";
 import EmptyState from "@/components/ui/EmptyState";
+import ColdModeSuggestion from "@/components/home/ColdModeSuggestion";
+import { useColdAlternatives } from "@/hooks/useColdAlternatives";
+import { isInteriorStop } from "@/hooks/useInteriorArrivals";
 import { Icons } from "@/components/brand/Icons";
 
 interface Props {
@@ -39,6 +42,16 @@ export default function StopPanel({
   arrivals, arrivalsLoading, lastUpdated, arrivalsFetchFailed, arrivalsOffline, refetch,
   vehiclesForMap, selectedVehicleId, onFollowBus, onLinePress, onClose,
 }: Props) {
+  // Modo frío proactivo (mismas reglas que StopArrivalSheet): espera >15 min o sin
+  // servicio → alternativas alcanzables a pasos con ETA en vivo.
+  const coldActive = !isInteriorStop(stop.stopId) && !arrivalsOffline && !arrivalsFetchFailed && lastUpdated !== null;
+  const coldSuggestions = useColdAlternatives(
+    stop,
+    arrivals.length > 0 ? arrivals[0].eta : null,
+    realLines,
+    coldActive,
+  );
+
   return (
     <div className="map-stop-panel absolute bottom-0 left-0 right-0 z-[1001]">
       <div className="map-stop-panel-inner bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
@@ -111,6 +124,7 @@ export default function StopPanel({
         )}
         <div className="map-panel-scroll px-4 max-h-[44vh] overflow-y-auto"
              style={{ paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }}>
+          <ColdModeSuggestion suggestions={coldSuggestions} />
           {arrivalsLoading && !arrivals.length ? (
             [1, 2, 3, 4].map((i) => <div key={i} className="h-14 skeleton rounded-xl" />)
           ) : arrivals.length === 0 ? (

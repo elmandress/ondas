@@ -641,7 +641,7 @@ Hay commits "ci: trigger Netlify redeploy" → el repo está conectado a Netlify
      cache 60 s por parada, refresh 60 s) · `components/home/ColdModeSuggestion.tsx`.
    - Reglas: solo líneas que NO pasan acá (la misma línea "antes" en parada vecina suele
      ser sentido contrario), solo alcanzables (ETA ≥ caminata con sinuosidad), ahorro ≥5 min.
-   - **Pendiente**: integrarlo también en `map/panels/StopPanel.tsx` (mismo componente).
+   - ✅ R53: integrado también en `map/panels/StopPanel.tsx` (mismo componente y reglas).
 
 2. **PG-3 v1 — detectar, no auto-reemplazar** (`c1e7503`):
    - `scripts/pipeline/validate-gtfs-data.mjs` (npm run validate:data): estructura+umbrales
@@ -652,9 +652,14 @@ Hay commits "ci: trigger Netlify redeploy" → el repo está conectado a Netlify
    - `.github/workflows/gtfs-freshness.yml`: cron semanal, abre UN issue si hay GTFS nuevo.
      **Requiere secrets** `MVD_API_CLIENT_ID/SECRET` en GitHub Actions [usuario].
 
-### ⚠ Hallazgo: GTFS desactualizado AHORA
+### ⚠ Hallazgo: GTFS desactualizado AHORA → ✅ RESUELTO en R53
 
-El primer run real del check: STM publicó **20260608**; nuestros datos son del ~2026-06-01.
-Regenerar con los pasos del header de `check-gtfs-freshness.mjs` y registrar con `--save`.
-`data/gtfs-version.json` queda sin crear a propósito (sin registro = stale = el workflow
-lo reclama hasta que se regenere de verdad — honestidad también con nosotros mismos).
+El primer run real del check: STM publicó **20260608**; nuestros datos eran del ~2026-06-01.
+
+**R53 (2026-06-11, `98d4f06`)**: regeneración completa ejecutada y verificada. El pipeline
+quedó completo para actualizaciones de MVD: `download-gtfs.mjs` (01-download OAuth2+zip),
+`preserve-metro.mjs` (snapshot/restore del merge "M" sin necesitar tmp_nac/), cadena
+build→restore→export→validate, diff vs baseline (0 líneas perdidas), 162/162 tests con los
+datos nuevos, build OK. `data/gtfs-version.json` registra 20260608.
+**Proceso documentado en el header de `check-gtfs-freshness.mjs`** — la próxima versión
+del STM la reclama el workflow semanal y se regenera con esa misma secuencia.

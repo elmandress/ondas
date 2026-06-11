@@ -1125,6 +1125,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* ── Modo frío: alternativas proactivas cuando la espera acá es larga ──── */
 .cold-mode { margin: 0 22px 14px; padding: 12px 14px; border-radius: var(--r-card); background: var(--accent-soft); border: 1px solid var(--accent-border); }
+/* En el panel del mapa el contenedor ya trae px-4 → sin margen lateral propio. */
+.map-panel-scroll .cold-mode { margin: 0 0 12px; }
 .cm-head { display: flex; align-items: center; gap: 7px; font: 700 12px/1 var(--ff); color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
 .cm-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 .cm-row + .cm-row { border-top: 1px solid var(--border); }
