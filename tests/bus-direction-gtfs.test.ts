@@ -17,8 +17,10 @@ import path from "path";
 const HAS_GTFS = fs.existsSync(path.join(process.cwd(), "data", "gtfs.db"));
 
 describe.skipIf(!HAS_GTFS)("bus-direction-gtfs", async () => {
-  const { busTowardsStopGtfs } = await import("@/lib/bus-direction-gtfs");
-  const { findVariantForBus, getStopSequence } = await import("@/lib/gtfs-db");
+  const { busTowardsStopGtfs, busLikelyPassedStop } = await import("@/lib/bus-direction-gtfs");
+  const { findVariantForBus, getStopSequence, getVariantsForLine, getStopsForVariant, getAllLineNames } =
+    await import("@/lib/gtfs-db");
+  const { findStopServer } = await import("@/lib/stops-server");
 
   describe("findVariantForBus", () => {
     it("matchea 329 hacia PUNTA CARRETAS con headsign del API live", () => {
@@ -117,6 +119,109 @@ describe.skipIf(!HAS_GTFS)("bus-direction-gtfs", async () => {
         expect(r.routeDistanceM).toBeTypeOf("number");
         expect(r.routeDistanceM!).toBeGreaterThan(0);
       }
+    });
+  });
+
+  // ── R57: matching de líneas case-insensitive entre fuentes ────────────────
+  describe("case-insensitive (GPS reporta CE1, GTFS tiene Ce1)", () => {
+    it("resuelve la línea aunque la grafía difiera", () => {
+      const lower = getVariantsForLine("Ce1");
+      const upper = getVariantsForLine("CE1");
+      // El GTFS de MVD tiene Ce1 (circuito eléctrico Ciudad Vieja). Si algún día
+      // desaparece del GTFS, ambos quedan vacíos y el test sigue siendo válido:
+      // lo que NUNCA puede pasar es que una grafía resuelva y la otra no.
+      expect(upper.length).toBe(lower.length);
+      const sufijo = getVariantsForLine("124 SD");
+      const sufijo2 = getVariantsForLine("124 Sd");
+      expect(sufijo.length).toBe(sufijo2.length);
+    });
+
+    it("un bus CE1 ya no es invisible para el filtro GTFS (no-line)", () => {
+      if (getVariantsForLine("Ce1").length === 0) return; // GTFS sin Ce1: nada que validar
+      const bus = {
+        vehicleId: "900", lineId: "CE1", lineName: "CE1",
+        lat: -34.906, lon: -56.2, bearing: 0, speed: 10, timestamp: Date.now(),
+        destinoDesc: "TRES CRUCES",
+      };
+      const r = busTowardsStopGtfs(bus, "3790");
+      expect(r.reason).not.toBe("no-line");
+    });
+  });
+
+  // ── R57: "ya pasó" por PROYECCIÓN sobre el recorrido (no parada más cercana) ──
+  describe("ya pasó — proyección sobre el recorrido", () => {
+    // Variante "limpia" para test determinístico: línea con UNA sola variante
+    // (candidatos = esa) y suficientes paradas con coordenadas.
+    function findCleanVariant() {
+      for (const line of getAllLineNames()) {
+        const variants = getVariantsForLine(line);
+        if (variants.length !== 1) continue;
+        const stops = getStopsForVariant(variants[0].variantId);
+        if (stops.length < 12) continue;
+        const coords = stops.map((s) => {
+          const st = findStopServer(s.stopId);
+          return st ? { seq: s.sequence, stopId: s.stopId, lat: st.stopLat, lon: st.stopLon } : null;
+        });
+        if (coords.every(Boolean)) {
+          return { line, headsign: variants[0].headsign, stops: coords as NonNullable<(typeof coords)[number]>[] };
+        }
+      }
+      return null;
+    }
+    const clean = findCleanVariant();
+
+    it.skipIf(!clean)("bus 2 paradas DESPUÉS de la target → passed", () => {
+      const { line, headsign, stops } = clean!;
+      const target = stops[4];
+      const busAt = stops[6]; // claramente más allá (>75m por el recorrido)
+      const bus = {
+        vehicleId: "901", lineId: line, lineName: line,
+        lat: busAt.lat, lon: busAt.lon, bearing: 0, speed: 10, timestamp: Date.now(),
+        destinoDesc: headsign,
+      };
+      const r = busTowardsStopGtfs(bus, target.stopId);
+      expect(r.goingTo).toBe(false);
+      expect(r.reason).toBe("passed");
+    });
+
+    it.skipIf(!clean)("bus 2 paradas ANTES de la target → va hacia ella, con distancia real", () => {
+      const { line, headsign, stops } = clean!;
+      const target = stops[6];
+      const busAt = stops[4];
+      const bus = {
+        vehicleId: "902", lineId: line, lineName: line,
+        lat: busAt.lat, lon: busAt.lon, bearing: 0, speed: 10, timestamp: Date.now(),
+        destinoDesc: headsign,
+      };
+      const r = busTowardsStopGtfs(bus, target.stopId);
+      expect(r.goingTo).toBe(true);
+      expect(r.remainingStops).toBe(2);
+      expect(r.routeDistanceM!).toBeGreaterThan(0);
+    });
+
+    it.skipIf(!clean)("bus EN la parada target → llegando (no passed)", () => {
+      const { line, headsign, stops } = clean!;
+      const target = stops[5];
+      const bus = {
+        vehicleId: "903", lineId: line, lineName: line,
+        lat: target.lat, lon: target.lon, bearing: 0, speed: 0, timestamp: Date.now(),
+        destinoDesc: headsign,
+      };
+      const r = busTowardsStopGtfs(bus, target.stopId);
+      expect(r.goingTo).toBe(true);
+    });
+
+    it.skipIf(!clean)("busLikelyPassedStop: true pasado, false viniendo", () => {
+      const { line, headsign, stops } = clean!;
+      const target = stops[4];
+      const past = stops[7];
+      const before = stops[1];
+      expect(busLikelyPassedStop(
+        { lat: past.lat, lon: past.lon, lineName: line, destinoDesc: headsign }, target.stopId
+      )).toBe(true);
+      expect(busLikelyPassedStop(
+        { lat: before.lat, lon: before.lon, lineName: line, destinoDesc: headsign }, target.stopId
+      )).toBe(false);
     });
   });
 });

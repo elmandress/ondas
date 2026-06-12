@@ -11,6 +11,7 @@
  * CONTEXTO al saldo (cuántos boletos rinde), que es lo que la app sí puede aportar.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useBackClose } from "@/hooks/useBackClose";
 import { Icons } from "@/components/brand/Icons";
 import { URBAN_FARES, FARE_VIGENCIA, boletosFromSaldo } from "@/lib/fare";
 import { track } from "@/lib/analytics";
@@ -21,6 +22,8 @@ const OFICIAL_CONSULTA = "https://montevideo.gub.uy/app/stm/beneficios/";
 const OFICIAL_STM = "https://montevideo.gub.uy/stm-en-linea";
 
 export default function SaldoSheet({ onClose }: { onClose: () => void }) {
+  // Atrás del sistema cierra el sheet, no la app (R58c).
+  useBackClose(onClose);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setOpen(true));
@@ -66,7 +69,7 @@ export default function SaldoSheet({ onClose }: { onClose: () => void }) {
             <button
               onClick={() => openOfficial(OFICIAL_CONSULTA, "consulta")}
               className="tap-card"
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 13, padding: "15px 16px", borderRadius: "var(--r-card)", background: "var(--accent)", color: "#1a1206", border: "none", marginBottom: 10 }}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: 13, padding: "15px 16px", borderRadius: "var(--r-card)", background: "var(--accent-bg)", color: "#1a1206", border: "none", marginBottom: 10 }}
             >
               <span style={{ display: "grid", placeItems: "center", flexShrink: 0 }}><Icons.Bus size={20} /></span>
               <span style={{ flex: 1, textAlign: "left" }}>

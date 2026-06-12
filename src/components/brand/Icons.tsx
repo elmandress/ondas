@@ -52,6 +52,7 @@ export const Icons = {
   Plus: (p: IconProps) => <Svg {...p}><path d="M12 5 V19" /><path d="M5 12 H19" /></Svg>,
   Minus: (p: IconProps) => <Svg {...p}><path d="M5 12 H19" /></Svg>,
   Clock: (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" r="8.2" /><path d="M12 7.5 V12 L15 13.8" /></Svg>,
+  Moon: (p: IconProps) => <Svg {...p}><path d="M20 13.5 A8.3 8.3 0 1 1 10.5 4 A6.6 6.6 0 0 0 20 13.5 Z" /></Svg>,
   Help: (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M9.3 9.2 a2.7 2.7 0 1 1 3.7 2.5 c-0.9 0.4-1.2 1-1.2 1.8" /><circle cx="12" cy="16.6" r="0.6" fill="currentColor" stroke="none" /></Svg>,
   Wheelchair: (p: IconProps) => <Svg {...p}><circle cx="13" cy="4.6" r="1.5" /><path d="M13 7 V12 H17.5" /><path d="M12 12 L14 17 H18.5" /><circle cx="11" cy="16.5" r="4.2" /></Svg>,
   Snow: (p: IconProps) => <Svg {...p}><path d="M12 3 V21" /><path d="M4.5 7.5 L19.5 16.5" /><path d="M4.5 16.5 L19.5 7.5" /><path d="M9 4.6 L12 6.4 L15 4.6" /><path d="M9 19.4 L12 17.6 L15 19.4" /></Svg>,

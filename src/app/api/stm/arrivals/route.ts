@@ -86,6 +86,12 @@ function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string, trustUpstream 
     // la parada, descartarlo (el filtro del STM a veces incluye pasados / sentido
     // contrario). Solo confiamos en el STM cuando el GTFS NO puede ubicarlo.
     if (check.reason === "passed") return null;
+    // R57: NINGUNA variante candidata de esa línea (matcheada por el destino que
+    // reporta el propio bus) pasa por esta parada → va por otra ruta o en sentido
+    // contrario. Mostrarlo era el bug "marca ómnibus que vienen por otra parada,
+    // pero como están cerca los detecta". La incertidumbre legítima (recorrido
+    // acortado fuera del GTFS) cae en "no-position", no acá.
+    if (check.reason === "stop-not-in-route") return null;
     // Respaldo: aunque el GTFS no haya podido snapear (reason "no-position"/"no-snap"),
     // si geométricamente el bus quedó MÁS ALLÁ de la parada, ya pasó → no mostrar.
     // Esto arregla el caso "estoy en la 160, el bus está en la 162 y me dice que llega".
@@ -93,14 +99,15 @@ function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string, trustUpstream 
     // Fuente oficial del STM, GTFS incierto → confiar. ETA estimada por distancia.
     const stop = findStopServer(targetStopId);
     let etaSeconds = 0;
+    let straightM = 0;
     if (stop) {
-      const d = distM(lat, lon, stop.stopLat, stop.stopLon);
+      straightM = distM(lat, lon, stop.stopLat, stop.stopLon);
       const speedMs = (vehicle.speed > 3 ? vehicle.speed : 16) * 1000 / 3600; // 16 km/h urbano por defecto
-      etaSeconds = Math.round(d / speedMs);
+      etaSeconds = Math.round(straightM / speedMs);
     }
     // etaApprox: este ETA salió de distancia+velocidad asumida, no del recorrido GTFS
     // → menos preciso. La UI lo marca con "~" para ser honesta sobre la incertidumbre.
-    return { ...base, eta: Math.max(0, Math.round(etaSeconds / 60)), etaSeconds, distance: 0, isShortened: false, etaApprox: true };
+    return { ...base, eta: Math.max(0, Math.round(etaSeconds / 60)), etaSeconds, distance: Math.round(straightM), isShortened: false, etaApprox: true };
   }
 
   const etaSeconds = check.etaSeconds ?? 0;

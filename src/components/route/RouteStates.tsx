@@ -95,10 +95,10 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
-                     <span key={l} className="text-[10px] font-black px-1.5 py-0.5 rounded text-white"
+                     <span key={l} className="text-[11px] font-black px-1.5 py-0.5 rounded text-white"
                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
                   ))}
-                  {s.lines.length > 3 && <span className="text-[10px] text-slate-400">+{s.lines.length - 3}</span>}
+                  {s.lines.length > 3 && <span className="text-[11px] text-slate-400">+{s.lines.length - 3}</span>}
                 </div>
               </div>
             ))}
@@ -118,10 +118,10 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
-                     <span key={l} className="text-[10px] font-black px-1.5 py-0.5 rounded text-white"
+                     <span key={l} className="text-[11px] font-black px-1.5 py-0.5 rounded text-white"
                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
                   ))}
-                  {s.lines.length > 3 && <span className="text-[10px] text-slate-400">+{s.lines.length - 3}</span>}
+                  {s.lines.length > 3 && <span className="text-[11px] text-slate-400">+{s.lines.length - 3}</span>}
                 </div>
               </div>
             ))}
@@ -219,7 +219,7 @@ export function OutOfAreaState({ info, destName, onPlanToTerminal }: { info: Are
               <button
                 onClick={onPlanToTerminal}
                 className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold"
-                style={{ background: "var(--accent)", color: "#1a1206" }}
+                style={{ background: "var(--accent-bg)", color: "#1a1206" }}
               >
                 <Icons.Bus size={16} /> Cómo llegar a la Terminal Tres Cruces
               </button>

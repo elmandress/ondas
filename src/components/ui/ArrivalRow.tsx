@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 import { lineHasWifi, isAccessibleArrival, arrivalHasAc, type Arrival } from "@/lib/stm";
-import { formatEta } from "@/lib/utils";
+import { formatEta, titleCaseDestination } from "@/lib/utils";
 import LineBadge from "@/components/ui/LineBadge";
 import { Icons } from "@/components/brand/Icons";
 import ScheduledPager from "@/components/ui/ScheduledPager";
@@ -54,7 +54,9 @@ export default function ArrivalRow({
       )}
 
       <div className="body">
-        <div className="dest">{arrival.destination}</div>
+        {/* Title Case (R58): "Punta Carretas (por Parque)" en vez de "PUNTA CARRETA…" —
+            lee mejor y entra más texto antes de truncar. */}
+        <div className="dest">{titleCaseDestination(arrival.destination)}</div>
         <div className="arrival-sub">
           {arrival.realtime ? (
             <span className="as-live"><span className="as-dot" />en vivo</span>

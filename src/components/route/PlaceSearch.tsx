@@ -153,7 +153,9 @@ export default function PlaceSearch({
             const isStop = s.subtitle?.startsWith("Parada");
             return (
             <button key={i} onClick={() => onPick(s)} className={`search-result ${isStop ? "stop" : "place"}`}>
-              <div className="icon">{s.icon ? <span style={{ fontSize: 18 }}>{s.icon}</span> : isStop ? <Icons.Bus size={16} /> : <Icons.Pin size={16} />}</div>
+              {/* R59: SIEMPRE vector (el geocoder manda emojis 🏥🛍️ que cada OS dibuja
+                  distinto — un solo sistema de íconos, como ya hace Buscar desde R55). */}
+              <div className="icon">{isStop ? <Icons.Bus size={16} /> : <Icons.Pin size={16} />}</div>
               <div className="body">
                 <div className="name">{s.name}</div>
                 {s.subtitle && <div className="meta">{s.subtitle}</div>}

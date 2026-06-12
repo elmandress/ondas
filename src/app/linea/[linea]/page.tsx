@@ -7,6 +7,8 @@ import { findStopServer } from "@/lib/stops-server";
 import { lineColorFromCode } from "@/lib/stm";
 import { fareLabel } from "@/lib/fare";
 import { getServiceWindow } from "@/lib/line-hours";
+import { BARRIOS, type Barrio } from "@/lib/barrios";
+import { haversineMeters } from "@/lib/geo";
 import { SITE_URL } from "@/app/layout";
 
 export const dynamic = "force-static";
@@ -38,6 +40,28 @@ function getLineStopsSample(line: string, max = 12): Array<{ id: string; name: s
     if (rec) out.push({ id: rec.stopId, name: rec.stopName });
   }
   return out;
+}
+
+/**
+ * Barrios que la línea realmente cubre (alguna parada de alguna variante cae dentro
+ * del radio del barrio). Interlinking /linea ↔ /barrio: reparte autoridad entre las
+ * landings y responde "¿el 183 pasa por Pocitos?" con un link, no con texto suelto.
+ * Corre en build (SSG) — costo cero en runtime.
+ */
+function barriosForLine(line: string): Barrio[] {
+  const variants = getVariantsForLine(line);
+  if (!variants.length) return [];
+  const seen = new Set<string>();
+  const coords: Array<{ lat: number; lon: number }> = [];
+  for (const v of variants) {
+    for (const s of getStopsForVariant(v.variantId)) {
+      if (seen.has(s.stopId)) continue;
+      seen.add(s.stopId);
+      const rec = findStopServer(s.stopId);
+      if (rec) coords.push({ lat: rec.stopLat, lon: rec.stopLon });
+    }
+  }
+  return BARRIOS.filter((b) => coords.some((c) => haversineMeters(b.lat, b.lon, c.lat, c.lon) <= b.radiusM));
 }
 
 function describe(line: string) {
@@ -73,6 +97,7 @@ export default async function LineaPage({ params }: { params: Promise<{ linea: s
 
   const color = lineColorFromCode(line);
   const stops = getLineStopsSample(line);
+  const barrios = barriosForLine(line);
   const fare = fareLabel(0, false);
   // Ventana de días hábiles. OJO HONESTIDAD: ~157 líneas urbanas dan 00:00–24:00 (dato
   // saturado en la fuente, NO operan realmente 24h) → no afirmamos nada para esas. Solo
@@ -153,6 +178,23 @@ export default async function LineaPage({ params }: { params: Promise<{ linea: s
         <p style={{ font: "400 12px/1.4 var(--ff)", color: "#737c92", textAlign: "center", marginBottom: 26 }}>
           Boleto {fare}{winShort ? ` · ${winShort}` : " · llegadas en vivo del STM"}
         </p>
+
+        {/* Interlinking /linea ↔ /barrio: barrios REALES por donde pasa (derivados de
+            las paradas, no inventados). Links = autoridad interna + responde la
+            búsqueda "¿el {line} pasa por X?". */}
+        {barrios.length > 0 && (
+          <section style={{ marginBottom: 26 }}>
+            <h2 style={{ font: "700 14px/1 var(--ff)", color: "#9aa3b5", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Barrios por donde pasa</h2>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {barrios.map((b) => (
+                <Link key={b.slug} href={`/barrio/${b.slug}`}
+                  style={{ display: "inline-block", padding: "8px 13px", borderRadius: 999, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#cdd2de", font: "600 13px/1 var(--ff)", textDecoration: "none" }}>
+                  {b.name.replace(/^(el|la) /, (m) => m[0].toUpperCase() + m.slice(1))}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {stops.length > 0 && (
           <section style={{ marginTop: 8 }}>

@@ -1,24 +1,26 @@
 /**
  * Filtro upstream basado en GTFS oficial (no heurística).
- * SRS FR-2.7 (NUEVO mayo 2026 - sesión 3).
+ * SRS FR-2.7 (NUEVO mayo 2026 - sesión 3). Reescrito en R57 (junio 2026).
  *
  * Algoritmo (cómo lo hacen Transit, Citymapper, Cómo Ir oficial):
  *
- *   1. Identificar la VARIANTE del bus (línea + destino → trip_id GTFS)
+ *   1. Identificar la VARIANTE del bus (línea + destino → trip GTFS)
  *   2. Verificar que la PARADA TARGET está en el recorrido de esa variante
  *      → si no está: bus va por otra ruta, DESCARTAR
- *   3. Calcular la "posición actual" del bus = parada más cercana del recorrido
- *      a la posición GPS del bus
- *   4. Si current_seq >= target_seq: bus YA PASÓ, DESCARTAR
- *   5. Si current_seq < target_seq: bus va HACIA la parada
- *      - "paradas restantes" = target_seq - current_seq
- *      - ETA estimada = paradas_restantes * tiempo_promedio_por_parada (~60s urbano)
+ *   3. PROYECTAR el GPS del bus sobre la polilínea de paradas del recorrido
+ *      (segmento más cercano + fracción dentro de él, NO "parada más cercana")
+ *   4. Si la posición proyectada quedó MÁS ALLÁ de la parada target (margen en
+ *      metros por el recorrido): bus YA PASÓ, DESCARTAR
+ *   5. Si no: bus va HACIA la parada
+ *      - "paradas restantes" = cuántas paradas del recorrido quedan por delante
+ *      - ETA por horario GTFS interpolado; fallback promedio por parada
+ *      - distancia REAL = metros restantes siguiendo el recorrido
  *
- * Esto resuelve los bugs reportados:
- * - "329 yendo a la otra parada" → variante incorrecta, se descarta
- * - "187 en la Loma del orto a 10min" → si está antes de la parada en
- *   el trip, ETA real (no haversine), si no está en el trip, descartado
- * - "tracking inconsistente" → ahora es determinístico
+ * Por qué proyección y no "parada más cercana" (bug R57): con el snap a la
+ * parada más cercana, un bus que ACABABA de pasar la parada seguía snapeando a
+ * ella (== target → "llegando") hasta estar a mitad de camino de la siguiente,
+ * y el margen de ±1 parada del respaldo dejaba pasar buses hasta 2 paradas más
+ * allá. Con la proyección, "ya pasó" se decide en METROS sobre el recorrido.
  */
 
 import type { VehiclePosition } from "@/lib/stm";
@@ -35,26 +37,40 @@ import { findStopServer } from "@/lib/stops-server";
 const AVG_SECONDS_PER_STOP = 70;
 
 /**
- * Distancia máxima entre el GPS del bus y la parada GTFS más cercana para
+ * Distancia máxima entre el GPS del bus y el recorrido (proyectado) para
  * considerar el posicionamiento válido. 900m tolera GPS ruidoso urbano y
  * buses entre paradas sin señal (puentes, túneles, giros largos).
  */
 const MAX_GPS_SNAP_M = 900;
+
+/**
+ * Margen "ya pasó" en metros POR EL RECORRIDO: si la proyección del bus quedó
+ * más de esto después de la parada target, ya la dejó atrás. 75m ≈ el bus
+ * acaba de arrancar de la parada / ruido GPS en la esquina; preferimos mostrar
+ * de más un bus que está EN la parada que ocultar uno que viene llegando.
+ */
+const PASSED_ALONG_MARGIN_M = 75;
+
+/**
+ * Margen del chequeo de RESPALDO (busLikelyPassedStop, sin límite de snap):
+ * más conservador porque el GPS no snapeó bien (calle paralela, lejos).
+ */
+const LIKELY_PASSED_MARGIN_M = 120;
 
 export interface GtfsCheckResult {
   /** true si el bus va hacia la parada (upstream). */
   goingTo: boolean;
   /** Razón del descarte cuando !goingTo. */
   reason?: "no-line" | "no-variant" | "stop-not-in-route" | "passed" | "no-position";
-  /** stop_sequence del bus en su recorrido actual (parada más cercana proyectada). */
+  /** stop_sequence del bus en su recorrido actual (parada inmediatamente detrás). */
   currentSequence?: number;
   /** stop_sequence de la parada target. */
   targetSequence?: number;
   /** Cuántas paradas faltan para llegar (incluyendo la target). */
   remainingStops?: number;
-  /** ETA estimada en segundos basada en paradas restantes. */
+  /** ETA estimada en segundos basada en horario GTFS interpolado o promedio. */
   etaSeconds?: number;
-  /** Distancia REAL del bus a la parada SIGUIENDO el recorrido (suma haversine entre paradas). */
+  /** Distancia REAL del bus a la parada SIGUIENDO el recorrido (metros). */
   routeDistanceM?: number;
   /** Headsign del trip GTFS matcheado (para debug y visualización). */
   matchedHeadsign?: string;
@@ -95,21 +111,110 @@ function headsignMatches(candidate: VariantCandidate, normDest: string): boolean
   return false;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Polilínea del recorrido (paradas con coordenada, en orden) + proyección
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface VariantPath {
+  /** Paradas con coordenada conocida, en orden de recorrido. origIdx = índice en getStopsForVariant. */
+  pts: Array<{ origIdx: number; lat: number; lon: number }>;
+  /** Distancia acumulada (m) por el recorrido hasta cada punto de `pts`. */
+  alongAt: number[];
+  /** origIdx → índice en pts (para ubicar la parada target en el path). */
+  pathIdxByOrig: Map<number, number>;
+}
+
+/** Cache por variante: el path no cambia durante la vida del proceso. */
+const pathCache = new Map<string, VariantPath | null>();
+
+function getVariantPath(variantId: string): VariantPath | null {
+  if (pathCache.has(variantId)) return pathCache.get(variantId)!;
+  const stops = getStopsForVariant(variantId);
+  let path: VariantPath | null = null;
+  if (stops.length > 0) {
+    const pts: VariantPath["pts"] = [];
+    const alongAt: number[] = [];
+    const pathIdxByOrig = new Map<number, number>();
+    let along = 0;
+    for (let i = 0; i < stops.length; i++) {
+      const c = getStopCoord(stops[i].stopId);
+      if (!c) continue;
+      if (pts.length > 0) {
+        const prev = pts[pts.length - 1];
+        along += distM(prev.lat, prev.lon, c.lat, c.lon);
+      }
+      pathIdxByOrig.set(i, pts.length);
+      pts.push({ origIdx: i, lat: c.lat, lon: c.lon });
+      alongAt.push(along);
+    }
+    if (pts.length > 0) path = { pts, alongAt, pathIdxByOrig };
+  }
+  pathCache.set(variantId, path);
+  return path;
+}
+
+interface Projection {
+  /** Distancia del GPS al punto proyectado sobre el recorrido (m). */
+  snapDist: number;
+  /** Distancia acumulada por el recorrido hasta el punto proyectado (m). */
+  alongM: number;
+  /** Índice en pts de la parada inmediatamente detrás de la proyección. */
+  behindPathIdx: number;
+  /** Fracción [0..1] recorrida del segmento behind→behind+1. */
+  t: number;
+}
+
+/** Proyección del GPS sobre la polilínea de paradas (segmento más cercano). */
+function projectOnPath(path: VariantPath, lat: number, lon: number): Projection {
+  const { pts, alongAt } = path;
+  if (pts.length === 1) {
+    return { snapDist: distM(lat, lon, pts[0].lat, pts[0].lon), alongM: 0, behindPathIdx: 0, t: 0 };
+  }
+  // Plano local en metros centrado en el bus (suficiente a escala urbana).
+  const kx = 111320 * Math.cos((lat * Math.PI) / 180);
+  const ky = 111320;
+  const px = 0, py = 0;
+  const X = (lo: number) => (lo - lon) * kx;
+  const Y = (la: number) => (la - lat) * ky;
+
+  let best: Projection = { snapDist: Infinity, alongM: 0, behindPathIdx: 0, t: 0 };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = X(pts[i].lon), ay = Y(pts[i].lat);
+    const bx = X(pts[i + 1].lon), by = Y(pts[i + 1].lat);
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.min(1, Math.max(0, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+    const qx = ax + t * dx, qy = ay + t * dy;
+    const d = Math.hypot(px - qx, py - qy);
+    if (d < best.snapDist) {
+      const segLen = alongAt[i + 1] - alongAt[i];
+      best = { snapDist: d, alongM: alongAt[i] + t * segLen, behindPathIdx: i, t };
+    }
+  }
+  // Proyección exactamente sobre un vértice (t=1 del segmento anterior): el bus está
+  // EN esa parada → contarla como "detrás", no como restante (semántica de remaining).
+  if (best.t === 1 && best.behindPathIdx < pts.length - 1) {
+    best.behindPathIdx += 1;
+    best.t = 0;
+  }
+  return best;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Evaluación de candidatos
+// ─────────────────────────────────────────────────────────────────────────────
+
 /** Resultado de evaluar un recorrido candidato contra la posición GPS del bus. */
 interface CandidateEval {
   variant: VariantCandidate;
+  snapDist: number;
   currentSeq: number;
   targetSeq: number;
-  snapDist: number;
-  bestStopIdx: number;
-  stops: ReturnType<typeof getStopsForVariant>;
+  remainingStops: number;
+  etaSeconds: number;
+  routeDistanceM: number;
 }
 
-/**
- * Proyecta el GPS del bus sobre un recorrido y verifica que va hacia la parada.
- * Devuelve null si: la parada no está en el recorrido, el bus ya pasó, o el
- * GPS no snapea (fuera de ruta).
- */
 /** Resultado discriminado: ok (va hacia) o el motivo preciso del descarte. */
 type EvalResult =
   | { ok: CandidateEval }
@@ -126,40 +231,71 @@ function evalCandidate(
   const stops = getStopsForVariant(variant.variantId);
   if (stops.length === 0) return { fail: "no-stop" };
 
-  let bestStopIdx = -1;
-  let snapDist = Infinity;
-  for (let i = 0; i < stops.length; i++) {
-    const coord = getStopCoord(stops[i].stopId);
-    if (!coord) continue;
-    const d = distM(bus.lat, bus.lon, coord.lat, coord.lon);
-    if (d < snapDist) { snapDist = d; bestStopIdx = i; }
+  const path = getVariantPath(variant.variantId);
+  if (!path) return { fail: "no-snap" }; // sin coords no podemos ubicar el bus
+
+  // Posición de la parada target dentro del path (primera ocurrencia de la seq).
+  const targetOrigIdx = stops.findIndex((s) => s.sequence === targetSeq);
+  const targetPathIdx = targetOrigIdx >= 0 ? path.pathIdxByOrig.get(targetOrigIdx) : undefined;
+  if (targetPathIdx == null) return { fail: "no-snap" }; // target sin coord → no podemos juzgar
+
+  const proj = projectOnPath(path, bus.lat, bus.lon);
+  if (proj.snapDist > MAX_GPS_SNAP_M) return { fail: "no-snap" };
+
+  const targetAlong = path.alongAt[targetPathIdx];
+  // Estrictamente PASADO en metros por el recorrido. En la parada misma (o ruido
+  // de esquina ≤75m después) está LLEGANDO, no pasó.
+  if (proj.alongM > targetAlong + PASSED_ALONG_MARGIN_M) return { fail: "passed" };
+
+  const behind = path.pts[proj.behindPathIdx];
+  const aheadPathIdx = Math.min(proj.behindPathIdx + 1, path.pts.length - 1);
+  const ahead = path.pts[aheadPathIdx];
+  const currentSeq = stops[behind.origIdx].sequence;
+  const remainingStops = Math.max(0, targetPathIdx - proj.behindPathIdx);
+
+  // ETA por horario GTFS del recorrido, interpolado dentro del segmento;
+  // fallback a promedio por parada si falta el dato.
+  const arrBehind = stops[behind.origIdx].arrivalSeconds;
+  const arrAhead = stops[ahead.origIdx].arrivalSeconds;
+  const arrTarget = stops[targetOrigIdx].arrivalSeconds;
+  let arrCurrent = arrBehind;
+  if (arrBehind > 0 && arrAhead >= arrBehind && proj.t > 0) {
+    arrCurrent = arrBehind + proj.t * (arrAhead - arrBehind);
   }
-  if (bestStopIdx === -1 || snapDist > MAX_GPS_SNAP_M) return { fail: "no-snap" };
+  let etaSeconds: number;
+  if (arrTarget > arrCurrent && arrCurrent > 0) {
+    etaSeconds = Math.round(arrTarget - arrCurrent);
+  } else {
+    etaSeconds = remainingStops * AVG_SECONDS_PER_STOP;
+  }
 
-  const currentSeq = stops[bestStopIdx].sequence;
-  // Estrictamente PASADO (>). Si snapeó a la parada misma (==), está LLEGANDO, no pasó.
-  if (currentSeq > targetSeq) return { fail: "passed" };
+  // Distancia REAL siguiendo el recorrido: lo que falta desde la proyección.
+  const routeDistanceM = Math.max(0, Math.round(targetAlong - proj.alongM));
 
-  return { ok: { variant, currentSeq, targetSeq, snapDist, bestStopIdx, stops } };
+  return {
+    ok: { variant, snapDist: proj.snapDist, currentSeq, targetSeq, remainingStops, etaSeconds, routeDistanceM },
+  };
 }
 
 /**
  * Determina si un bus en vivo va hacia una parada específica, usando GTFS.
  *
- * Desde la reconstrucción de gtfs.db (mayo 2026), cada línea tiene varios
- * recorridos distintos (la 76 tiene 9). Para saber por CUÁL va el bus:
+ * Cada línea tiene varios recorridos distintos (la 76 tiene 9). Para saber por
+ * CUÁL va el bus:
  *   1. Candidatos = recorridos de la línea cuyo headsign matchea el destino
  *      del bus (si ninguno matchea, se prueban todos).
  *   2. Cada candidato que PASA por la parada se evalúa proyectando el GPS.
- *   3. Se elige el que mejor ajusta al GPS (menor distancia de snap) — ese es
- *      el recorrido físico que el bus está siguiendo realmente.
+ *   3. Se elige el que mejor ajusta al GPS (menor distancia de proyección) —
+ *      ese es el recorrido físico que el bus está siguiendo realmente.
  *
  * Esto arregla de raíz:
- *   - "76 por la calle paralela": se elige el recorrido cuyas paradas siguen
- *     la posición real del bus, no uno colapsado.
+ *   - "76 por la calle paralela": se elige el recorrido cuyo trazo sigue la
+ *     posición real del bus, no uno colapsado.
  *   - Buses-fantasma: un "PORTONES SHOPPING" corto NO contiene paradas más
  *     allá del shopping → si la parada target está después, ese candidato se
  *     descarta y el bus no se muestra (correcto, no va a llegar).
+ *   - "Me dice que llega y acaba de pasar": la proyección sobre el recorrido
+ *     detecta el "ya pasó" en metros, no en paradas enteras.
  */
 export function busTowardsStopGtfs(
   bus: VehiclePosition & { destinoDesc?: string },
@@ -177,12 +313,12 @@ export function busTowardsStopGtfs(
 
   // 2. Evaluar cada candidato; quedarse con los que van hacia la parada.
   //    Distinguimos motivos con PRECISIÓN para poder descartar solo lo confiado:
-  //    - "passed": el bus snapeó a una variante que incluye la parada y quedó ATRÁS.
-  //    - "no-position": la parada está en alguna variante pero el GPS no snapeó (lejos/entre
-  //      paradas) → incierto, NO lo tratamos como pasado.
+  //    - "passed": el bus se proyectó sobre una variante que incluye la parada y quedó ATRÁS.
+  //    - "no-position": la parada está en alguna variante pero el GPS no snapeó (lejos/fuera
+  //      de ruta) → incierto, NO lo tratamos como pasado.
   const evals: CandidateEval[] = [];
   let sawStop = false;   // la parada está en alguna variante candidata
-  let sawPassed = false; // snapeó y quedó atrás en alguna
+  let sawPassed = false; // se proyectó y quedó atrás en alguna
   for (const v of candidates) {
     const r = evalCandidate(v, bus, targetStopId);
     if ("ok" in r) { evals.push(r.ok); sawStop = true; }
@@ -200,57 +336,33 @@ export function busTowardsStopGtfs(
   // 3. Elegir el recorrido que mejor ajusta al GPS real del bus.
   evals.sort((a, b) => a.snapDist - b.snapDist);
   const best = evals[0];
-  const { stops, bestStopIdx, currentSeq, targetSeq, variant } = best;
-
-  const remainingStops = targetSeq - currentSeq;
-
-  // ETA por horario GTFS del recorrido; fallback a promedio si falta el dato.
-  const arrCurrent = stops[bestStopIdx].arrivalSeconds;
-  const targetStopRow = stops.find((s) => s.sequence === targetSeq);
-  const arrTarget = targetStopRow?.arrivalSeconds || 0;
-  let etaSeconds: number;
-  if (arrTarget > arrCurrent && arrCurrent > 0) {
-    etaSeconds = arrTarget - arrCurrent;
-  } else {
-    etaSeconds = remainingStops * AVG_SECONDS_PER_STOP;
-  }
-
-  // Distancia REAL siguiendo el recorrido (suma haversine entre paradas).
-  let routeDistanceM = 0;
-  let prev: StopCoord | null = getStopCoord(stops[bestStopIdx].stopId);
-  for (let i = bestStopIdx + 1; i <= stops.length - 1 && stops[i].sequence <= targetSeq; i++) {
-    const c = getStopCoord(stops[i].stopId);
-    if (prev && c) routeDistanceM += distM(prev.lat, prev.lon, c.lat, c.lon);
-    if (c) prev = c;
-    if (stops[i].sequence === targetSeq) break;
-  }
 
   return {
     goingTo: true,
-    matchedHeadsign: variant.headsign,
-    currentSequence: currentSeq,
-    targetSequence: targetSeq,
-    remainingStops,
-    etaSeconds,
-    routeDistanceM: Math.round(routeDistanceM),
+    matchedHeadsign: best.variant.headsign,
+    currentSequence: best.currentSeq,
+    targetSequence: best.targetSeq,
+    remainingStops: best.remainingStops,
+    etaSeconds: best.etaSeconds,
+    routeDistanceM: best.routeDistanceM,
   };
 }
 
 /**
  * Chequeo de RESPALDO honesto: ¿el bus probablemente YA PASÓ la parada?
  *
- * `busTowardsStopGtfs` exige que el GPS snapee a ≤900m de una parada de la variante.
- * Pero un bus que ya pasó y va entre paradas lejos (o por una calle paralela) cae en
- * "no-position", y como confiamos en el STM (trustUpstream) se mostraba igual → bug
- * del usuario: "estoy en la 160, el bus está en la 162 y me dice que llega".
+ * `busTowardsStopGtfs` exige que el GPS proyecte a ≤900m del recorrido. Pero un
+ * bus que ya pasó y va lejos (o por una calle paralela) cae en "no-position", y
+ * como confiamos en el STM (trustUpstream) se mostraba igual → bug del usuario:
+ * "estoy en la 160, el bus está en la 162 y me dice que llega".
  *
- * Esta función NO usa el límite de snap: toma la mejor variante de la línea (por
- * headsign), encuentra la parada MÁS CERCANA al bus sea cual sea la distancia, y si su
- * secuencia es mayor que la de la parada objetivo → el bus ya la dejó atrás. Margen de
- * 1 parada para no descartar al que está justo llegando (== o target-1).
+ * Esta función NO usa el límite de snap: toma la variante de la línea que mejor
+ * ajusta al GPS (por headsign), proyecta el bus sobre su recorrido sea cual sea
+ * la distancia, y si la proyección quedó más de LIKELY_PASSED_MARGIN_M después
+ * de la parada objetivo → el bus ya la dejó atrás.
  *
- * Devuelve true SOLO si está razonablemente seguro de que pasó; ante la duda, false
- * (preferimos mostrar de más que ocultar un bus que sí viene).
+ * Devuelve true SOLO si está razonablemente seguro de que pasó; ante la duda,
+ * false (preferimos mostrar de más que ocultar un bus que sí viene).
  */
 export function busLikelyPassedStop(
   bus: { lat: number; lon: number; lineName: string; destinoDesc?: string },
@@ -264,7 +376,7 @@ export function busLikelyPassedStop(
   const candidates = matched.length > 0 ? matched : variants;
 
   // De las variantes que pasan por la parada, elegir la que mejor ajusta al GPS
-  // (parada más cercana al bus). Comparar su secuencia con la del objetivo.
+  // (proyección más cercana). Comparar su posición por el recorrido con la del objetivo.
   let bestSnap = Infinity;
   let passedOnBest = false;
   let evaluatedAny = false;
@@ -273,19 +385,16 @@ export function busLikelyPassedStop(
     if (targetSeq == null) continue; // esta variante no pasa por la parada
     const stops = getStopsForVariant(v.variantId);
     if (stops.length === 0) continue;
-    let curIdx = -1, curSnap = Infinity;
-    for (let i = 0; i < stops.length; i++) {
-      const c = getStopCoord(stops[i].stopId);
-      if (!c) continue;
-      const d = distM(bus.lat, bus.lon, c.lat, c.lon);
-      if (d < curSnap) { curSnap = d; curIdx = i; }
-    }
-    if (curIdx === -1) continue;
+    const path = getVariantPath(v.variantId);
+    if (!path) continue;
+    const targetOrigIdx = stops.findIndex((s) => s.sequence === targetSeq);
+    const targetPathIdx = targetOrigIdx >= 0 ? path.pathIdxByOrig.get(targetOrigIdx) : undefined;
+    if (targetPathIdx == null) continue;
+    const proj = projectOnPath(path, bus.lat, bus.lon);
     evaluatedAny = true;
-    if (curSnap < bestSnap) {
-      bestSnap = curSnap;
-      // Pasó si la parada más cercana al bus está MÁS DE 1 después de la objetivo.
-      passedOnBest = stops[curIdx].sequence > targetSeq + 1;
+    if (proj.snapDist < bestSnap) {
+      bestSnap = proj.snapDist;
+      passedOnBest = proj.alongM > path.alongAt[targetPathIdx] + LIKELY_PASSED_MARGIN_M;
     }
   }
   // Solo afirmamos "pasó" si pudimos ubicar el bus en una variante con la parada y la

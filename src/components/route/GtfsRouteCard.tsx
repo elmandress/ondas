@@ -78,7 +78,7 @@ export default function GtfsRouteCard({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card overflow-hidden"
+      className="card route-card overflow-hidden"
     >
       {/* RESUMEN compacto — tocar para ver el paso a paso */}
       <button onClick={() => setExpanded((e) => !e)} className="w-full text-left flex items-center gap-3 px-4 py-3.5">
@@ -92,7 +92,7 @@ export default function GtfsRouteCard({
               distinta ($86+, aumentó 01/06/2026). Solo rutas con bus. */}
           {!isWalkOnly && (
             <p style={{ font: "600 11px/1 var(--ff)", color: "var(--text-3)", marginTop: 3 }}>
-              🎫 {fareLabel(route.numTransfers, usesMetro)}
+              {fareLabel(route.numTransfers, usesMetro)}
             </p>
           )}
         </div>
@@ -108,7 +108,7 @@ export default function GtfsRouteCard({
           esta opción reduce la caminata nocturna por poco más de tiempo. */}
       {safeBadge && (
         <div className="safe-badge">
-          <span className="sb-moon" aria-hidden>🌙</span>
+          <span className="sb-moon" aria-hidden><Icons.Moon size={14} /></span>
           <span>
             Más tranquila de noche · caminás <b>{safeBadge.savedWalkM} m menos</b>
             {safeBadge.extraMin > 0 ? <> por solo <b>+{safeBadge.extraMin} min</b></> : null}
@@ -116,11 +116,11 @@ export default function GtfsRouteCard({
         </div>
       )}
 
-      {!expanded && (
+      {/* R58: el "Tocá para ver el paso a paso" repetido en CADA card era ruido —
+          el chevron ya lo dice. Solo conservamos el dato que aporta (alternativas). */}
+      {!expanded && route.alternatives != null && route.alternatives > 0 && (
         <div className="px-4 pb-3 -mt-1" style={{ font: "var(--font-small)", color: "var(--text-3)" }}>
-          {route.alternatives && route.alternatives > 0
-            ? `${route.alternatives} ${route.alternatives === 1 ? "alternativa" : "alternativas"} cercana${route.alternatives === 1 ? "" : "s"} · tocá para ver`
-            : "Tocá para ver el paso a paso"}
+          {route.alternatives} {route.alternatives === 1 ? "alternativa cercana" : "alternativas cercanas"} · tocá para ver
         </div>
       )}
 

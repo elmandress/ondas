@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useBackClose } from "@/hooks/useBackClose";
 import { Icons } from "@/components/brand/Icons";
 import { LogoMark } from "@/components/brand/Logo";
 import { useThemeMode, setMode, type ThemeMode } from "@/lib/theme";
@@ -21,6 +22,8 @@ type View = "main" | "comofunciona" | "privacidad" | "terminos" | "datos" | "der
  * Art. 72 de la Constitución y la URCDP. Contenedor de las features futuras de Guille.
  */
 export default function SettingsSheet({ onClose }: { onClose: () => void }) {
+  // Atrás del sistema cierra el sheet, no la app (R58c).
+  useBackClose(onClose);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("main");
   useEffect(() => {
@@ -533,7 +536,7 @@ function AccountSection() {
             />
             <button
               onClick={send} disabled={busy}
-              style={{ padding: "10px 16px", borderRadius: "var(--r-chip)", background: "var(--accent)", color: "#1a1206", font: "700 13px/1 var(--ff)", border: "none", opacity: busy ? 0.6 : 1 }}
+              style={{ padding: "10px 16px", borderRadius: "var(--r-chip)", background: "var(--accent-bg)", color: "#1a1206", font: "700 13px/1 var(--ff)", border: "none", opacity: busy ? 0.6 : 1 }}
             >
               {busy ? "…" : "Entrar"}
             </button>

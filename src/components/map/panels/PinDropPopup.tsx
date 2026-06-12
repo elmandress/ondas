@@ -33,11 +33,11 @@ export default function PinDropPopup({ pin, pinName, onClose }: Props) {
       style={{ top: "calc(env(safe-area-inset-top) + 70px)" }}
     >
       <div className="bg-[#0a0f1c]/97 backdrop-blur-xl p-3 border border-amber-500/30" style={{ borderRadius: "var(--r-card)", boxShadow: "var(--shadow-card)" }}>
-        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-400 mb-1">Punto seleccionado</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.15em] text-amber-400 mb-1">Punto seleccionado</p>
         <p className="text-[12px] text-white font-semibold mb-0.5 truncate">
           {pinName ?? "Buscando dirección…"}
         </p>
-        <p className="text-[10px] text-slate-500 mb-2.5">
+        <p className="text-[11px] text-slate-500 mb-2.5">
           {pin.lat.toFixed(4)}, {pin.lon.toFixed(4)}
         </p>
         <div className="flex gap-2">

@@ -15,6 +15,8 @@ import { useVoiceInput } from "@/hooks/useVoiceInput";
 import VoiceOverlay from "@/components/ui/VoiceOverlay";
 import { useMounted } from "@/hooks/useMounted";
 import { takePendingSearch } from "@/lib/search-query";
+import { loadStopDirs } from "@/lib/stop-dirs";
+import { titleCaseDestination } from "@/lib/utils";
 
 interface GeoResult {
   id: string | number;
@@ -40,6 +42,10 @@ export default function SearchScreen() {
   const [liveToDest, setLiveToDest] = useState<{ count: number; lines: string[] }>({ count: 0, lines: [] });
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [history, setHistory] = useState<BusStop[]>([]);
+  // Pista de sentido para paradas con nombre duplicado ("Basilea…" ×2 → "hacia
+  // Plaza Independencia" / "hacia Rambla Costanera"). 42KB lazy, cache de módulo.
+  const [stopDirs, setStopDirs] = useState<Record<string, string> | null>(null);
+  useEffect(() => { loadStopDirs().then(setStopDirs); }, []);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -261,7 +267,7 @@ export default function SearchScreen() {
             <>
               <div className="search-section-title">Paradas</div>
               {stopResults.map((stop) => (
-                <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} query={query} />
+                <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} query={query} dir={stopDirs?.[stop.stopId]} />
               ))}
             </>
           )}
@@ -292,7 +298,7 @@ export default function SearchScreen() {
                 <span>Recientes</span>
                 <button onClick={() => { setHistory([]); localStorage.removeItem("ondas_stop_history"); }} style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Borrar</button>
               </div>
-              {history.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} isHistory />)}
+              {history.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} isHistory dir={stopDirs?.[stop.stopId]} />)}
             </>
           )}
 
@@ -300,7 +306,7 @@ export default function SearchScreen() {
               sección "Explorá" = STOPS_DATASET.slice(0,10) (relleno sin criterio) →
               eliminada: paradas al azar no aportan, son ruido. Menos es más. */}
           <div className="search-section-title">Paradas frecuentes</div>
-          {trendingStops.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} />)}
+          {trendingStops.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} dir={stopDirs?.[stop.stopId]} />)}
         </>
       )}
 
@@ -326,7 +332,7 @@ function Highlight({ text, q }: { text: string; q?: string }) {
   );
 }
 
-function StopRow({ stop, onTap, isHistory, query }: { stop: BusStop; onTap: () => void; isHistory?: boolean; query?: string }) {
+function StopRow({ stop, onTap, isHistory, query, dir }: { stop: BusStop; onTap: () => void; isHistory?: boolean; query?: string; dir?: string }) {
   return (
     <button className="search-result stop" onClick={onTap}>
       <div className="icon">{isHistory ? <Icons.Clock size={16} /> : <Icons.Bus size={16} />}</div>
@@ -334,6 +340,8 @@ function StopRow({ stop, onTap, isHistory, query }: { stop: BusStop; onTap: () =
         <div className="name"><Highlight text={stop.stopName} q={query} /></div>
         <div className="meta" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <span>#{stop.stopCode}</span>
+          {/* Sentido para nombres duplicados (R58b): "Basilea…" ×2 ahora se distinguen. */}
+          {dir && <span style={{ color: "var(--accent)", fontWeight: 600 }}>hacia {titleCaseDestination(dir)}</span>}
           {stop.lines.slice(0, 5).map((l) => <LineBadge key={l} num={l} size="xs" />)}
           {/* Pill (no texto suelto): si la fila envuelve, el "+N" sigue pareciendo
               parte del set de chips y no un residuo perdido abajo a la izquierda. */}

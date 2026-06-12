@@ -41,7 +41,7 @@ export default function AliasEditor({ stopId, stopName, currentAlias, onClose }:
         className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[1101] w-[min(360px,90vw)]"
       >
         <div className="bg-[#0a0f1c] border border-white/[0.1] rounded-2xl p-5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
-          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-amber-400 mb-1">Etiqueta</p>
+          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-amber-400 mb-1">Etiqueta</p>
           <p className="text-sm text-white font-bold mb-1 truncate">{stopName}</p>
           <p className="text-[11px] text-slate-500 mb-4">Poné un nombre para acceder rápido</p>
 
@@ -60,7 +60,7 @@ export default function AliasEditor({ stopId, stopName, currentAlias, onClose }:
           </div>
 
           {/* Custom */}
-          <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1.5 font-bold">O personalizado</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mb-1.5 font-bold">O personalizado</p>
           <input
             type="text"
             value={custom}

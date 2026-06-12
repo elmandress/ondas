@@ -44,11 +44,11 @@ export default function RoutePanel({ selectedRoute, onClose, onTapStop }: Props)
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-400">Ruta</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-400">Ruta</p>
             <p className="text-sm text-white font-bold truncate">
               {selectedRoute.origin.name || "Origen"} → {selectedRoute.destination.name || "Destino"}
             </p>
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[11px] text-slate-500">
               {Math.max(1, Math.round(selectedRoute.route.totalSeconds / 60))} min ·{" "}
               {selectedRoute.route.numTransfers === 0 ? "directa" : `${selectedRoute.route.numTransfers} transbordo${selectedRoute.route.numTransfers > 1 ? "s" : ""}`}
             </p>

@@ -23,8 +23,12 @@
   --text-2: #9aa3b5;   /* lightened from spec for WCAG AA on dark */
   --text-3: #8a93a8;   /* #737c92 daba 4.0-4.4:1 sobre surface (axe) → fallaba AA en texto chico; #8a93a8 ≈ 4.9:1 */
 
-  /* Accent — amber, used sparingly */
+  /* Accent — amber, used sparingly.
+     --accent     = TEXTO/iconos ámbar sobre fondo (AA contra --bg).
+     --accent-bg  = RELLENO de botones/pills con texto oscuro #1a1206 encima (AA inverso).
+     En dark coinciden; en light divergen (un solo valor no puede cumplir ambos roles). */
   --accent: #f0a020;          /* slightly brightened for AA contrast */
+  --accent-bg: #f0a020;
   --accent-deep: #e8940a;
   --accent-soft: rgba(232,148,10,0.10);
   --accent-border: rgba(232,148,10,0.22);
@@ -106,7 +110,7 @@ html.text-grande .big-action .ba-title { font-size: 22px; }
 html.text-grande .big-action .ba-sub { font-size: 15.5px; }
 html.text-grande .arrival-row .dest { font-size: 18px; }
 html.text-grande .arrival-row .eta { font-size: 32px; }
-html.text-grande .arrival-sub { font-size: 13.5px; }
+html.text-grande .arrival-sub { font-size: 14px; }
 html.text-grande .tl-main { font-size: 17px; }
 html.text-grande .tl-sub { font-size: 14px; }
 html.text-grande .hero-count { font-size: clamp(64px, 22vw, 104px); }
@@ -220,7 +224,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .bottom-nav .nav-item.active .nlabel { font-weight: 700; }
 .bottom-nav .nav-item.active::before {
   content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-  width: 18px; height: 3px; background: var(--accent); border-radius: var(--r-pill);
+  width: 18px; height: 3px; background: var(--accent-bg); border-radius: var(--r-pill);
 }
 @media (min-width: 768px) { .bottom-nav { display: none; } }
 
@@ -255,8 +259,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* Alerta "prepárate / bajate" sobre la card del bus seguido. */
 .follow-alert { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 14px 14px 0 0;
-  font: 700 13.5px/1.2 var(--ff); margin-bottom: -2px; }
-.follow-alert.soon { background: var(--accent); color: #1a1206; }
+  font: 700 14px/1.2 var(--ff); margin-bottom: -2px; }
+.follow-alert.soon { background: var(--accent-bg); color: #1a1206; }
 .follow-alert.now { background: var(--live); color: #04140d; animation: gentle-pulse 1.3s ease-in-out infinite; }
 .follow-alert svg { flex-shrink: 0; }
 
@@ -322,7 +326,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 /* Acción principal del home — grande y obvia para cualquiera. */
 /* ── Preview del mapa en la Home ─────────────────────────────────────── */
 .home-map-preview {
-  position: relative; display: block; width: 100%; height: 188px;
+  position: relative; display: block; width: 100%; height: 150px;
   border-radius: var(--r-card); overflow: hidden; border: 1px solid var(--border);
   margin: 4px 0 var(--gap-section); background: var(--bg-elevated); cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -334,7 +338,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 }
 /* El mapa llena el contenedor pero no interactúa (en la preview el tap = abrir). */
 .home-map-preview > :first-child { position: absolute; inset: 0; pointer-events: none; }
-.hmp-skel { width: 100%; height: 188px; }
+.hmp-skel { width: 100%; height: 150px; }
 .hmp-overlay {
   position: absolute; inset: 0; z-index: 1200; /* encima de los panes/controles de Leaflet */
   display: flex; flex-direction: column;
@@ -353,16 +357,23 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .hmp-cta {
   align-self: flex-end; display: inline-flex; align-items: center; gap: 2px;
   padding: 7px 12px 7px 14px; border-radius: var(--r-pill);
-  background: var(--accent); color: #1a1206; font: 700 12.5px/1 var(--ff);
+  background: var(--accent-bg); color: #1a1206; font: 700 13px/1 var(--ff);
   box-shadow: var(--shadow-card);
 }
 .home-map-preview:active { transform: scale(0.992); transition: transform 0.12s ease; }
 @media (prefers-reduced-motion: reduce) { .home-map-preview:active { transform: none; } }
 
+/* ── Pull-to-refresh (R58d) ──────────────────────────────────────────── */
+.ptr-indicator {
+  position: absolute; top: -34px; left: 0; right: 0;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  color: var(--text-2); font: 600 13px/1 var(--ff); pointer-events: none;
+}
+
 /* ── Banner de incidencias/desvíos en la Home ────────────────────────── */
 .home-alerts {
   margin: 0 0 14px; border-radius: var(--r-card);
-  background: rgba(240,160,32,0.08); border: 1px solid rgba(240,160,32,0.22);
+  background: rgba(240,160,32,0.08);
   overflow: hidden;
 }
 .home-alerts > summary {
@@ -376,17 +387,17 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .home-alerts[open] > summary > svg:last-child { transform: rotate(90deg); }
 .home-alerts .ha-body { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 10px; }
 .home-alerts .ha-item { font: 400 13px/1.45 var(--ff); color: var(--text-2); }
-.home-alerts .ha-item b { display: block; color: var(--text); font: 700 13.5px/1.3 var(--ff); margin-bottom: 2px; }
+.home-alerts .ha-item b { display: block; color: var(--text); font: 700 14px/1.3 var(--ff); margin-bottom: 2px; }
 .home-alerts .ha-all { font: 700 13px/1 var(--ff); color: var(--accent); padding-top: 2px; }
 
 .big-action { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
   margin-top: 6px; padding: 18px 18px; border-radius: var(--r-card);
   background: var(--accent-soft); border: 1.5px solid var(--accent-border); color: var(--text); }
 .big-action:active { transform: scale(0.99); }
-.big-action .ba-icon { width: 46px; height: 46px; border-radius: 13px; flex-shrink: 0; display: grid; place-items: center; background: var(--accent); color: #1a1206; }
+.big-action .ba-icon { width: 46px; height: 46px; border-radius: 13px; flex-shrink: 0; display: grid; place-items: center; background: var(--accent-bg); color: #1a1206; }
 .big-action .ba-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .big-action .ba-title { font: 800 19px/1.15 var(--ff); color: var(--text); letter-spacing: -0.01em; }
-.big-action .ba-sub { font: 500 13.5px/1.3 var(--ff); color: var(--text-2); }
+.big-action .ba-sub { font: 500 14px/1.3 var(--ff); color: var(--text-2); }
 .big-action > svg { color: var(--accent); flex-shrink: 0; }
 
 .source-label { font: var(--font-label); color: var(--text-2); display: block; margin: var(--gap-section) 0 12px; }
@@ -441,7 +452,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .hero-seeall { grid-column: 2; align-self: end; justify-self: end; font: 500 12px/1 var(--ff); color: var(--text-3); display: flex; align-items: center; gap: 4px; padding-bottom: 14px; position: relative; z-index: 1; }
 
 .hero-progress { grid-column: 1 / -1; grid-row: 2; margin: 0 -22px; height: 3px; background: rgba(255,255,255,0.05); position: relative; overflow: hidden; }
-.hero-progress::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--progress, 50%); background: var(--accent); transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1); }
+.hero-progress::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--progress, 50%); background: var(--accent-bg); transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1); }
 .hero-card.state-now .hero-progress::after { background: var(--urgency-now); }
 .hero-card.state-chill .hero-progress::after { background: var(--urgency-chill); }
 
@@ -501,7 +512,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .fav-row .eta-unit { font: 500 12px/1 var(--ff); color: var(--text-2); margin-left: 2px; }
 
 /* ============== Bottom sheet ============== */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.74); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+/* R58 (UI-2): backdrop más firme — antes (0.74) la home seguía compitiendo con el
+   sheet abierto. El blur queda; sube la opacidad para foco claro en el contenido. */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(2,4,9,0.82); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
 .bottom-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 101; max-height: 84vh;
@@ -525,6 +538,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .sheet-header .name { font: 700 19px/1.22 var(--ff); letter-spacing: -0.01em; margin-top: 4px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sheet-header .actions { display: flex; gap: 8px; }
+/* R58: eyebrow + acciones comparten fila; el nombre va debajo a TODO el ancho.
+   (Los sheets con markup viejo —eyebrow/name sin head-row— siguen funcionando.) */
+.sheet-header .head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; }
 .icon-btn { width: 48px; height: 48px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; color: var(--text-2); }
 .icon-btn:hover { background: var(--surface-hover); color: var(--text); }
 .icon-btn.active { color: var(--accent); }
@@ -534,7 +550,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .sheet-status { padding: 0 22px 16px; font: var(--font-small); color: var(--text-2); display: flex; align-items: center; gap: 7px; }
 .sheet-status .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--live); position: relative; }
 .sheet-status .pip::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--live); animation: live-ping 2s infinite; }
-.urgent-banner { margin: 0 22px 16px; padding: 14px 16px; background: var(--live-soft); border: 1px solid rgba(14,164,114,0.28); border-radius: var(--r-chip); font: 600 14px/1.3 var(--ff); color: var(--live); display: flex; align-items: center; gap: 11px; }
+.urgent-banner { margin: 0 22px 16px; padding: 14px 16px; background: var(--live-soft); border-radius: var(--r-chip); font: 600 14px/1.3 var(--ff); color: var(--live); display: flex; align-items: center; gap: 11px; }
 .sheet-arrivals { flex: 1; overflow-y: auto; padding: 0 22px; }
 /* Wrap por fila: contiene la fila + el pager de horarios desplegable. El borde
    inferior vive en el wrap para que el pager quede dentro del bloque de la fila. */
@@ -556,7 +572,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 /* Botón "seguir el bus" — circular, sutil; activo en ámbar de marca. */
 .follow-btn { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-2); transition: all 0.15s; }
 .follow-btn:hover { color: var(--text); background: var(--surface-hover); }
-.follow-btn.on { background: var(--accent); border-color: var(--accent); color: #1a1206; }
+.follow-btn.on { background: var(--accent-bg); border-color: var(--accent); color: #1a1206; }
 .arrival-row .badges { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
 .arrival-row .eta { font: 700 28px/1 var(--ff); color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
 .arrival-row .eta-unit { font: 500 13px/1 var(--ff); color: var(--text-2); margin-left: 2px; }
@@ -603,7 +619,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .pill.warn { background: var(--warn-soft); color: var(--warn); }
 .pill.access { background: var(--live-soft); color: var(--live); }
 .pill.ac { background: rgba(6,182,212,0.14); color: #2ec4d8; }
-.pill.fast { background: var(--accent); color: #1a1206; }
+.pill.fast { background: var(--accent-bg); color: #1a1206; }
 .pill.notrans { background: var(--live-soft); color: var(--live); }
 .pill.trans { background: var(--surface); color: var(--text-2); }
 
@@ -651,7 +667,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .map-filters { position: absolute; top: 80px; left: 5%; right: 5%; display: flex; gap: 7px; overflow-x: auto; z-index: 4; padding-bottom: 4px; scrollbar-width: none; }
 .map-filters::-webkit-scrollbar { display: none; }
 .filter-chip { flex-shrink: 0; min-height: 36px; padding: 8px 13px; border-radius: var(--r-pill); background: rgba(13,20,34,0.86); backdrop-filter: blur(20px); border: 1px solid var(--border-strong); color: var(--text-2); font: 600 13px/1 var(--ff); display: inline-flex; align-items: center; gap: 6px; }
-.filter-chip.active { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+.filter-chip.active { background: var(--accent-bg); color: #1a1206; border-color: var(--accent); }
 .map-controls { position: absolute; right: 16px; bottom: 210px; display: flex; flex-direction: column; gap: 10px; z-index: 4; }
 .map-control-btn { width: 48px; height: 48px; border-radius: 12px; background: rgba(13,20,34,0.92); backdrop-filter: blur(20px); border: 1px solid var(--border-strong); display: grid; place-items: center; color: var(--text); }
 .map-control-btn.gps.active { color: var(--accent); }
@@ -669,13 +685,17 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .map-arrival .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); }
 .map-stop-card .actions { display: flex; gap: 10px; margin-top: 12px; }
 .map-stop-card .actions button { flex: 1; min-height: 48px; padding: 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); color: var(--text); font: 600 14px/1.2 var(--ff); }
-.map-stop-card .actions button.primary { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+.map-stop-card .actions button.primary { background: var(--accent-bg); color: #1a1206; border-color: var(--accent); }
 .desktop-map { position: relative; width: 100%; height: 100%; background: #080f1d; overflow: hidden; }
 
 /* ============== Search ============== */
 .search-input-wrap { position: relative; margin-top: 16px; }
 .search-input-wrap input { width: 100%; height: 56px; padding: 0 92px 0 50px; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--r-chip); font: 600 16px/1 var(--ff); transition: border-color 0.15s, box-shadow 0.15s; }
 .search-input-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+/* R58: el outline global de :focus-visible + el ring propio = DOBLE anillo naranja
+   (se veía pesado). El input ya tiene indicador de foco claro (borde + ring suave),
+   así que el outline genérico acá sobra. WCAG 2.4.7 se mantiene. */
+.search-input-wrap input:focus-visible { outline: none; }
 .search-input-wrap .lead { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--text-2); }
 .search-input-wrap .right-actions { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: flex; gap: 6px; }
 .search-input-wrap .mic, .search-input-wrap .clear { width: 40px; height: 40px; border-radius: 10px; background: var(--surface); display: grid; place-items: center; color: var(--text-2); }
@@ -696,7 +716,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .voice-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(7,11,20,0.94); backdrop-filter: blur(20px); display: grid; place-items: center; }
 .voice-overlay .core { display: flex; flex-direction: column; align-items: center; gap: 26px; }
 .voice-wave { display: flex; align-items: flex-end; gap: 6px; height: 80px; }
-.voice-wave span { width: 6px; background: var(--accent); border-radius: var(--r-pill); animation: voice-wave 1.1s ease-in-out infinite; }
+.voice-wave span { width: 6px; background: var(--accent-bg); border-radius: var(--r-pill); animation: voice-wave 1.1s ease-in-out infinite; }
 .voice-wave span:nth-child(1){height:30%;animation-delay:-.4s}.voice-wave span:nth-child(2){height:70%;animation-delay:-.2s}.voice-wave span:nth-child(3){height:100%}.voice-wave span:nth-child(4){height:60%;animation-delay:-.3s}.voice-wave span:nth-child(5){height:40%;animation-delay:-.1s}.voice-wave span:nth-child(6){height:80%;animation-delay:-.5s}
 @keyframes voice-wave { 0%,100% { transform: scaleY(0.4); } 50% { transform: scaleY(1); } }
 
@@ -752,12 +772,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* Cards legacy (bridge para screens no reskineados) */
 .card { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--r-card); }
+/* R58: las opciones de ruta se leían como una lista continua (bordes casi invisibles,
+   sin aire). Borde más presente + separación clara entre tarjetas. */
+.route-card { border-color: var(--border-strong); margin-bottom: 12px; }
+.route-card:first-of-type { margin-top: 10px; }
 .card-soft { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-chip); }
 .glass { background: rgba(13,20,34,0.85); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%); border: 1px solid var(--border); }
 .glass-dark { background: rgba(7,11,20,0.92); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--border); }
 .shadow-soft { box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25); }
 .shadow-floating { box-shadow: 0 4px 12px rgba(0,0,0,0.45), 0 16px 40px rgba(0,0,0,0.3); }
-.btn-primary { background: var(--accent); color: #1a1206; font-weight: 600; border-radius: 12px; }
+.btn-primary { background: var(--accent-bg); color: #1a1206; font-weight: 600; border-radius: 12px; }
 .btn-primary:active { background: var(--accent-deep); transform: scale(0.98); }
 .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); font-weight: 600; border-radius: 12px; }
 
@@ -779,7 +803,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .peak-hint {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 11px 13px; margin: 0 0 var(--gap-section);
-  background: var(--accent-soft); border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
   border-radius: var(--r-card);
 }
 .peak-hint-ico {
@@ -807,7 +831,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
   margin: 0 14px 12px; padding: 8px 11px;
   border-radius: var(--r-chip, 10px);
   background: rgba(120,140,255,0.08);
-  border: 1px solid rgba(120,140,255,0.18);
   font: 500 12px/1.35 var(--ff); color: var(--text-2);
 }
 .safe-badge b { color: var(--text); font-weight: 700; }
@@ -878,26 +901,29 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
   --border-strong: rgba(70,55,30,0.20);
 
   --text: #1f1a12;
-  --text-2: #46506280;  /* se recalcula abajo a sólido */
   --text-2: #475063;
-  --text-3: #7a8499;
+  /* R58b (QW-2): pasada AA medida (no a ojo) contra el peor fondo (#f3efe7).
+     text-3 daba 3.28:1, accent 2.99, live 3.02, warn 4.23 — todos se usan en texto
+     chico (metadata, "en vivo", links). Valores nuevos ≥4.5:1. */
+  --text-3: #646c7d;
 
-  --accent: #c77800;          /* ámbar más profundo: AA sobre blanco */
-  --accent-deep: #a85f00;
-  --accent-soft: rgba(199,120,0,0.10);
-  --accent-border: rgba(199,120,0,0.28);
+  --accent: #9b5e00;          /* 4.58:1 sobre --bg (antes #c77800 = 2.99) */
+  --accent-bg: #c77800;       /* relleno: 5.2:1 con el texto #1a1206 encima */
+  --accent-deep: #855000;
+  --accent-soft: rgba(155,94,0,0.10);
+  --accent-border: rgba(155,94,0,0.30);
 
-  --live: #0a9d6e;
-  --live-soft: rgba(10,157,110,0.12);
+  --live: #087a56;            /* 4.66:1 (antes 3.02) */
+  --live-soft: rgba(8,122,86,0.12);
   --sched: #5b5fcf;
   --sched-soft: rgba(91,95,207,0.12);
 
-  --urgency-now: #0a9d6e;
-  --urgency-soon: #c77800;
+  --urgency-now: #087a56;
+  --urgency-soon: #9b5e00;
   --urgency-chill: #2563eb;
 
-  --warn: #d4342a;
-  --warn-soft: rgba(212,52,42,0.12);
+  --warn: #c73127;            /* 4.70:1 (antes 4.23, justo abajo de AA) */
+  --warn-soft: rgba(199,49,39,0.12);
 }
 [data-theme="light"] html, [data-theme="light"] body { background: var(--bg); }
 
@@ -916,6 +942,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 [data-theme="light"] .glass { background: var(--surface); border-color: var(--border); }
 [data-theme="light"] .bottom-nav { background: rgba(255,255,255,0.92); }
 [data-theme="light"] .leaflet-container { background: #e8ebf0 !important; }
+/* R58: velo del backdrop más liviano en light (el negro 0.82 pensado para dark
+   aplasta el tema claro; acá alcanza menos para dar foco). */
+[data-theme="light"] .sheet-backdrop { background: rgba(40,33,20,0.45); }
 
 /* Paneles/sheets con dark HARDCODEADO (Tailwind arbitrary) → claros en light, para
    que el texto (que el puente vuelve oscuro) sea legible. Solo aplica en light. */
@@ -936,7 +965,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .opt-row::-webkit-scrollbar { display: none; }
 .opt-chip {
   flex-shrink: 0; padding: 7px 13px; border-radius: 999px;
-  font: 600 12.5px/1 var(--ff); color: var(--text-2);
+  font: 600 13px/1 var(--ff); color: var(--text-2);
   background: var(--surface); border: 1px solid var(--border); white-space: nowrap;
 }
 .opt-chip.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
@@ -945,7 +974,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .depart-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; align-items: center; }
 .depart-chip {
   flex-shrink: 0; padding: 7px 13px; border-radius: 999px;
-  font: 600 12.5px/1 var(--ff); color: var(--text-2);
+  font: 600 13px/1 var(--ff); color: var(--text-2);
   background: var(--surface); border: 1px solid var(--border); white-space: nowrap;
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
 }
@@ -965,7 +994,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .tl-line { position: absolute; left: 14px; top: -22px; width: 3px; height: calc(100% + 22px); border-radius: 2px; z-index: 0; }
 .tl-node:first-child .tl-line { display: none; }
 .tl-line-walk { background: repeating-linear-gradient(to bottom, var(--text-3) 0 4px, transparent 4px 9px); opacity: 0.55; }
-.tl-line-bus { background: var(--accent); opacity: 0.85; }
+.tl-line-bus { background: var(--accent-bg); opacity: 0.85; }
 /* Nodos: dot de origen/destino, icono de caminar, parada de bus. */
 .tl-dot, .tl-icon, .tl-stop-dot { position: relative; z-index: 1; flex-shrink: 0; }
 .tl-dot { width: 18px; height: 18px; border-radius: 50%; margin: 4px 7px; box-sizing: border-box; }
@@ -986,13 +1015,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .tl-next { color: var(--text-2); }
 .tl-next-soon { color: var(--live); }
 .tl-next-muted { color: var(--text-3); }
-.tl-closing { display: inline-flex; align-items: center; gap: 4px; font: 700 11.5px/1 var(--ff); color: var(--accent); margin-top: 5px; }
+.tl-closing { display: inline-flex; align-items: center; gap: 4px; font: 700 12px/1 var(--ff); color: var(--accent); margin-top: 5px; }
 
 /* Nota honesta de continuación de la misma línea (183→183) */
 .cont-note {
   display: flex; gap: 9px; align-items: flex-start;
   padding: 11px 13px; border-radius: var(--r-card);
-  background: var(--accent-soft); border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
   font: var(--font-small); color: var(--text-2);
 }
 .cont-note svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
@@ -1002,7 +1031,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .metro-note {
   display: flex; gap: 9px; align-items: flex-start;
   padding: 11px 13px; border-radius: var(--r-card);
-  background: var(--sched-soft); border: 1px solid var(--sched);
+  background: var(--sched-soft);
   font: var(--font-small); color: var(--text-2);
 }
 .metro-note svg { color: var(--sched); flex-shrink: 0; margin-top: 1px; }
@@ -1010,7 +1039,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* Lista de salidas interdepartamentales (horario oficial MTOP). */
 .interdept-list { display: flex; flex-direction: column; gap: 8px; text-align: left; }
-.interdept-row { display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); }
+.interdept-row { display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: var(--r-card); background: var(--surface); }
 .interdept-row .id-time { font: 800 17px/1 var(--ff); color: var(--text); letter-spacing: -0.01em; flex-shrink: 0; }
 .interdept-row .id-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .interdept-row .id-emp { font: 600 14px/1.2 var(--ff); color: var(--text); }
@@ -1073,7 +1102,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .trip-impact-details > summary::after { content: "▾"; font-size: 10px; color: var(--text-3); transition: transform .2s; }
 .trip-impact-details[open] > summary::after { transform: rotate(180deg); }
 .trip-impact-details .trip-impact-body { font: 500 12px/1.5 var(--ff); color: var(--text-2);
-  margin-top: 8px; padding: 10px 12px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); }
+  margin-top: 8px; padding: 10px 12px; border-radius: var(--r-card); background: var(--surface); }
 
 /* "Llevame a casa/trabajo" — accesos rápidos estilo Citymapper Get-me-home. */
 .quick-go-row { display: flex; gap: 10px; margin-top: 10px; }
@@ -1122,7 +1151,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 }
 .sw-update button {
   flex-shrink: 0; padding: 8px 14px; border-radius: var(--r-pill, 999px);
-  background: var(--accent); color: #1a1206; font: 800 13px/1 var(--ff);
+  background: var(--accent-bg); color: #1a1206; font: 800 13px/1 var(--ff);
 }
 @keyframes sw-update-in { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: reduce) { .sw-update { animation: none; } }
@@ -1131,7 +1160,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .ctx-tip {
   display: flex; align-items: flex-start; gap: 9px; margin-bottom: 10px;
   padding: 10px 12px; border-radius: var(--r-card, 14px);
-  background: var(--accent-soft); border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
   animation: tip-in 0.25s ease-out;
 }
 .ctx-tip .ct-ico { font-size: 15px; line-height: 1.4; flex-shrink: 0; }
@@ -1154,7 +1183,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .cm-eta { font: 800 15px/1 var(--ff); color: var(--accent); flex-shrink: 0; }
 
 /* ── Paradas alternativas "a pasos" (StopArrivalSheet) ────────────────── */
-.nearby-alt { margin: 12px 22px 0; padding: 12px 14px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); }
+.nearby-alt { margin: 12px 22px 0; padding: 12px 14px; border-radius: var(--r-card); background: var(--surface); }
 .na-head { display: flex; align-items: center; gap: 7px; font: 700 12px/1 var(--ff); color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 11px; }
 .na-head svg { color: var(--text-3); }
 .na-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
@@ -1166,7 +1195,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .na-more { font: 600 11px/1 var(--ff); color: var(--text-3); align-self: center; }
 
 /* ── Crowdsourcing de ocupación (StopArrivalSheet) ────────────────────── */
-.occ-section { margin: 4px 22px 0; padding: 13px 14px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); }
+.occ-section { margin: 4px 22px 0; padding: 13px 14px; border-radius: var(--r-card); background: var(--surface); }
+/* R58: colapsada = una sola fila discreta que invita sin ocupar media pantalla. */
+.occ-section.collapsed { padding: 0; background: transparent; border-style: dashed; }
+.occ-toggle { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; padding: 0 14px; font: 700 13px/1.2 var(--ff); color: var(--text-2); text-align: left; }
+.occ-toggle span { font: 500 12px/1.2 var(--ff); color: var(--text-3); flex: 1; }
+.occ-toggle svg { flex-shrink: 0; color: var(--text-3); }
 .occ-head { font: 700 13px/1 var(--ff); color: var(--text); margin-bottom: 11px; }
 .occ-head span { font: 500 12px/1 var(--ff); color: var(--text-3); }
 .occ-rows { display: flex; flex-direction: column; gap: 9px; }

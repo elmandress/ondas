@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useBackClose } from "@/hooks/useBackClose";
 import { motion } from "framer-motion";
 import { useLineStops } from "@/hooks/useLineStops";
+import { titleCaseDestination } from "@/lib/utils";
 import { loadOperators, resolveOperator, type OperatorInfo } from "@/lib/operators";
 import { shareLine } from "@/lib/share";
 import { Icons } from "@/components/brand/Icons";
@@ -24,6 +26,8 @@ export default function LineDetailSheet({
   liveCompany,
   onClose,
 }: LineDetailSheetProps) {
+  // Atrás del sistema cierra el sheet, no la app (R58c).
+  useBackClose(onClose);
   const { stops, headsign, loading, notFound } = useLineStops(line, destination);
   const highlightRef = useRef<HTMLDivElement | null>(null);
 
@@ -72,6 +76,11 @@ export default function LineDetailSheet({
         transition={{ type: "spring", damping: 32, stiffness: 340 }}
         className="fixed bottom-0 left-0 right-0 z-[1110] max-w-md mx-auto"
         style={{ maxHeight: "90vh" }}
+        // Drag-to-close (R58d): el handle ya no es decorativo.
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.6 }}
+        onDragEnd={(_, info) => { if (info.offset.y > 100 || info.velocity.y > 600) onClose(); }}
       >
         <div
           className="flex flex-col overflow-hidden rounded-t-[18px] border-t border-white/[0.07]"
@@ -92,11 +101,11 @@ export default function LineDetailSheet({
                 {line}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
                   Recorrido completo
                 </p>
                 <h2 className="text-[16px] font-bold text-white leading-tight mt-0.5 truncate">
-                  {headsign || destination || `Línea ${line}`}
+                  {titleCaseDestination(headsign || destination || `Línea ${line}`)}
                 </h2>
                 {totalStops > 0 && (
                   <p className="text-[11px] text-slate-500 mt-0.5">{totalStops} paradas · tiempo desde el inicio del recorrido</p>
@@ -234,16 +243,16 @@ export default function LineDetailSheet({
                           >
                             {stop.name}
                           </p>
-                          <p className="text-[10px] text-slate-600 mt-0.5">#{stop.code}</p>
+                          <p className="text-[11px] text-slate-600 mt-0.5">#{stop.code}</p>
                         </div>
                         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                           {isHighlight && (
-                            <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
                               Aquí
                             </span>
                           )}
                           {eta && (
-                            <span className="text-[10px] text-slate-600 font-mono">{eta}</span>
+                            <span className="text-[11px] text-slate-600 font-mono">{eta}</span>
                           )}
                         </div>
                       </div>

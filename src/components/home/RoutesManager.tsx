@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useBackClose } from "@/hooks/useBackClose";
 import { motion, AnimatePresence } from "framer-motion";
 import { getPrefs, addFavorite, removeFavorite, type FavoriteRoute } from "@/lib/store";
 import { STOPS_DATASET } from "@/lib/stm";
@@ -31,6 +32,8 @@ function newDraft(): Draft {
 }
 
 export default function RoutesManager({ onClose, onChange }: RoutesManagerProps) {
+  // Atrás del sistema cierra el sheet, no la app (R58c).
+  useBackClose(onClose);
   const [routes, setRoutes] = useState<FavoriteRoute[]>([]);
   const [step, setStep] = useState<"list" | "edit">("list");
   const [draft, setDraft] = useState<Draft>(newDraft());
@@ -162,7 +165,7 @@ export default function RoutesManager({ onClose, onChange }: RoutesManagerProps)
                 </div>
               )}
               <button onClick={handleNew} className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold"
-                style={{ background: "var(--accent)", color: "#1a1206" }}>
+                style={{ background: "var(--accent-bg)", color: "#1a1206" }}>
                 <Icons.Plus size={18} /> Nueva ruta
               </button>
             </motion.div>
@@ -213,7 +216,7 @@ export default function RoutesManager({ onClose, onChange }: RoutesManagerProps)
 
               <button onClick={handleSave} disabled={!canSave}
                 className="mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold disabled:opacity-40"
-                style={{ background: "var(--accent)", color: "#1a1206" }}>
+                style={{ background: "var(--accent-bg)", color: "#1a1206" }}>
                 Guardar ruta
               </button>
             </motion.div>

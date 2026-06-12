@@ -396,7 +396,9 @@ export default function RouteScreen() {
                   </p>
                   {gtfsRoutes.length > 1 && (
                     <div className="opt-row">
-                      {([["fast", "Más rápido"], ["transfers", "Menos transbordos"], ["walk", "Menos caminata"]] as const).map(([k, label]) => (
+                      {/* R58: "Más rápido" → "Rápida": con 3 chips a 390px el último quedaba
+                          cortado a la mitad ("Menos camina…") y parecía bug, no scroll. */}
+                      {([["fast", "Rápida"], ["transfers", "Menos transbordos"], ["walk", "Menos caminata"]] as const).map(([k, label]) => (
                         <button key={k} className={`opt-chip ${optimize === k ? "on" : ""}`} onClick={() => setOptimize(k)} aria-pressed={optimize === k}>
                           {label}
                         </button>
@@ -434,7 +436,7 @@ export default function RouteScreen() {
                     <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                     </svg>
-                    <p className="text-[10px] text-amber-300/90 leading-tight">
+                    <p className="text-[11px] text-amber-300/90 leading-tight">
                       <span className="font-bold">Estimación aproximada.</span> Usá las llegadas en vivo en cada parada para confirmar.
                     </p>
                   </div>

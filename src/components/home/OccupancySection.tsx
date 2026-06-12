@@ -11,22 +11,32 @@ import LineBadge from "@/components/ui/LineBadge";
  * y deja reportar en 1 toque, sin molestar. Solo aparece si Supabase está configurado
  * (degradable). Discreto: una tarjeta al final de las llegadas.
  */
-const LEVELS: { v: OccupancyLevel; emoji: string; label: string }[] = [
-  { v: 1, emoji: "🟢", label: "Vacío" },
-  { v: 2, emoji: "🟡", label: "Normal" },
-  { v: 3, emoji: "🔴", label: "Lleno" },
+// R59: dots CSS en vez de emojis 🟢🟡🔴 — un solo sistema visual (los emojis
+// compiten con los íconos vectoriales y cada OS los dibuja distinto).
+const LEVELS: { v: OccupancyLevel; color: string; label: string }[] = [
+  { v: 1, color: "var(--live)", label: "Vacío" },
+  { v: 2, color: "var(--accent)", label: "Normal" },
+  { v: 3, color: "var(--warn)", label: "Lleno" },
 ];
 
 export default function OccupancySection({ stopId, lines }: { stopId: string; lines: string[] }) {
   const [summary, setSummary] = useState<Record<string, OccupancySummary>>({});
   const [done, setDone] = useState<Record<string, OccupancyLevel>>({});
+  // R58: colapsada por defecto — 4 líneas × 3 botones ocupaban media pantalla SIEMPRE,
+  // para una acción que la mayoría no hace en cada visita. Si hay reportes recientes
+  // (info útil para el que espera), se abre sola para mostrarlos.
+  const [expanded, setExpanded] = useState(false);
   const top = lines.slice(0, 4);
   const activeRef = useRef(true);
 
   useEffect(() => {
     activeRef.current = true;
     if (!isSupabaseEnabled() || top.length === 0) return;
-    getRecentOccupancy(stopId, top).then((s) => { if (activeRef.current) setSummary(s); });
+    getRecentOccupancy(stopId, top).then((s) => {
+      if (!activeRef.current) return;
+      setSummary(s);
+      if (Object.keys(s).length > 0) setExpanded(true); // hay datos para ver → mostrar
+    });
     // marcar las ya reportadas hace poco (no repreguntar)
     const pre: Record<string, OccupancyLevel> = {};
     for (const l of top) if (recentlyReported(l, stopId)) pre[l] = 0 as OccupancyLevel;
@@ -58,6 +68,17 @@ export default function OccupancySection({ stopId, lines }: { stopId: string; li
     return s.count === 1 ? `${emoji} 1 persona: ${text} · ${ago}` : `${emoji} ${text} · ${s.count} dicen · ${ago}`;
   };
 
+  if (!expanded) {
+    return (
+      <div className="occ-section collapsed">
+        <button className="occ-toggle" onClick={() => { haptic(6); setExpanded(true); }} aria-expanded={false}>
+          ¿Te subiste recién? <span>contá cómo venía y ayudás a otros</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="occ-section">
       {/* Apunta al que SE SUBIÓ (sabe la ocupación), no al que espera (no la sabe). */}
@@ -75,7 +96,7 @@ export default function OccupancySection({ stopId, lines }: { stopId: string; li
                 <div className="occ-btns">
                   {LEVELS.map((lv) => (
                     <button key={lv.v} className="occ-btn" onClick={() => handleReport(line, lv.v)} aria-label={`${line} ${lv.label}`}>
-                      <span>{lv.emoji}</span>{lv.label}
+                      <span aria-hidden style={{ width: 9, height: 9, borderRadius: 999, background: lv.color, display: "inline-block", flexShrink: 0 }} />{lv.label}
                     </button>
                   ))}
                 </div>

@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { searchPois, getIconForCategory, type ScoredPoi } from "@/lib/poi-search";
-import { tryResolveIntersection } from "@/lib/intersection-search";
+import { tryResolveIntersection, parseIntersection } from "@/lib/intersection-search";
 import { dedupePlaces } from "@/lib/place-dedup";
 
 export const runtime = "nodejs";
@@ -217,10 +217,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  // 0a. CIUDAD DEL INTERIOR (Punta del Este, Salto, Colonia…). Va primero porque el
-  // bbox de MVD haría que Nominatim devuelva una calle homónima local. Resolvemos a la
+  // R58c: si la query PARECE esquina ("A y B"), la esquina manda. Antes el match de
+  // ciudad corría primero con prefijo: "18 de julio y ejido" empezaba con "18 de Julio"
+  // (balneario de Rocha) → la esquina más famosa de MVD resolvía a 200 km. Bug real
+  // encontrado usando la app como usuario.
+  const looksLikeCorner = parseIntersection(q) !== null;
+
+  // 0a. CIUDAD DEL INTERIOR (Punta del Este, Salto, Colonia…). Va antes de Nominatim
+  // porque el bbox de MVD haría que devuelva una calle homónima local. Resolvemos a la
   // ciudad real (fuera del bbox) → la app la trata como viaje interdepartamental.
-  const city = matchInteriorCity(q);
+  const city = looksLikeCorner ? null : matchInteriorCity(q);
   if (city) {
     const cityResult: GeoResult = {
       id: `city:${city.name}`,

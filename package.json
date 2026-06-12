@@ -10,7 +10,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "validate:data": "node scripts/pipeline/validate-gtfs-data.mjs",
-    "gtfs:freshness": "node scripts/pipeline/check-gtfs-freshness.mjs"
+    "gtfs:freshness": "node scripts/pipeline/check-gtfs-freshness.mjs",
+    "routes:update": "node scripts/process-routes.js && node scripts/pipeline/check-shape-alignment.mjs",
+    "validate:shapes": "node scripts/pipeline/check-shape-alignment.mjs",
+    "data:stop-dirs": "node scripts/build-stop-dirs.mjs"
   },
   "dependencies": {
     "@netlify/plugin-nextjs": "^5.15.11",

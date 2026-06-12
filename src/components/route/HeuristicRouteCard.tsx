@@ -184,7 +184,7 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
         <p className="text-xs text-slate-500 truncate mt-0.5">{sub}</p>
       </div>
       {action && (
-        <span className="text-[10px] text-amber-400 font-semibold flex items-center gap-0.5 flex-shrink-0">
+        <span className="text-[11px] text-amber-400 font-semibold flex items-center gap-0.5 flex-shrink-0">
           {action}
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
             <polyline points="9 18 15 12 9 6" />

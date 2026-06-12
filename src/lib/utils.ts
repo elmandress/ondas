@@ -119,5 +119,27 @@ export function walkingMinutes(distanceMeters: number): number {
   return Math.max(2, Math.ceil(realMeters / 75));
 }
 
+/* Destinos del STM vienen EN MAYÚSCULAS ("PUNTA CARRETAS (POR PARQUE)") — gritan,
+   truncan antes (las mayúsculas son ~10% más anchas) y leen peor, sobre todo para
+   adultos mayores. Title Case rioplatense: conectores en minúscula, siglas conocidas
+   en mayúscula. Si el texto YA viene mixto (interior, geocoder), se respeta tal cual. */
+const UY_ACRONYMS = new Set([
+  "UTU", "BPS", "LATU", "UAM", "IMM", "INAU", "UCU", "ORT", "BSE", "UM",
+  "ANTEL", "UTE", "OSE", "ANEP", "IAVA", "BHU", "ANCAP", "AFE", "INJU", "CCZ",
+]);
+const LOWER_CONNECTORS = new Set(["de", "del", "la", "las", "el", "los", "y", "a", "al", "por", "en"]);
+export function titleCaseDestination(s: string): string {
+  if (!s || s !== s.toUpperCase()) return s; // ya viene con minúsculas → no tocar
+  let first = true;
+  return s.toLowerCase().replace(/[^\s().,/·-]+/g, (w) => {
+    const up = w.toUpperCase();
+    const isFirst = first;
+    first = false;
+    if (UY_ACRONYMS.has(up)) return up;
+    if (!isFirst && LOWER_CONNECTORS.has(w)) return w;
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  });
+}
+
 // Mantener export de STOPS_DATASET para retrocompatibilidad (proxy)
 export { STOPS_DATASET };

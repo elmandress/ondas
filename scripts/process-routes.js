@@ -17,6 +17,11 @@ const toLatLon = proj4(UTM21S, WGS84);
 const SHP_GENERATOR_URL = 'https://intgis.montevideo.gub.uy/sit/php/common/datos/generar_zip2.php?nom_tab=v_uptu_lsv&tipo=gis';
 const ZIP_URL = 'https://intgis.montevideo.gub.uy/sit/tmp/v_uptu_lsv.zip';
 const OUT_PATH = path.join(__dirname, '../public/routes.json');
+// line-shapes.json: línea comercial → [cod_variantes con shape]. Es el índice que el
+// cliente usa para encontrar las shapes de una línea (routes.json va por cod_variante).
+// R57: antes este archivo NO tenía generador (quedó congelado al 2026-06-01 y envejecía
+// en silencio); ahora se regenera SIEMPRE junto con routes.json, del mismo feed.
+const LINE_SHAPES_PATH = path.join(__dirname, '../public/line-shapes.json');
 const TMP_DIR = path.join(__dirname, '../tmp_shape');
 
 async function processRoutes() {
@@ -117,6 +122,16 @@ async function processRoutes() {
 
     fs.writeFileSync(OUT_PATH, JSON.stringify(routesMap));
     if (carried) console.log(`Conservadas ${carried} variantes del feed anterior que el feed fresco ya no publica.`);
+
+    // line-shapes.json desde el MISMO feed: solo variantes que realmente tienen shape.
+    // Keys = DESC_LINEA tal cual viene (el cliente canonicaliza a mayúsculas al cargar).
+    const lineShapesOut = {};
+    for (const [line, variants] of Object.entries(lineVariants)) {
+      const withShape = [...variants].filter(v => variantHasShape.has(v)).sort((a, b) => Number(a) - Number(b));
+      if (withShape.length) lineShapesOut[line] = withShape;
+    }
+    fs.writeFileSync(LINE_SHAPES_PATH, JSON.stringify(lineShapesOut));
+    console.log(`line-shapes.json: ${Object.keys(lineShapesOut).length} líneas con shape.`);
 
     // Reporte de cobertura: cuántas variantes por línea tienen shape real.
     let linesFull = 0, linesPartial = 0, linesEmpty = 0;

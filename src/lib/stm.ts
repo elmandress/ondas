@@ -513,7 +513,10 @@ export function lineColorFromCode(lineCode: string): string {
     "468": "#16a34a", "H": "#dc2626", "21": "#ca8a04", "121": "#db2777",
     "20": "#0284c7", "88": "#9333ea", "183": "#0d9488", "102": "#d97706",
   };
-  return map[lineCode] || `hsl(${(lineCode.split("").reduce((a, c) => a + c.charCodeAt(0), 0) * 47) % 360}, 70%, 55%)`;
+  // Canónico para que la misma línea tenga el MISMO color venga de donde venga el
+  // dato (el GPS reporta "CE1", el GTFS "Ce1" — sin esto el hash daba 2 colores).
+  const canon = lineCode.trim().toUpperCase();
+  return map[canon] || `hsl(${(canon.split("").reduce((a, c) => a + c.charCodeAt(0), 0) * 47) % 360}, 70%, 55%)`;
 }
 
 /**

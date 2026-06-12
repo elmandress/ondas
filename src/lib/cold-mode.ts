@@ -18,6 +18,7 @@
  * Lógica pura — el fetch vive en hooks/useColdAlternatives.
  */
 import { walkingMinutes } from "@/lib/utils";
+import { canonLine } from "@/lib/line-name";
 
 /** Espera (min) a partir de la cual se activa el modo frío. */
 export const COLD_THRESHOLD_MIN = 15;
@@ -72,13 +73,16 @@ export function pickColdAlternatives(
 ): ColdSuggestion[] {
   if (!isColdWait(hereEtaMin)) return [];
 
-  const here = new Set(hereLines);
+  // Canónico (R58e): hereLines puede venir de la API en vivo ("CE1") o del fallback
+  // stops.json ("Ce1") según el estado de la red — comparar sin canon dejaba pasar
+  // la misma línea como "alternativa" en modo degradado.
+  const here = new Set(hereLines.map(canonLine));
   const bestByLine = new Map<string, ColdSuggestion>();
 
   for (const alt of altStops) {
     const walkMin = walkingMinutes(alt.distM);
     for (const a of alt.arrivals) {
-      if (!a.line || here.has(a.line)) continue;
+      if (!a.line || here.has(canonLine(a.line))) continue;
       if (!Number.isFinite(a.etaMin) || a.etaMin < walkMin) continue; // no llegás caminando
       const beneficial = hereEtaMin === null
         ? a.etaMin <= MAX_ETA_WHEN_EMPTY_MIN

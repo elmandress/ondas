@@ -23,8 +23,10 @@
  *   3. node scripts/export-gtfs-json.mjs
  *   4. node scripts/build-stops-json.mjs <gtfsDir> public/stops.json
  *   5. node scripts/merge-metro-gtfs.mjs  (si cambió el GTFS metropolitano)
- *   6. node scripts/pipeline/validate-gtfs-data.mjs
- *   7. node scripts/pipeline/check-gtfs-freshness.mjs --save
+ *   6. node scripts/build-stop-dirs.mjs   (pistas de sentido para Buscar — usa gtfs-v2.json+stops.json)
+ *   7. npm run routes:update              (shapes SIT: routes.json + line-shapes.json + validación)
+ *   8. node scripts/pipeline/validate-gtfs-data.mjs
+ *   9. node scripts/pipeline/check-gtfs-freshness.mjs --save
  */
 import fs from "fs";
 import path from "path";

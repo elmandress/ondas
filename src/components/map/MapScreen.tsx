@@ -18,9 +18,10 @@ import { useLocation } from "@/hooks/useLocation";
 import { useArrivals } from "@/hooks/useArrivals";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
 import { useStopInfo } from "@/hooks/useStopInfo";
+import { useBackClose } from "@/hooks/useBackClose";
 import { STOPS_DATASET, type BusStop, type VehiclePosition } from "@/lib/stm";
 import { getStopsInBoundsClient, distanceTo } from "@/lib/utils";
-import { loadRoutesCache, type RoutesIndex } from "@/lib/routes-cache";
+import { loadRoutesCache, loadLineShapes, type RoutesIndex } from "@/lib/routes-cache";
 import { filterUpstreamBuses } from "@/lib/bus-direction";
 import { useSelectedPlace, setSelectedPlace } from "@/lib/selected-place";
 import { useSelectedRoute, setSelectedRoute } from "@/lib/selected-route";
@@ -64,6 +65,7 @@ export default function MapScreen() {
   const [visibleStops, setVisibleStops] = useState<BusStop[]>([]);
   const [mapApi, setMapApi] = useState<MapApi | null>(null);
   const [routesIdx, setRoutesIdx] = useState<RoutesIndex | null>(null);
+  const [lineShapesIdx, setLineShapesIdx] = useState<Record<string, string[]> | null>(null);
   const selectedPlace = useSelectedPlace();
   const selectedRoute = useSelectedRoute();
   // Long-press en el mapa (FR-4.1): elegir punto para Cómo Llegar
@@ -99,11 +101,13 @@ export default function MapScreen() {
   // routes.json pesa ~3.9MB: lo cargamos SOLO cuando se elige una parada (ahí se usa
   // para filtrar buses que van hacia ella). Abrir el mapa a mirar NO baja ese peso.
   // El cache es compartido (loadRoutesCache memoiza), así que se baja una sola vez.
+  // line-shapes.json (chico) viaja junto: el filtro upstream lo usa para saber si
+  // una línea tiene shapes sin colisionar con cod_variantes (R57).
   useEffect(() => {
     if (!selectedStopId || routesIdx) return;
     let cancelled = false;
-    loadRoutesCache().then((r) => {
-      if (!cancelled) setRoutesIdx(r);
+    Promise.all([loadRoutesCache(), loadLineShapes()]).then(([r, ls]) => {
+      if (!cancelled) { setLineShapesIdx(ls); setRoutesIdx(r); }
     });
     return () => { cancelled = true; };
   }, [selectedStopId, routesIdx]);
@@ -239,7 +243,7 @@ export default function MapScreen() {
         return d > 5000;
       }).length;
       if (farCount > list.length / 2) {
-        list = filterUpstreamBuses(list, selectedStop.stopLat, selectedStop.stopLon, routesIdx);
+        list = filterUpstreamBuses(list, selectedStop.stopLat, selectedStop.stopLon, routesIdx, lineShapesIdx ?? undefined);
       }
     }
 
@@ -249,7 +253,7 @@ export default function MapScreen() {
       if (sv) list = [...list, sv];
     }
     return list;
-  }, [vehicles, filterLine, selectedStop, selectedVehicleId, routesIdx]);
+  }, [vehicles, filterLine, selectedStop, selectedVehicleId, routesIdx, lineShapesIdx]);
 
   // Markers del mapa = vehículos del endpoint + posiciones de los arrivals en vivo que
   // ese endpoint no trajo. arrivals y vehicles son DOS llamadas separadas a la API en vivo
@@ -348,6 +352,11 @@ export default function MapScreen() {
     setSelectedRoute(null);
   }
 
+  // Atrás del sistema cierra el panel abierto del mapa, no la app (R58c).
+  // Un back limpia toda la selección (predecible; los paneles son una "vista").
+  const anyPanelOpen = !!(selectedStopId || selectedVehicleId || selectedPlace || selectedRoute || pinDrop);
+  useBackClose(() => { setPinDrop(null); clearSelections(); }, anyPanelOpen);
+
   function selectStop(id: string) {
     setSelectedStopId(id);
     setSelectedVehicleId(null);
@@ -372,28 +381,28 @@ export default function MapScreen() {
             <div className="flex-1 min-w-0">
               {selectedRoute ? (
                 <>
-                  <p className="text-[10px] text-amber-400 font-bold leading-none">Ruta</p>
+                  <p className="text-[11px] text-amber-400 font-bold leading-none">Ruta</p>
                   <p className="text-xs text-white font-semibold truncate leading-tight mt-0.5">
                     {selectedRoute.origin.name || "Origen"} → {selectedRoute.destination.name || "Destino"}
                   </p>
                 </>
               ) : selectedPlace ? (
                 <>
-                  <p className="text-[10px] text-red-400 font-bold leading-none">Lugar</p>
+                  <p className="text-[11px] text-red-400 font-bold leading-none">Lugar</p>
                   <p className="text-xs text-white font-semibold truncate leading-tight mt-0.5">{selectedPlace.name}</p>
                 </>
               ) : (
                 <>
-                  <p className="text-xs text-white font-semibold leading-tight">
+                  <p className="text-[13px] text-white font-bold leading-tight">
                     {!stopsReady
                       ? "Cargando paradas…"
                       : visibleStops.length > 0
-                      ? `${visibleStops.length} paradas`
+                      ? `${visibleStops.length} paradas a la vista`
                       : bounds && bounds.zoom < 14
                       ? "Acercá el mapa para ver paradas"
                       : "Buscando paradas…"}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Tocá una parada para ver los buses</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Tocá una parada para ver sus buses</p>
                 </>
               )}
             </div>
@@ -512,12 +521,14 @@ export default function MapScreen() {
         )}
       </AnimatePresence>
 
-      {/* Botón flotante: centrar en mi ubicación */}
+      {/* Botón flotante: centrar en mi ubicación. R58b: estaba en bottom 24px — la MISMA
+          esquina que el control de zoom de Leaflet, que lo tapaba (el usuario nunca lo
+          veía). Ahora vive arriba del zoom (+/− ocupa ~90px + márgenes). */}
       {location && locationIsReal && (
         <button
-          onClick={() => mapApi?.flyTo(location.lat, location.lon, 16)}
+          onClick={() => { haptic(8); mapApi?.flyTo(location.lat, location.lon, 16); }}
           className="absolute right-4 z-[1000] w-12 h-12 rounded-full bg-[#101626]/95 backdrop-blur-xl border border-white/[0.08] flex items-center justify-center shadow-xl active:scale-95 transition-transform"
-          style={{ bottom: selectedStop ? "calc(48vh + 16px)" : "24px" }}
+          style={{ bottom: selectedStop ? "calc(48vh + 16px)" : "152px" }}
           aria-label="Centrar en mi ubicación"
         >
           <svg className="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">

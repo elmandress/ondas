@@ -15,6 +15,7 @@
  */
 
 import type { VehiclePosition } from "@/lib/stm";
+import { getShapesForLine } from "@/lib/routes-cache";
 
 /** Distancia máxima del bus a la polyline antes de considerar GPS sospechoso. */
 const MAX_OFFROUTE_M = 500;
@@ -117,17 +118,21 @@ export function isBusGoingToStop(
   bus: VehiclePosition,
   stopLat: number,
   stopLon: number,
-  routes: RoutesIndex
+  routes: RoutesIndex,
+  lineShapes?: Record<string, string[]>
 ): UpstreamCheckResult {
   // Solo usar la variante exacta. Sin fallback a lineName (puede ser sentido contrario).
   const variantKey = bus.variantCode != null ? String(bus.variantCode) : "";
   const variantPolyline = variantKey ? routes[variantKey] : null;
 
   if (!variantPolyline || variantPolyline.length < 2) {
-    // ¿La línea existe en routes.json pero con otra variante?
+    // ¿La línea tiene OTRAS variantes con shape (según line-shapes.json)?
     // Si sí → descartar (no podemos garantizar sentido).
     // Si no → incluir (no podemos juzgar de ningún modo).
-    const lineExists = !!routes[bus.lineName];
+    // R57: antes esto miraba routes[bus.lineName], pero routes.json está keyado por
+    // cod_variante NUMÉRICO → una línea "2" colisionaba con la variante interna 2 de
+    // otra línea y el bus se descartaba (o no) por una shape ajena.
+    const lineExists = lineShapes ? getShapesForLine(lineShapes, bus.lineName).length > 0 : false;
     if (lineExists) {
       return {
         isUpstream: false,
@@ -206,10 +211,11 @@ export function filterUpstreamBuses(
   buses: VehiclePosition[],
   stopLat: number,
   stopLon: number,
-  routes: RoutesIndex | null
+  routes: RoutesIndex | null,
+  lineShapes?: Record<string, string[]>
 ): VehiclePosition[] {
   if (!routes) return buses; // sin rutas todavía → no filtramos
-  return buses.filter((b) => isBusGoingToStop(b, stopLat, stopLon, routes).isUpstream);
+  return buses.filter((b) => isBusGoingToStop(b, stopLat, stopLon, routes, lineShapes).isUpstream);
 }
 
 /**

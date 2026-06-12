@@ -1,11 +1,13 @@
 "use client";
 
 import { AnimatePresence } from "framer-motion";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useArrivals } from "@/hooks/useArrivals";
 import { useInteriorArrivals, isInteriorStop } from "@/hooks/useInteriorArrivals";
 import { useStopInfo } from "@/hooks/useStopInfo";
 import { useColdAlternatives } from "@/hooks/useColdAlternatives";
+import { useBackClose } from "@/hooks/useBackClose";
+import { canonLine } from "@/lib/line-name";
 import { STOPS_DATASET, isAccessibleArrival, arrivalHasAc, type BusStop } from "@/lib/stm";
 import { formatRelativeTime, getNearbyStopsClient, distanceTo } from "@/lib/utils";
 import { useFavoriteStops, toggleFavoriteStop } from "@/lib/favorite-stops";
@@ -54,6 +56,33 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
     setOpen(false);
     setTimeout(onClose, CLOSE_MS);
   }, [onClose]);
+  // Atrás del sistema cierra el sheet, no la app (R58c).
+  useBackClose(handleClose);
+
+  // Drag-to-close (R58d): el handle invitaba a arrastrar y no hacía nada (affordance
+  // falsa). Zona de drag = handle + header (no la lista, que necesita su scroll).
+  // Soltar con >90px de arrastre cierra; menos, vuelve con la transición del sheet.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragStartY = useRef<number | null>(null);
+  const dragDy = useRef(0);
+  const onDragStart = (e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    dragDy.current = 0;
+    if (sheetRef.current) sheetRef.current.style.transition = "none";
+  };
+  const onDragMove = (e: React.TouchEvent) => {
+    if (dragStartY.current === null || !sheetRef.current) return;
+    const dy = Math.max(0, e.touches[0].clientY - dragStartY.current);
+    dragDy.current = dy;
+    sheetRef.current.style.transform = `translateY(${dy}px)`;
+  };
+  const onDragEnd = () => {
+    const el = sheetRef.current;
+    if (el) { el.style.transition = ""; el.style.transform = ""; }
+    if (dragDy.current > 90) handleClose();
+    dragStartY.current = null;
+    dragDy.current = 0;
+  };
 
   const favorites = useFavoriteStops();
   const isFav = favorites.some((f) => f.stopId === stopId);
@@ -107,31 +136,38 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
     <>
       <div className={`sheet-backdrop mobile-only ${open ? "open" : ""}`} onClick={handleClose} />
 
-      <div className={`bottom-sheet ${open ? "open" : ""}`}>
+      <div ref={sheetRef} className={`bottom-sheet ${open ? "open" : ""}`}>
+        <div onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd}>
         <div className="sheet-handle" />
 
+        {/* R58: acciones en fila propia junto al eyebrow — antes los 4 botones le
+            robaban más de media pantalla al nombre ("Av Gral Garibal…"). El nombre
+            ahora ocupa todo el ancho disponible (2 líneas reales). */}
         <div className="sheet-header">
           <div className="icon"><Icons.Bus size={22} /></div>
           <div className="text">
-            <div className="eyebrow">Parada #{stop?.stopCode || stopId}</div>
+            <div className="head-row">
+              <div className="eyebrow">Parada #{stop?.stopCode || stopId}</div>
+              <div className="actions">
+                <button className={`icon-btn sm ${isFav ? "active" : ""} ${favPulse ? "fav-pulse" : ""}`} onClick={handleToggleFav} aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}>
+                  <Icons.Star size={18} filled={isFav} />
+                </button>
+                <button className="icon-btn sm" onClick={handleShare} aria-label="Compartir parada">
+                  <Icons.Share size={18} />
+                </button>
+                <button className="icon-btn sm" onClick={refetch} aria-label="Actualizar">
+                  <span style={loading ? { animation: "spin 1s linear infinite", display: "grid" } : undefined}><Icons.Refresh size={18} /></span>
+                </button>
+                <button className="icon-btn sm" onClick={handleClose} aria-label="Cerrar">
+                  <Icons.Close size={18} />
+                </button>
+              </div>
+            </div>
             <div className="name">{stop?.stopName || `Parada ${stopId}`}</div>
-          </div>
-          <div className="actions">
-            <button className={`icon-btn sm ${isFav ? "active" : ""} ${favPulse ? "fav-pulse" : ""}`} onClick={handleToggleFav} aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}>
-              <Icons.Star size={18} filled={isFav} />
-            </button>
-            <button className="icon-btn sm" onClick={handleShare} aria-label="Compartir parada">
-              <Icons.Share size={18} />
-            </button>
-            <button className="icon-btn sm" onClick={refetch} aria-label="Actualizar">
-              <span style={loading ? { animation: "spin 1s linear infinite", display: "grid" } : undefined}><Icons.Refresh size={18} /></span>
-            </button>
-            <button className="icon-btn sm" onClick={handleClose} aria-label="Cerrar">
-              <Icons.Close size={18} />
-            </button>
           </div>
           {copied && <div className="share-copied" role="status">Link copiado ✓</div>}
         </div>
+        </div>{/* fin zona de drag */}
 
         {/* Líneas — tocar para ver recorrido completo */}
         {realLines.length > 0 && (
@@ -147,7 +183,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
 
         <div className="sheet-status">
           {isOffline ? (
-            <><span className="pip" style={{ background: "var(--accent)" }} />Sin conexión · mostrando caché</>
+            <><span className="pip" style={{ background: "var(--accent-bg)" }} />Sin conexión · mostrando caché</>
           ) : lastFetchFailed ? (
             <><span className="pip" style={{ background: "var(--warn)" }} />Error al actualizar{lastUpdated ? ` · datos de ${formatRelativeTime(lastUpdated)}` : ""}</>
           ) : lastUpdated ? (
@@ -201,7 +237,9 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
             <EmptyState icon={<Icons.Bus size={28} />} title="Ninguno confirma ese filtro" sub="El dato de accesibilidad/aire no siempre viene por bus. Probá sin filtro." />
           ) : (
             shown.map((a, i) => (
-              <ArrivalRow key={`${a.lineId}-${i}`} arrival={a} stopId={stopId} onLinePress={(line, destination, company) => setLineDetail({ line, destination, company })} />
+              // R58d: key ESTABLE por bus (no por índice) — con índice, cada refresh de
+              // 20s remontaba las filas y la animación de entrada se repetía (parpadeo).
+              <ArrivalRow key={a.vehicleId ? `v${a.vehicleId}` : `s-${a.lineId}-${i}`} arrival={a} stopId={stopId} onLinePress={(line, destination, company) => setLineDetail({ line, destination, company })} />
             ))
           )}
         </div>
@@ -239,12 +277,15 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
  */
 function NearbyAlternatives({ stop, currentLines }: { stop: BusStop; currentLines: string[] }) {
   const others = useMemo(() => {
-    const cur = new Set(currentLines);
+    // R58e: comparación CANÓNICA — currentLines viene de la API en vivo ("CE1") y
+    // s.lines de stops.json/GTFS ("Ce1"). Sin canon, la misma línea aparecía como
+    // "extra que acá no pasa" en la parada vecina (justo lo que esto debe evitar).
+    const cur = new Set(currentLines.map(canonLine));
     return getNearbyStopsClient(stop.stopLat, stop.stopLon, 300, 8)
       .filter((s) => s.stopId !== stop.stopId)
       .map((s) => ({
         s,
-        extra: s.lines.filter((l) => !cur.has(l)),
+        extra: s.lines.filter((l) => !cur.has(canonLine(l))),
         dist: Math.round(distanceTo(stop.stopLat, stop.stopLon, s.stopLat, s.stopLon)),
       }))
       .filter((x) => x.extra.length > 0)

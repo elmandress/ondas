@@ -49,10 +49,10 @@ export default function PlacePanel({ place, stopsReady, onClose, onSelectStop }:
             {place.icon || "📍"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-[0.18em] text-red-400">Lugar</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-red-400">Lugar</p>
             <p className="text-sm text-white font-bold truncate">{place.name}</p>
             {place.fullName && (
-              <p className="text-[10px] text-slate-600 truncate">{place.fullName.split(",").slice(0, 2).join(",")}</p>
+              <p className="text-[11px] text-slate-600 truncate">{place.fullName.split(",").slice(0, 2).join(",")}</p>
             )}
           </div>
           <button
@@ -74,7 +74,7 @@ export default function PlacePanel({ place, stopsReady, onClose, onSelectStop }:
             </div>
           ) : (
             <>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2.5">
                 Paradas cercanas ({nearbyStops.length})
               </p>
               <div className="space-y-1.5">
@@ -97,15 +97,15 @@ export default function PlacePanel({ place, stopsReady, onClose, onSelectStop }:
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-white truncate">{stop.stopName}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-amber-400 font-medium">{distanceM}m</span>
-                        <span className="text-[10px] text-slate-700">·</span>
-                        <span className="text-[10px] text-slate-500">#{stop.stopCode}</span>
+                        <span className="text-[11px] text-amber-400 font-medium">{distanceM}m</span>
+                        <span className="text-[11px] text-slate-700">·</span>
+                        <span className="text-[11px] text-slate-500">#{stop.stopCode}</span>
                         <div className="flex gap-1 ml-1">
                           {stop.lines.slice(0, 5).map((l) => (
-                            <span key={l} className="text-[9px] font-bold text-slate-300 px-1 py-0 rounded bg-white/[0.06]">{l}</span>
+                            <span key={l} className="text-[11px] font-bold text-slate-300 px-1 py-0 rounded bg-white/[0.06]">{l}</span>
                           ))}
                           {stop.lines.length > 5 && (
-                            <span className="text-[9px] text-slate-700">+{stop.lines.length - 5}</span>
+                            <span className="text-[11px] text-slate-700">+{stop.lines.length - 5}</span>
                           )}
                         </div>
                       </div>

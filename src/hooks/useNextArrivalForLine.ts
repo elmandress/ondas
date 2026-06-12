@@ -6,6 +6,7 @@
  * SRS FR-4.4.
  */
 import { useEffect, useState } from "react";
+import { sameLine } from "@/lib/line-name";
 
 interface ArrivalLite {
   lineName: string;
@@ -71,7 +72,9 @@ export function useNextArrivalForLine(
 
     fetchArrivals(stopId).then((arrivals) => {
       if (cancelled) return;
-      const matches = arrivals.filter((a) => a.lineName === lineName);
+      // Canónico: el planner usa la grafía GTFS ("Ce1") y las llegadas en vivo la del
+      // GPS ("CE1") — comparar con === dejaba esas líneas sin "Próximo en X min" (R57).
+      const matches = arrivals.filter((a) => sameLine(a.lineName, lineName));
       if (matches.length === 0) {
         setState({ etaMin: null, realtime: false, loading: false });
       } else {

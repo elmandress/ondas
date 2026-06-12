@@ -748,3 +748,243 @@ foot), shapefile SIT (`intgis.montevideo.gub.uy` v_uptu_lsv), Busmatick interior
   estructurado; las alertas no tienen API limpia. Un hint de lluvia en "cuándo
   salir" requeriría scrapear el JSON interno de la app → frágil. Reevaluar si
   publican pronóstico abierto.
+
+---
+
+## 17. Sesión R57 (2026-06-11) — auditoría detección de buses + 5 fixes de raíz
+
+Queja del usuario: "los ómnibus se marcan mal (detecta los que vienen por otra parada
+/ ya pasaron)" + "recorridos desfasados de las paradas". Auditoría con verificación
+en vivo encontró 5 causas raíz; TODAS arregladas y verificadas (tsc 0 · 187/187 tests
+· build OK · validate:data OK · flota en vivo 502/502 resuelta contra GTFS):
+
+1. **Case-sensitivity entre fuentes** (`lib/line-name.ts` nuevo): el GPS reporta
+   "CE1"/"124 SD", el GTFS tiene "Ce1"/"124 Sd", variant_to_line "CE2"/"BT1". El
+   lookup exacto dejaba esas líneas SIN filtro de dirección, sin horarios, sin shape
+   y sin "Próximo en X min". Canonicalización (`canonLine`) en gtfs-db, schedule-db,
+   routes-cache (getShapesForLine), useNextArrivalForLine y lineColorFromCode.
+   Medido: 6 buses CE1 circulaban sin filtro; ahora 502/502 resuelven.
+2. **trustUpstream mostraba `stop-not-in-route`**: bus de sentido contrario u otro
+   ramal que el STM incluía en busstopId se mostraba igual. Ahora se descarta en
+   arrivals Y vehicles (la incertidumbre legítima sigue siendo "no-position").
+3. **"Ya pasó" por PROYECCIÓN sobre el recorrido** (bus-direction-gtfs reescrito):
+   antes snapeaba a la "parada más cercana" (un bus recién pasado seguía "llegando"
+   hasta media cuadra de la siguiente; margen ±1 parada del respaldo dejaba mostrar
+   buses 2 paradas más allá). Ahora: proyección punto-a-segmento sobre la polilínea
+   de paradas, "pasó" = >75m más allá de la target POR EL RECORRIDO (respaldo
+   no-snapeado: >120m), distancia restante real por el recorrido, ETA interpolado.
+   Caches por variante. +6 tests de regresión con datos GTFS reales.
+4. **Shapes desactualizados y SIN generador**: routes.json/line-shapes.json eran del
+   01/06 vs GTFS 20260608, y line-shapes.json no tenía script generador. Ahora
+   process-routes.js genera AMBOS del mismo feed SIT (`npm run routes:update`), con
+   validación de alineamiento (`npm run validate:shapes`, umbral estructural: ~237
+   variantes que cruzan a Canelones donde el shapefile IM clipea — eso lo cubre el
+   guard del cliente). Regenerado: 834 variantes, 148 líneas completas; TODAS las
+   líneas urbanas con shape (las 90 sin shape son metro "M-", esperado).
+5. **El mapa dibujaba la shape de OTRA variante**: fallback "primera shape de la
+   línea" + `routes[lineName]` (colisionaba nombres numéricos con cod_variantes).
+   Ahora LeafletMap fusiona trazo+paradas en un efecto: candidatos = variantCode
+   exacto + shapes de la línea, gana la de MENOR maxGap contra las paradas reales,
+   acepta solo ≤120m (mismo criterio que useEnrichedRouteLegs) y si no, dibuja la
+   polilínea por las paradas (honesto). bus-direction.ts (filtro cliente) ahora
+   recibe line-shapes para "¿la línea tiene shape?" sin colisión de keys.
+
+**Estructural conocido (no es bug)**: el shapefile SIT cubre solo Montevideo; las
+variantes que siguen a Las Piedras/Canelones (175, L32, L39, G8…) tienen gap >120m
+en la cola → el guard las baja a polilínea-por-paradas. Fix futuro: shapes del
+dataset MTOP "Recorridos ómnibus suburbanos" (catalogodatos).
+
+---
+
+## 18. Sesión R58 (2026-06-12) — facelift por auditoría visual
+
+Método R55 a fondo: capturas reales 390px del build (dark+light, 10 pantallas,
+`scripts/facelift-shots.mjs`) → análisis multimodal → fix → re-captura. Verificado:
+tsc 0 · 191/191 tests (4 nuevos de `titleCaseDestination`) · lint 0 errores · build OK
+· 0 pageerrors en todas las capturas.
+
+Implementado (todo verificado con re-captura antes/después):
+1. **Header del sheet de parada**: las 4 acciones le robaban media pantalla al nombre
+   ("Av Gral Garibal…"). Ahora eyebrow+acciones comparten fila y el nombre va debajo a
+   todo el ancho (`.head-row`; markup viejo sigue compatible).
+2. **`titleCaseDestination()` en `lib/utils.ts`**: destinos del STM en MAYÚSCULAS →
+   Title Case rioplatense (conectores en minúscula, siglas UTU/BPS/ANTEL… respetadas,
+   texto ya-mixto intacto). Aplicado en ArrivalRow, VehicleCard y LineDetailSheet.
+3. **Ocupación colapsada por defecto** (OccupancySection): 4 líneas × 3 botones ocupaban
+   media pantalla siempre; ahora es una fila discreta que expande, y se abre sola si hay
+   reportes recientes que mostrar.
+4. **Cards de ruta**: fuera el "Tocá para ver el paso a paso" repetido (el chevron ya lo
+   dice; queda solo "N alternativas cercanas"); `.route-card` con borde más presente y
+   12px de aire (antes parecían una lista continua).
+5. **Pills de optimización**: "Más rápido"→"Rápida" — las 3 entran en 390px (antes
+   "Menos camina…" quedaba cortada y parecía bug).
+6. **UI-2 resuelto**: backdrop del sheet 0.74→0.82 + blur 14 (dark) y velo propio más
+   liviano en light.
+7. **Chip del mapa**: "100 paradas a la vista" 13px bold + hint legible (antes 10px gris).
+8. **Buscador**: anillo de foco único (outline global + ring propio = doble anillo).
+
+**Backlog de diseño detectado en R58** → ✅ TODO ejecutado en R58b (mismo día, ver §19).
+
+---
+
+## 19. Sesión R58b (2026-06-12) — basics: jerarquía, AA, desambiguación, interlinking
+
+Ejecutado el backlog completo de R58 + basics nuevos. Verificado: tsc 0 · 191/191 ·
+lint 0 errores · build OK (279 páginas) · re-captura dark+light con 0 pageerrors.
+
+1. **Jerarquía de la Home**: orden nuevo = avisos → "¿A dónde querés ir?" → hero
+   "cuándo salir" (la estrella, ARRIBA del pliegue) → preview del mapa (contexto,
+   compactado 188→150px) → resto. Antes el mapa ocupaba el lugar de honor.
+2. **Botón "mi ubicación" del mapa**: EXISTÍA pero estaba en bottom 24px — la misma
+   esquina que el zoom de Leaflet, que lo tapaba. Ahora a 152px, visible (+haptic).
+3. **QW-2 RESUELTO — pasada AA del tema light, medida** (script de ratios WCAG, no a
+   ojo): text-3 3.28→4.60 (#646c7d), accent 2.99→4.58 (#9b5e00), live 3.02→4.66
+   (#087a56), warn 4.23→4.70 (#c73127). Nuevo token **`--accent-bg`** (relleno de
+   botones con texto oscuro encima) separado de `--accent` (texto sobre fondo): en
+   dark coinciden, en light divergen — un solo valor no podía cumplir ambos roles.
+   13 usos CSS + 9 inline migrados a `--accent-bg`. Dark ya pasaba todo (verificado).
+4. **Deep links tolerantes**: `?tab=` acepta aliases español/inglés (rutas/routes/
+   ruta/mapa/buscar/inicio) — antes ?tab=routes fallaba EN SILENCIO.
+5. **Interlinking /linea ↔ /barrio**: nueva sección "Barrios por donde pasa" con
+   chips-link derivados de las PARADAS REALES de la línea contra los centroides de
+   BARRIOS (en build, costo 0 runtime). Ej: /linea/183 → Pocitos · La Blanqueada ·
+   Buceo · El Prado · Parque Batlle · Tres Cruces.
+6. **Desambiguación de paradas duplicadas en Buscar** (pendiente R55, RESUELTO):
+   `scripts/build-stop-dirs.mjs` genera `public/stop-dirs.json` (42KB) con el headsign
+   dominante por parada, SOLO para nombres duplicados donde la pista difiere (1.856 de
+   6.257 duplicadas). El buscador muestra "#3301 hacia Plaza Independencia" /
+   "#3302 hacia Rambla Costanera". Dataset en SW + headers Netlify; paso agregado a la
+   secuencia de regeneración GTFS (check-gtfs-freshness.mjs). `npm run data:stop-dirs`.
+
+Notas: sw.js sumó stop-dirs.json a DATASETS sin bump de CACHE (un dataset nuevo se
+cachea on-demand; invalidar todo el cache de todos los usuarios no se justifica).
+
+---
+
+## 20. Sesión R58c (2026-06-12) — walkthrough "usuario normal": 2 bugs graves arreglados
+
+Auditoría USANDO la app (flujos interactivos Playwright táctiles, no capturas pasivas).
+Verificado: tsc 0 · 195/195 tests (8 nuevos) · lint 0 errores · build OK · back-test y
+esquinas verificados en vivo.
+
+### Bug 1 (GRAVE): la búsqueda de esquinas estaba muerta en silencio
+Tipeando como usuario: "18 de julio y ejido" (LA esquina de Montevideo) → única
+sugerencia: "18 De Julio, **Rocha**" (balneario a 200 km). Causa doble:
+- **Overpass (kumi) caído/timeout** → toda resolución de esquinas fallaba silenciosa.
+- **matchInteriorCity corría ANTES que la esquina y con prefijo**: la query empieza
+  con "18 de Julio" (ciudad de Rocha) → secuestro.
+Fix triple en `intersection-search.ts` + `api/geocode`:
+1. **`findIntersectionLocal()`**: las 10k paradas SON esquinas reales con coords
+   ("Av 18 De Julio Y Ejido") → resolución local instantánea, sin red. Para una app
+   de transporte, las esquinas que importan son las que tienen parada.
+2. Overpass con **mirrors en orden** (overpass-api.de → kumi) como respaldo.
+3. En geocode, **si la query parsea como esquina, la ciudad del interior no aplica**.
+4. `STREET_ALIASES`: "propios" → "José Batlle y Ordóñez" (nombres populares).
+Verificado en vivo: 18 de Julio y Ejido / Garibaldi y Rivadavia / Av Italia y Propios /
+Rivera y Soca → esquina exacta, [intersection], instantáneo. +4 tests de regresión.
+
+### Bug 2 (GRAVE en Android): el botón ATRÁS cerraba la app entera
+Ningún sheet/panel pusheaba estado al history → abrías una parada, tocabas atrás
+(gesto universal) y te ibas de la app. Nuevo **`hooks/useBackClose.ts`** (pushState
+con id propio + popstate que cierra solo el tope de la pila — sheets apilados
+cierran de a uno). Cableado en: StopArrivalSheet, LineDetailSheet, SettingsSheet,
+SaldoSheet, HowToSheet, RoutesManager y paneles del mapa (MapScreen, un back limpia
+la selección). Test en vivo: sheet abierto + back → sheet cerrado, app viva.
+
+### Hallazgos REPORTADOS sin fix → ✅ TODOS resueltos en R58d (ver §21), salvo:
+- Cambiar de pestaña no pushea history (back en una pestaña = salir; estándar PWA,
+  decisión consciente, reevaluar con feedback real).
+
+---
+
+## 21. Sesión R58d (2026-06-12) — basics de gestos + re-auditoría de generación de datos
+
+Verificado: tsc 0 · 195/195 · lint 0 errores · build OK (279 págs) · drag-to-close
+testeado en vivo (swipe-down cierra) · 0 pageerrors.
+
+### Fixes de UX (lo reportado en R58c)
+1. **Drag-to-close real**: StopArrivalSheet (touch handlers en zona handle+header,
+   >90px suelta y cierra, menos vuelve con la transición) y LineDetailSheet
+   (framer `drag="y"`, offset>100 o velocity>600). El handle dejó de ser decorativo.
+2. **Pull-to-refresh en Home (QW-3 RESUELTO)**: tirar >55px con el scroll arriba
+   refresca las llegadas del hero, con indicador ("Soltá para actualizar" →
+   "Actualizando…"). Sin preventDefault — no pelea con el scroll nativo.
+3. **Filas de llegadas estables**: las keys eran por ÍNDICE (sheet) y con ETA adentro
+   (StopPanel del mapa) → cada refresh de 15-20s REMONTABA filas y la animación de
+   entrada parpadeaba. Keys estables por vehicleId; los reordenamientos reales (un bus
+   pasa a otro) siguen reflejándose, sin flash.
+
+### Re-auditoría de generación de datos (rutas/horarios/secuencias)
+- `build-gtfs-db.mjs` ✓ SÓLIDO: 1 variante por patrón único de paradas (el fix
+  histórico anti buses-fantasma), secuencias renumeradas 1..N, arrival_seconds
+  absolutos del primer trip del patrón (las DIFERENCIAS que usa el ETA son válidas;
+  cruces de medianoche ok). `export-gtfs-json.mjs` ✓ fiel al .db.
+- `build-stops-json.mjs` ✓ directo de stops.txt.
+- **BUG (familia mayúsculas, arreglado)**: `line-hours.json` hereda keys de
+  variant_to_line ("CE2"/"BT1") y los consumidores buscan con grafía GTFS ("Ce2") →
+  ventana horaria / "cierra pronto" / filtro horario NUNCA aplicaban a esas líneas.
+  `line-hours.ts` ahora canonicaliza keys y lookups (3 puntos).
+- Cobertura medida: 139/140 líneas urbanas con horarios (solo falta la 468,
+  diferencial sin horario CONOCIDO, fail-open documentado). variant_to_line ídem.
+
+### R58e — re-chequeo "sin inventar" (mismo día)
+Confirmado y arreglado: **"A pasos también pasan" comparaba líneas en vivo ("CE1")
+contra stops.json ("Ce1")** → la misma línea aparecía como "extra en la parada
+vecina" cuando sí pasa acá (lo que el feature promete evitar). Canon en
+NearbyAlternatives + pickColdAlternatives (este último solo desalineaba en modo
+degradado). Verificados y NO rotos (auditados con evidencia, sin tocar):
+detectLastBus (cruce de medianoche bien manejado), route-planner heurístico y
+searchStops (comparaciones misma-fuente), layout del sheet post drag-wrapper
+(captura), PTR sin pelear con scroll nativo. Quinto y último miembro conocido de
+la familia de mayúsculas — barrida completa con
+`grep '\.lines\.(filter|includes|some)'` sin pendientes.
+
+### R59 (mismo día) — clean pass #1: color = significado
+Principio del spec v2 aplicado donde se violaba: **buses del mapa NEUTROS** (pill
+oscura, número blanco; ámbar SOLO el seleccionado — antes cada línea un hue hash
+aleatorio = carnaval), **ocupación con dots CSS** (fuera 🟢🟡🔴), fuera el 🎫 de la
+tarifa. tsc 0 · build OK.
+
+**R59b (aplicación completa del plan clean):**
+- **Emojis funcionales → vectores**: PlaceSearch de Rutas ya no renderiza los emojis
+  del geocoder (🏥🛍️ → Icons.Bus/Pin, como Buscar desde R55); nuevo `Icons.Moon`
+  reemplaza el 🌙 del sello nocturno. Quedan a propósito: 🏠💼 (atajos personales,
+  calidez) y los del texto de ocupación reciente (sin volumen aún).
+- **LineBadge 100% neutro**: LeaveNowHero era el ÚNICO lugar que le pasaba el color
+  hash por línea — eliminado; la decisión v2 del propio componente rige en toda la UI.
+- **Piso tipográfico 11px** (PG-4 "textos 11-12px puntuales" RESUELTO): barrido
+  text-[9px]/text-[10px]/text-[10.5px] → text-[11px] en 10 componentes + inline
+  font-size de tooltips del mapa. Excepción consciente: el número de línea DENTRO de
+  la pill del bus en el mapa (glifo de marcador, no texto de lectura).
+- Verificado: tsc 0 · 195/195 · build OK (279 págs).
+**R59c (cierre del plan clean — con baseline→cambio→re-captura):**
+- **Tamaños "a medias" eliminados** en globals.css: 10.5/11.5/12.5/13.5/14.5px →
+  escala entera {11..17} (9 ocurrencias; chips/pills/subtítulos ahora comparten paso).
+  Queda 15.5px solo en modo texto-grande (escala de accesibilidad, intencional).
+- **Dieta de bordes — doble codificación fuera**: los banners/notas con fondo TINTADO
+  ya no llevan borde además (urgent-banner, home-alerts, safe-badge, cont-note,
+  metro-note, occ-section, nearby-alt). Regla: el fondo separa; el borde queda para
+  interactivos e identidad (cards de ruta, line-badge, inputs). globals 51→47 bordes.
+- Verificado con re-captura (parada/home/rutas): más sereno, nada roto. tsc 0 ·
+  195/195 · lint 0 errores · build OK.
+- ~~Observado 1 vez: ?ir= con "Desde" sin llenar~~ → R59d: 4/4 corridas frescas OK,
+  flake del headless confirmado, no es bug.
+
+### R59d — re-chequeo con server: BUG REAL en sheets apilados + back (RESUELTO)
+Cacería sistemática pedida por el usuario ("seguro pasa varias veces"). Encontrado
+con probes de DOM: **parada → detalle de línea → back cerraba LOS DOS sheets** (y
+desmontaba la página entera, instantáneo — no animación). Diagnóstico por
+instrumentación del history: los deep links hacían `replaceState(null, …)` para
+limpiar la URL → **el null borraba los internals del App Router** (__NA,
+__PRIVATE_NEXTJS_INTERNALS_TREE) del entry base → al hacer back a un entry sin
+árbol, Next "restauraba" remontando toda la página (perdía sheets, tab, todo).
+Fixes:
+1. `replaceState(window.history.state, …)` en los 3 deep-link cleanups (AppShell ×2,
+   HomeScreen) — preservar SIEMPRE los internals de Next al limpiar la URL.
+2. `useBackClose` v3: pila propia de closers (no depende de history.state, que Next
+   muta) + listener global en captura + pushState que preserva el state del router.
+Verificado E2E: back1 cierra SOLO el detalle (parada sigue), back2 cierra la parada,
+back3 sería salir (correcto); cerrar con ✕ no deja back fantasma; 195/195 · tsc 0 ·
+lint 0 errores · build OK.
+**Regla nueva del proyecto**: NUNCA `replaceState(null, …)` — siempre preservar
+`window.history.state` (los internals del router viven ahí).

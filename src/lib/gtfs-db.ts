@@ -25,6 +25,7 @@
  */
 import path from "path";
 import fs from "fs";
+import { canonLine } from "@/lib/line-name";
 
 interface VariantMeta {
   variantId: string;
@@ -42,6 +43,25 @@ interface GtfsIndex {
 
 let _idx: GtfsIndex | null = null;
 let _loadFailed = false;
+/** Índice canónico (mayúsculas) → key real de variantsByLine. El GPS en vivo reporta
+ *  "CE1"/"124 SD" pero el GTFS las tiene como "Ce1"/"124 Sd"; sin esto, esas líneas
+ *  no matcheaban NINGUNA variante y saltaban todos los filtros (bug R57). */
+let _lineKeyByCanon: Map<string, string> | null = null;
+
+function getLineRows(idx: GtfsIndex, line: string): VariantMeta[] {
+  const normalized = normalizeLineName(line);
+  const exact = idx.variantsByLine[normalized];
+  if (exact) return exact;
+  if (!_lineKeyByCanon) {
+    _lineKeyByCanon = new Map();
+    for (const k of Object.keys(idx.variantsByLine)) {
+      const c = canonLine(k);
+      if (!_lineKeyByCanon.has(c)) _lineKeyByCanon.set(c, k);
+    }
+  }
+  const key = _lineKeyByCanon.get(canonLine(normalized));
+  return key ? idx.variantsByLine[key] : [];
+}
 
 /** Carga el índice GTFS desde JSON (una vez). Devuelve null si no está (degrada). */
 function getIdx(): GtfsIndex | null {
@@ -119,15 +139,14 @@ export function getAllLineNames(): string[] {
 export function getLineHeadsigns(line: string): string[] {
   const idx = getIdx();
   if (!idx) return [];
-  const rows = idx.variantsByLine[normalizeLineName(line)] || [];
+  const rows = getLineRows(idx, line);
   return [...new Set(rows.map((r) => r.headsign).filter(Boolean))];
 }
 
 export function getVariantsForLine(line: string): VariantCandidate[] {
   const idx = getIdx();
   if (!idx) return [];
-  const normalizedLine = normalizeLineName(line);
-  const rows = idx.variantsByLine[normalizedLine] || [];
+  const rows = getLineRows(idx, line);
   return rows.map((r) => ({
     variantId: r.variantId,
     shortName: r.shortName,
@@ -146,8 +165,7 @@ export function getVariantsForLine(line: string): VariantCandidate[] {
 export function findVariantForBus(line: string, destination: string): VariantInfo | null {
   const idx = getIdx();
   if (!idx) return null;
-  const normalizedLine = normalizeLineName(line);
-  const rows = idx.variantsByLine[normalizedLine] || [];
+  const rows = getLineRows(idx, line);
   if (rows.length === 0) return null;
 
   const target = normalizeHeadsign(destination);
@@ -227,9 +245,10 @@ export function getServingVariants(stopId: string | number, shortName: string): 
   const byStop = idx.variantsByStop[String(stopId)];
   if (!byStop) return [];
   const out: Array<{ variantId: string; headsign: string; sequence: number; directionId: number | null }> = [];
+  const wanted = canonLine(normalizeLineName(shortName));
   for (const [variantId, sequence] of byStop) {
     const m = idx.variantMeta[variantId];
-    if (m && m.shortName === shortName) {
+    if (m && canonLine(m.shortName) === wanted) {
       out.push({ variantId, headsign: m.headsign, sequence, directionId: m.directionId });
     }
   }

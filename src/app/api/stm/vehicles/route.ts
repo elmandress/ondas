@@ -91,12 +91,14 @@ export async function GET(req: NextRequest) {
       const seen = new Set<string>();
 
       // 1. Upstream oficial: confiar, PERO descartar los que el GTFS confirma que ya
-      //    pasaron la parada (el filtro del STM a veces incluye pasados/sentido contrario).
+      //    pasaron la parada o que van por OTRA ruta (el filtro del STM a veces incluye
+      //    pasados/sentido contrario). Mismo criterio que /api/stm/arrivals (R57).
       for (const b of upstream) {
         if (!ourLines.has(b.line)) continue;
         const v = mvdBusToVehicle(b);
         if (seen.has(v.vehicleId)) continue;
-        if (busTowardsStopGtfs(v, stopId).reason === "passed") continue; // ya pasó → no trackear
+        const gtfsReason = busTowardsStopGtfs(v, stopId).reason;
+        if (gtfsReason === "passed" || gtfsReason === "stop-not-in-route") continue;
         // Respaldo geométrico: descartar también los que quedaron más allá de la parada
         // aunque el GPS no haya snapeado (mismo bug del "estoy en la 160, está en la 162").
         if (busLikelyPassedStop({ lat: v.lat, lon: v.lon, lineName: v.lineName, destinoDesc: v.destinoDesc }, stopId)) continue;

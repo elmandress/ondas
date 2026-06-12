@@ -61,7 +61,7 @@ export default function StopPanel({
 
         <div className="px-4 pb-2 flex items-start gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-amber-400">Parada #{stop.stopCode}</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-400">Parada #{stop.stopCode}</p>
             <p className="text-[16px] font-bold text-white leading-tight mt-1 truncate">{stop.stopName}</p>
             <p className="text-xs text-slate-500 mt-1">
               {userDistanceM != null && <>{userDistanceM}m · </>}
@@ -94,7 +94,7 @@ export default function StopPanel({
             <button
               onClick={() => onFilterLine(null)}
               className="flex-shrink-0 px-3 h-8 rounded-lg text-[12px] font-bold flex items-center"
-              style={!filterLine ? { background: "var(--accent)", color: "#1a1206" } : { background: "var(--surface)", color: "var(--text-2)", border: "1px solid var(--border-strong)" }}
+              style={!filterLine ? { background: "var(--accent-bg)", color: "#1a1206" } : { background: "var(--surface)", color: "var(--text-2)", border: "1px solid var(--border-strong)" }}
             >
               Todas
             </button>
@@ -105,7 +105,7 @@ export default function StopPanel({
                   key={l}
                   onClick={() => onFilterLine(on ? null : l)}
                   className="flex-shrink-0 px-3 h-8 rounded-lg text-[12px] font-bold flex items-center"
-                  style={on ? { background: "var(--accent)", color: "#1a1206" } : { background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border-strong)" }}
+                  style={on ? { background: "var(--accent-bg)", color: "#1a1206" } : { background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border-strong)" }}
                 >
                   {l}
                 </button>
@@ -145,7 +145,9 @@ export default function StopPanel({
               const canFollow = a.realtime && typeof followLat === "number" && typeof followLon === "number" && !!onFollowBus;
               return (
                 <ArrivalRow
-                  key={`${a.lineId}-${a.vehicleId || i}-${a.eta}`}
+                  // R58d: key SIN eta (cambia cada refresh → remontaba todas las filas
+                  // y la animación de entrada parpadeaba cada 15-20s).
+                  key={a.vehicleId ? `v${a.vehicleId}` : `s-${a.lineId}-${i}`}
                   arrival={a}
                   stopId={stop.stopId}
                   onLinePress={onLinePress}

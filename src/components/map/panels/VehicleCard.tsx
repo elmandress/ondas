@@ -8,6 +8,7 @@
  */
 import { motion } from "framer-motion";
 import type { VehiclePosition } from "@/lib/stm";
+import { titleCaseDestination } from "@/lib/utils";
 import LineBadge from "@/components/ui/LineBadge";
 import { Icons } from "@/components/brand/Icons";
 
@@ -61,7 +62,7 @@ export default function VehicleCard({
           >
             <LineBadge num={vehicle.lineName} size="md" />
             <div className="min-w-0 flex-1">
-              <p className="text-white font-bold text-sm truncate">{vehicle.destinoDesc || `Línea ${vehicle.lineName}`}</p>
+              <p className="text-white font-bold text-sm truncate">{vehicle.destinoDesc ? titleCaseDestination(vehicle.destinoDesc) : `Línea ${vehicle.lineName}`}</p>
               {/* Datos ricos del GPS del interior (próxima parada / atraso / ocupación). */}
               {(vehicle.nextStop || vehicle.delayMin != null || vehicle.occupancy != null) && (
                 <p className="text-[11px] truncate mt-0.5">

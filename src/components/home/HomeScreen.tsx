@@ -137,7 +137,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     if (parada) setSheetStopId(parada);
     else if (linea) setLineDetail({ line: linea });
     if (parada || linea) {
-      window.history.replaceState(null, "", window.location.pathname);
+      window.history.replaceState(window.history.state, "", window.location.pathname); // R59d: preservar internals de Next (null remontaba la página al volver)
       track("deep_link_open", { kind: parada ? "parada" : "linea" });
     }
   }, []);
@@ -151,12 +151,60 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     }
   }, [location, stopsReady]);
 
-  const { arrivals: heroArrivals, loading: heroLoading } = useArrivals(heroSource?.stopId ?? null, 20000);
+  const { arrivals: heroArrivals, loading: heroLoading, refetch: heroRefetch } = useArrivals(heroSource?.stopId ?? null, 20000);
+
+  // Pull-to-refresh (QW-3, R58d): gesto esperado en mobile. Solo cuando el scroll
+  // está arriba del todo; tirar >70px refresca las llegadas del hero. Sin
+  // preventDefault (no peleamos con el scroll nativo): indicador + acción.
+  const [pullPx, setPullPx] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullStart = useRef<number | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const onPullStart = (e: React.TouchEvent) => {
+    const scroller = rootRef.current?.parentElement;
+    if (scroller && scroller.scrollTop <= 0) pullStart.current = e.touches[0].clientY;
+    else pullStart.current = null;
+  };
+  const onPullMove = (e: React.TouchEvent) => {
+    if (pullStart.current === null || refreshing) return;
+    const scroller = rootRef.current?.parentElement;
+    if (scroller && scroller.scrollTop > 0) { pullStart.current = null; setPullPx(0); return; }
+    const dy = e.touches[0].clientY - pullStart.current;
+    setPullPx(dy > 0 ? Math.min(110, dy * 0.5) : 0);
+  };
+  const onPullEnd = () => {
+    if (pullStart.current === null) return;
+    const fired = pullPx > 55;
+    pullStart.current = null;
+    setPullPx(0);
+    if (fired && !refreshing) {
+      setRefreshing(true);
+      heroRefetch();
+      // El polling de 20s sigue siendo la fuente; esto es el gesto de "ahora".
+      setTimeout(() => setRefreshing(false), 1200);
+    }
+  };
 
   const subhead = now ? getSubhead(now, locationIsReal) : "Tiempo real del STM";
 
   return (
-    <div className="screen-home" style={{ paddingTop: "max(env(safe-area-inset-top), 8px)" }}>
+    <div
+      ref={rootRef}
+      className="screen-home"
+      style={{ paddingTop: "max(env(safe-area-inset-top), 8px)", transform: pullPx ? `translateY(${pullPx}px)` : refreshing ? "translateY(42px)" : undefined, transition: pullPx ? "none" : "transform 0.25s ease" }}
+      onTouchStart={onPullStart}
+      onTouchMove={onPullMove}
+      onTouchEnd={onPullEnd}
+    >
+      {/* Indicador de pull-to-refresh (encima del header, aparece al tirar) */}
+      {(pullPx > 8 || refreshing) && (
+        <div className="ptr-indicator" role="status" aria-label="Actualizar">
+          <span style={{ display: "grid", animation: refreshing ? "spin 1s linear infinite" : undefined, transform: !refreshing ? `rotate(${pullPx * 3}deg)` : undefined }}>
+            <Icons.Refresh size={18} />
+          </span>
+          {refreshing ? "Actualizando…" : pullPx > 55 ? "Soltá para actualizar" : ""}
+        </div>
+      )}
       {/* Header mobile */}
       <div className="app-header mobile-only">
         <LogoLockup size={24} ring="var(--text)" dot="var(--accent)" />
@@ -191,10 +239,6 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
           </button>
         </div>
       </div>
-
-      {/* Preview del mapa: apenas abrís, ves TU zona (ubicación + paradas + buses). Un mapa
-          se entiende más rápido que una lista. Tocar abre el mapa completo. */}
-      <HomeMapPreview onOpen={() => onTabChange("map")} />
 
       {/* Incidencias oficiales (desvíos/obras): si hay, lo decimos ACÁ — te enterás sin
           buscar. Expandible para no robar protagonismo cuando no es urgente. */}
@@ -291,7 +335,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
             className="hero-card"
             style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, cursor: "pointer", background: "radial-gradient(120% 100% at 50% 0%, rgba(240,160,32,0.10), transparent 70%)" }}
           >
-            <div style={{ width: 52, height: 52, borderRadius: "var(--r-card)", background: "var(--accent)", display: "grid", placeItems: "center", color: "#1a1206" }}>
+            <div style={{ width: 52, height: 52, borderRadius: "var(--r-card)", background: "var(--accent-bg)", display: "grid", placeItems: "center", color: "#1a1206" }}>
               <Icons.Crosshair size={26} />
             </div>
             <div style={{ textAlign: "center" }}>
@@ -301,6 +345,11 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
           </button>
         )}
       </div>
+
+      {/* Preview del mapa: TU zona (ubicación + paradas + buses), tocar abre el mapa
+          completo. R58b: bajó debajo del hero — la pregunta que la app responde
+          ("¿cuándo salgo?") va ARRIBA del pliegue; el mapa es contexto, no la estrella. */}
+      <HomeMapPreview onOpen={() => onTabChange("map")} />
 
       {/* Aviso de hora pico (solo dentro de la franja) */}
       <PeakHint />

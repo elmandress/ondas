@@ -6,6 +6,7 @@
  * botón "?" del header. Mobile-first bottom sheet.
  */
 import { motion } from "framer-motion";
+import { useBackClose } from "@/hooks/useBackClose";
 import { Icons } from "@/components/brand/Icons";
 import { APP_VERSION, APP_UPDATED, WE_DO, WE_DONT } from "@/lib/app-meta";
 
@@ -24,6 +25,8 @@ function Section({ icon, title, children }: { icon: React.ReactNode; title: stri
 }
 
 export default function HowToSheet({ onClose }: HowToSheetProps) {
+  // Atrás del sistema cierra el sheet, no la app (R58c).
+  useBackClose(onClose);
   return (
     <>
       <motion.div

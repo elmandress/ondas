@@ -77,6 +77,10 @@
   [headers.values]
     Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
 [[headers]]
+  for = "/stop-dirs.json"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"
+[[headers]]
   for = "/operators.json"
   [headers.values]
     Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"

@@ -1,5 +1,28 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { formatRelativeTime, formatEta } from "@/lib/utils";
+import { formatRelativeTime, formatEta, titleCaseDestination } from "@/lib/utils";
+
+describe("titleCaseDestination (R58 — destinos STM en mayúsculas → legibles)", () => {
+  it("convierte destinos del STM a Title Case con conectores en minúscula", () => {
+    expect(titleCaseDestination("PUNTA CARRETAS (POR PARQUE)")).toBe("Punta Carretas (por Parque)");
+    expect(titleCaseDestination("CIUDAD VIEJA")).toBe("Ciudad Vieja");
+    expect(titleCaseDestination("BARRA DEL SANTA LUCIA")).toBe("Barra del Santa Lucia");
+  });
+
+  it("respeta siglas uruguayas conocidas", () => {
+    expect(titleCaseDestination("PUNTA CARRETAS (POR UTU CERRO)")).toBe("Punta Carretas (por UTU Cerro)");
+    expect(titleCaseDestination("HOSPITAL DEL BPS")).toBe("Hospital del BPS");
+  });
+
+  it("el primer término nunca queda en minúscula aunque sea conector", () => {
+    expect(titleCaseDestination("LA TEJA")).toBe("La Teja");
+    expect(titleCaseDestination("EL PINAR")).toBe("El Pinar");
+  });
+
+  it("no toca texto que ya viene con minúsculas (interior/geocoder)", () => {
+    expect(titleCaseDestination("Terminal Tres Cruces")).toBe("Terminal Tres Cruces");
+    expect(titleCaseDestination("")).toBe("");
+  });
+});
 
 describe("formatEta", () => {
   it("retorna 'Ahora' para 0 y negativo", () => {

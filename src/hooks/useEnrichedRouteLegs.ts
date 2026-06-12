@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from "react";
 import type { PlannedRouteDto, RouteLegDto } from "@/hooks/useRouteplanner";
-import { loadRoutesCache, loadLineShapes, type RoutesIndex } from "@/lib/routes-cache";
+import { loadRoutesCache, loadLineShapes, getShapesForLine, type RoutesIndex } from "@/lib/routes-cache";
 import { haversineMeters } from "@/lib/geo";
 // line-shapes.json (línea → cod_variantes con shape) ahora vive en routes-cache.ts,
 // compartido con el recorrido del bus del mapa. Necesario porque el variantId del
@@ -179,8 +179,8 @@ function clipBestShape(
   legPolyline: [number, number][] | undefined
 ): [number, number][] | null {
   if (!line || !legPolyline || legPolyline.length < 2) return null;
-  const candidates = lineShapes[line];
-  if (!candidates || !candidates.length) return null;
+  const candidates = getShapesForLine(lineShapes, line);
+  if (!candidates.length) return null;
 
   let best: { clip: [number, number][]; maxGap: number } | null = null;
   for (const cv of candidates) {

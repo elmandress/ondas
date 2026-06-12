@@ -3,11 +3,37 @@
 import { useEffect, useRef, useState } from "react";
 import type * as L from "leaflet";
 import type { VehiclePosition, BusStop } from "@/lib/stm";
-import { loadRoutesCache, loadLineShapes } from "@/lib/routes-cache";
+import { loadRoutesCache, loadLineShapes, getShapesForLine, type RoutesIndex } from "@/lib/routes-cache";
 import { getNetInfo } from "@/lib/network";
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Distancia plana en metros (suficiente a escala urbana). */
+function gapDistM(a: [number, number], b: [number, number]): number {
+  const dx = (b[1] - a[1]) * 111320 * Math.cos((a[0] * Math.PI) / 180);
+  const dy = (b[0] - a[0]) * 111320;
+  return Math.hypot(dx, dy);
+}
+
+/**
+ * Peor distancia de una parada del recorrido a la shape (cobertura). Si alguna
+ * parada queda lejos del trazo, esa shape NO es el recorrido de esta variante.
+ * Corta temprano cuando ya supera `limit` (solo nos importa si es mejor).
+ */
+function maxGapToShape(stopPts: [number, number][], shape: [number, number][], limit: number): number {
+  let maxGap = 0;
+  for (const pt of stopPts) {
+    let min = Infinity;
+    for (const sp of shape) {
+      const d = gapDistM(pt, sp);
+      if (d < min) min = d;
+    }
+    if (min > maxGap) maxGap = min;
+    if (maxGap > limit) return maxGap;
+  }
+  return maxGap;
 }
 
 // A partir de este zoom mostramos el ícono completo de parada; por debajo, un punto
@@ -44,49 +70,38 @@ function stopIconHtml(isSelected: boolean, mode: "dot" | "full"): string {
   `;
 }
 
-// Unified bus icon — white bus silhouette on a dark pill, with line number below
-/** Color determinístico para una línea (hash → HSL). Igual que lineColorFromCode pero local. */
-function colorForLine(line: string): string {
-  // Colores conocidos para líneas comunes
-  const knownColors: Record<string, string> = {
-    "76": "#ef4444", "187": "#a855f7", "329": "#3b82f6",
-    "103": "#10b981", "104": "#f59e0b", "105": "#ec4899",
-    "109": "#06b6d4", "110": "#8b5cf6", "111": "#22c55e",
-    "180": "#f97316", "181": "#0ea5e9", "183": "#facc15",
-    "188": "#84cc16",
-  };
-  if (knownColors[line]) return knownColors[line];
-  // Hash a HSL para líneas sin color asignado
-  let h = 0;
-  for (let i = 0; i < line.length; i++) h = (h * 31 + line.charCodeAt(i)) >>> 0;
-  return `hsl(${h % 360},70%,60%)`;
-}
+// Unified bus icon — pill NEUTRA con el número de línea; color SOLO para estado.
+// R59: antes cada línea llevaba un color hash aleatorio (hue arbitrario por línea =
+// carnaval sin significado, el "muro de colores" que ensuciaba el mapa). El spec v2
+// ya lo decía para las listas ("badge neutro, color reservado a estado") — ahora el
+// mapa lo cumple: todos los buses neutros oscuros, el SELECCIONADO en ámbar.
+const BUS_ACCENT = "#f0a020";
 
 function busIconHtml(lineName: string, isSelected: boolean): string {
   const w = isSelected ? 46 : 34;
   const h = isSelected ? 54 : 42;
-  const color = colorForLine(lineName);
-  const pulse = isSelected ? `<div style="position:absolute;inset:-6px;border-radius:18px;border:2px solid ${color}cc;animation:pulse-ring 1.8s ease-out infinite;pointer-events:none;"></div>` : "";
+  const fg = isSelected ? "#1a1206" : "rgba(255,255,255,0.95)";
+  const pulse = isSelected ? `<div style="position:absolute;inset:-6px;border-radius:18px;border:2px solid ${BUS_ACCENT}cc;animation:pulse-ring 1.8s ease-out infinite;pointer-events:none;"></div>` : "";
   return `
     <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;">
       ${pulse}
       <div style="
         width:${w}px;height:${h}px;
-        background:${isSelected ? color : "rgba(18,24,38,0.92)"};
-        border:${isSelected ? `2px solid white` : `1.5px solid ${color}`};
+        background:${isSelected ? BUS_ACCENT : "rgba(18,24,38,0.92)"};
+        border:${isSelected ? "2px solid white" : "1.5px solid rgba(148,163,184,0.45)"};
         border-radius:${isSelected ? "16px" : "12px"};
         display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-        box-shadow:${isSelected ? `0 0 0 3px ${color}55,0 8px 24px rgba(0,0,0,0.5)` : "0 3px 10px rgba(0,0,0,0.45)"};
+        box-shadow:${isSelected ? `0 0 0 3px ${BUS_ACCENT}55,0 8px 24px rgba(0,0,0,0.5)` : "0 3px 10px rgba(0,0,0,0.45)"};
         cursor:pointer;
         backdrop-filter:blur(8px);
       ">
-        <svg width="${isSelected ? 20 : 15}" height="${isSelected ? 20 : 15}" viewBox="0 0 24 24" fill="none" stroke="${isSelected ? "white" : color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="${isSelected ? 20 : 15}" height="${isSelected ? 20 : 15}" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2" y="4" width="20" height="14" rx="2"/>
           <path d="M22 9H2"/>
-          <circle cx="7" cy="19" r="1.5" fill="${isSelected ? "white" : color}"/>
-          <circle cx="17" cy="19" r="1.5" fill="${isSelected ? "white" : color}"/>
+          <circle cx="7" cy="19" r="1.5" fill="${fg}"/>
+          <circle cx="17" cy="19" r="1.5" fill="${fg}"/>
         </svg>
-        <span style="color:${isSelected ? "white" : "rgba(255,255,255,0.95)"};font-weight:900;font-size:${isSelected ? 10 : 8}px;font-family:system-ui,-apple-system,sans-serif;letter-spacing:-0.3px;line-height:1;">${esc(lineName)}</span>
+        <span style="color:${fg};font-weight:900;font-size:${isSelected ? 10 : 9}px;font-family:system-ui,-apple-system,sans-serif;letter-spacing:-0.3px;line-height:1;">${esc(lineName)}</span>
       </div>
     </div>
     <style>
@@ -473,7 +488,7 @@ export default function LeafletMap({
         marker.bindTooltip(
           `<div style="font-family:system-ui;color:#f1f5f9;min-width:140px">
             <div style="font-weight:700;font-size:12px;margin-bottom:3px;color:#f8fafc">${esc(stop.stopName)}</div>
-            <div style="font-size:9px;color:#64748b">Parada #${esc(stop.stopCode)} · Tocá para ver buses</div>
+            <div style="font-size:11px;color:#64748b">Parada #${esc(stop.stopCode)} · Tocá para ver buses</div>
           </div>`,
           { direction: "top", className: "leaflet-tooltip-dark", offset: [0, -10] }
         );
@@ -531,71 +546,25 @@ export default function LeafletMap({
     });
   }, [vehicles, selectedVehicleId, onVehicleSelect, markersInteractive]);
 
-  // Dibujar recorrido del bus seleccionado (polyline)
-  // routes.json se cachea a nivel módulo para no re-descargarlo en cada click.
+  // Recorrido + paradas del bus seleccionado (SRS FR-5.4), en UN solo efecto.
+  // R57: antes el trazo caía a "cualquier cod_variante de la línea" (o al fallback
+  // routes[lineName], que colisionaba nombres numéricos con cod_variantes) mientras
+  // los puntos de parada venían de la variante matcheada por destino → camino y
+  // paradas DESFASADOS en pantalla. Ahora la shape se ELIGE por cobertura de las
+  // paradas reales (mismo criterio maxGap ≤120m que useEnrichedRouteLegs); si
+  // ninguna cubre bien, se une el recorrido por las paradas (honesto, nunca un
+  // camino equivocado).
   const polylineRef = useRef<L.Polyline | null>(null);
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    const { map, L } = mapInstanceRef.current;
-
-    // Limpiar polyline previa (siempre)
-    if (polylineRef.current) {
-      map.removeLayer(polylineRef.current);
-      polylineRef.current = null;
-    }
-
-    const selectedVehicle = vehicles.find((v) => v.vehicleId === selectedVehicleId);
-    if (!selectedVehicle) return;
-
-    let cancelled = false;
-    Promise.all([loadRoutesCache(), loadLineShapes()]).then(([routes, lineShapes]) => {
-      if (cancelled || !mapInstanceRef.current) return;
-      // routes.json está keyado por cod_variante. El bus en vivo trae variantCode
-      // interno (no siempre coincide) y NO siempre lo trae. Estrategia robusta:
-      //  1) cod_variante directo del bus (si vino y existe);
-      //  2) cualquier cod_variante de la LÍNEA via line-shapes.json (la mejor disponible);
-      //  3) fallback histórico: routes[lineName].
-      // Así el recorrido aparece SIEMPRE que la línea tenga shape (ej: 582 → 8922/8923),
-      // sin depender de que el bus traiga variantCode. (Bug: "no se ve la ruta del bondi").
-      let coords: [number, number][] | undefined =
-        selectedVehicle.variantCode ? routes[String(selectedVehicle.variantCode)] : undefined;
-      if (!coords) {
-        const candidates = lineShapes[selectedVehicle.lineName] || [];
-        for (const cv of candidates) {
-          if (routes[cv]?.length) { coords = routes[cv]; break; }
-        }
-      }
-      if (!coords) coords = routes[selectedVehicle.lineName];
-      if (!coords || coords.length === 0) return;
-
-      // noClip + smoothFactor 0 + renderer SVG: sin esto, con preferCanvas Leaflet
-      // recortaba la polyline al viewport y el recorrido del bus se veía como una
-      // DIAGONAL RECTA de pocos puntos en vez del trazo real (~360 pts) siguiendo las
-      // calles. Mismo fix que para las rutas planificadas.
-      polylineRef.current = L.polyline(coords, {
-        renderer: L.svg({ padding: 0.5 }),
-        noClip: true,
-        smoothFactor: 0,
-        color: "#60a5fa",
-        weight: 4,
-        opacity: 0.85,
-        lineCap: "round",
-        lineJoin: "round",
-      }).addTo(map);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedVehicleId, vehicles]);
-
-  // SRS FR-5.4: dibujar puntos de TODAS las paradas del trip del bondi seleccionado
   const variantStopsLayerRef = useRef<L.LayerGroup | null>(null);
   useEffect(() => {
     if (!mapInstanceRef.current) return;
     const { map, L } = mapInstanceRef.current;
 
-    // Limpiar capa anterior
+    // Limpiar capas previas (siempre)
+    if (polylineRef.current) {
+      map.removeLayer(polylineRef.current);
+      polylineRef.current = null;
+    }
     if (variantStopsLayerRef.current) {
       map.removeLayer(variantStopsLayerRef.current);
       variantStopsLayerRef.current = null;
@@ -609,20 +578,24 @@ export default function LeafletMap({
       line: selectedVehicle.lineName,
       destination: selectedVehicle.destinoDesc || "",
     });
-    fetch(`/api/stm/variant-stops?${params}`)
-      .then((r) => r.json())
-      .then((data: { stops?: Array<{ sequence: number; name: string; code: string; lat: number; lon: number }>; directionId?: number }) => {
-        if (cancelled || !mapInstanceRef.current || !data.stops) return;
-        // Color por sentido: 0=ida verde, 1=vuelta rojo (inspirado en v3.17 Matungos)
-        const dirColor = data.directionId === 0 ? "#22c55e" : data.directionId === 1 ? "#f87171" : "#60a5fa";
+    type VariantStopsResp = {
+      stops?: Array<{ sequence: number; name: string; code: string; lat: number; lon: number }>;
+      directionId?: number;
+    };
+    Promise.all([
+      fetch(`/api/stm/variant-stops?${params}`).then((r) => r.json()).catch(() => ({} as VariantStopsResp)),
+      loadRoutesCache(),
+      loadLineShapes(),
+    ]).then(([data, routes, lineShapes]: [VariantStopsResp, RoutesIndex, Record<string, string[]>]) => {
+      if (cancelled || !mapInstanceRef.current) return;
+      const stops = data.stops || [];
+      // Color por sentido: 0=ida verde, 1=vuelta rojo (inspirado en v3.17 Matungos)
+      const dirColor = data.directionId === 0 ? "#22c55e" : data.directionId === 1 ? "#f87171" : "#60a5fa";
 
-        // Si ya hay una polyline del bus, recolorearla según sentido
-        if (polylineRef.current) {
-          polylineRef.current.setStyle({ color: dirColor });
-        }
-
+      // ── Puntos de parada de la variante ──
+      if (stops.length > 0) {
         const layer = L.layerGroup();
-        for (const stop of data.stops) {
+        for (const stop of stops) {
           const dot = L.circleMarker([stop.lat, stop.lon], {
             radius: 4,
             color: dirColor,
@@ -634,7 +607,7 @@ export default function LeafletMap({
           dot.bindTooltip(
             `<div style="font-family:system-ui;color:#f1f5f9;min-width:140px">
               <div style="font-weight:600;font-size:11px;">${esc(stop.name)}</div>
-              <div style="font-size:9px;color:#64748b">#${esc(stop.code)} · parada ${stop.sequence}</div>
+              <div style="font-size:11px;color:#64748b">#${esc(stop.code)} · parada ${stop.sequence}</div>
             </div>`,
             { direction: "top", className: "leaflet-tooltip-dark", offset: [0, -6] }
           );
@@ -642,8 +615,51 @@ export default function LeafletMap({
         }
         layer.addTo(map);
         variantStopsLayerRef.current = layer;
-      })
-      .catch(() => {});
+      }
+
+      // ── Trazo del recorrido: candidatos = variantCode exacto del bus + todas las
+      // shapes de la línea; gana la que MEJOR cubre las paradas de la variante. ──
+      const stopPts = stops.map((s) => [s.lat, s.lon] as [number, number]);
+      const candidates = [...new Set([
+        ...(selectedVehicle.variantCode ? [String(selectedVehicle.variantCode)] : []),
+        ...getShapesForLine(lineShapes, selectedVehicle.lineName),
+      ])];
+
+      let coords: [number, number][] | null = null;
+      if (stopPts.length >= 2) {
+        const MAX_GAP_M = 120;
+        let bestGap = Infinity;
+        for (const cv of candidates) {
+          const shape = routes[cv];
+          if (!shape || shape.length < 2) continue;
+          const gap = maxGapToShape(stopPts, shape, Math.min(bestGap, MAX_GAP_M));
+          if (gap < bestGap) { bestGap = gap; coords = shape; }
+        }
+        if (bestGap > MAX_GAP_M) coords = null;
+        // Fallback honesto: el recorrido punteado por las paradas reales del trip.
+        if (!coords) coords = stopPts;
+      } else if (selectedVehicle.variantCode && routes[String(selectedVehicle.variantCode)]?.length) {
+        // Sin paradas para validar cobertura: solo confiamos en el cod_variante EXACTO
+        // del propio bus (nunca "la primera shape de la línea").
+        coords = routes[String(selectedVehicle.variantCode)];
+      }
+      if (!coords || coords.length < 2) return;
+
+      // noClip + smoothFactor 0 + renderer SVG: sin esto, con preferCanvas Leaflet
+      // recortaba la polyline al viewport y el recorrido del bus se veía como una
+      // DIAGONAL RECTA de pocos puntos en vez del trazo real (~360 pts) siguiendo las
+      // calles. Mismo fix que para las rutas planificadas.
+      polylineRef.current = L.polyline(coords, {
+        renderer: L.svg({ padding: 0.5 }),
+        noClip: true,
+        smoothFactor: 0,
+        color: dirColor,
+        weight: 4,
+        opacity: 0.85,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(map);
+    });
 
     return () => { cancelled = true; };
   }, [selectedVehicleId, vehicles]);
@@ -806,7 +822,7 @@ export default function LeafletMap({
           <div style="display:flex;align-items:center;gap:0;">
             <div style="width:16px;height:16px;border-radius:50%;background:#10b981;
               border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5);flex:none;"></div>
-            <div style="margin-left:-2px;background:#10b981;color:white;font-weight:800;font-size:10px;
+            <div style="margin-left:-2px;background:#10b981;color:white;font-weight:800;font-size:11px;
               line-height:1;padding:4px 7px 4px 9px;border-radius:0 7px 7px 0;box-shadow:0 2px 6px rgba(0,0,0,0.4);
               white-space:nowrap;">Salís</div>
           </div>`,
@@ -819,7 +835,7 @@ export default function LeafletMap({
           <div style="display:flex;align-items:flex-end;gap:0;">
             <div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#ef4444;
               transform:rotate(-45deg);border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5);flex:none;"></div>
-            <div style="margin-left:3px;margin-bottom:2px;background:#ef4444;color:white;font-weight:800;font-size:10px;
+            <div style="margin-left:3px;margin-bottom:2px;background:#ef4444;color:white;font-weight:800;font-size:11px;
               line-height:1;padding:4px 8px;border-radius:7px;box-shadow:0 2px 6px rgba(0,0,0,0.4);
               white-space:nowrap;">Llegás</div>
           </div>`,

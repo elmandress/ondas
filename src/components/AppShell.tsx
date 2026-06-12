@@ -62,9 +62,18 @@ export default function AppShell() {
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const t = sp.get("tab");
-    if (t === "home" || t === "map" || t === "route" || t === "search") {
-      setActiveTab(t);
-      track("open_shortcut", { tab: t });
+    // R58b: aliases tolerantes — un link compartido con ?tab=rutas o ?tab=routes
+    // fallaba EN SILENCIO (aterrizaba en Inicio). Aceptamos español e inglés.
+    const TAB_ALIASES: Record<string, Tab> = {
+      home: "home", inicio: "home",
+      map: "map", mapa: "map",
+      route: "route", routes: "route", rutas: "route", ruta: "route",
+      search: "search", buscar: "search",
+    };
+    const tab = t ? TAB_ALIASES[t.toLowerCase()] : undefined;
+    if (tab) {
+      setActiveTab(tab);
+      track("open_shortcut", { tab });
     }
     const ir = sp.get("ir");
     if (ir) {
@@ -73,7 +82,7 @@ export default function AppShell() {
         setRouteInput({ to: { lat: d.lat, lon: d.lon, name: d.name }, fromCurrentLocation: true });
         setActiveTab("route");
         track("deep_link_ir", { destino: ir });
-        window.history.replaceState(null, "", window.location.pathname);
+        window.history.replaceState(window.history.state, "", window.location.pathname); // R59d: preservar internals de Next (null remontaba la página al volver)
       }
     }
     // /?q=texto → sitelinks searchbox de Google / búsqueda compartida: aterriza en Buscar
@@ -83,7 +92,7 @@ export default function AppShell() {
       setPendingSearch(q);
       setActiveTab("search");
       track("deep_link_search");
-      window.history.replaceState(null, "", window.location.pathname);
+      window.history.replaceState(window.history.state, "", window.location.pathname); // R59d: preservar internals de Next (null remontaba la página al volver)
     }
   }, [setActiveTab]);
 

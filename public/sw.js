@@ -14,7 +14,7 @@
 const CACHE = "cuando-v4";
 
 // Datasets que vale la pena tener offline (el catálogo del transporte).
-const DATASETS = ["/stops.json", "/routes.json", "/line-shapes.json", "/operators.json", "/interior-stops.json"];
+const DATASETS = ["/stops.json", "/routes.json", "/line-shapes.json", "/stop-dirs.json", "/operators.json", "/interior-stops.json"];
 const SHELL = ["/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

@@ -119,7 +119,9 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
             title={a.destination ? `${a.lineName} → ${a.destination}` : a.lineName}
             aria-label={`Línea ${a.lineName}${a.destination ? ` hacia ${a.destination}` : ""}, ${formatEta(a.eta)}`}
           >
-            <LineBadge num={a.lineName} size="sm" color={a.lineColor} />
+            {/* R59: badge NEUTRO también acá — era el único lugar que pasaba el color
+                hash por línea (violaba la decisión v2 documentada en LineBadge). */}
+            <LineBadge num={a.lineName} size="sm" />
             <span className="hc-eta">{formatEta(a.eta, false, true)}<span className="live-dot" /></span>
           </div>
         ))}

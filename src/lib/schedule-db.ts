@@ -14,6 +14,7 @@ const path = require("path") as typeof import("path");
 const fs = require("fs") as typeof import("fs");
 
 import type DatabaseType from "better-sqlite3";
+import { canonLine } from "@/lib/line-name";
 
 let _db: DatabaseType.Database | null = null;
 let _metroDb: DatabaseType.Database | null = null;
@@ -69,7 +70,7 @@ function getMetroScheduled(
     ).all(stopId, tipoDia, minHora, maxHora) as { line: string; hora: number }[];
     const out: ScheduledArrival[] = [];
     for (const r of rows) {
-      if (lineFilter && !lineFilter.has(r.line)) continue;
+      if (lineFilter && !lineFilter.has(canonLine(r.line))) continue;
       const hh = Math.floor(r.hora / 60), mm = r.hora % 60;
       out.push({
         variantCode: "", lineCode: r.line, hora: r.hora,
@@ -114,13 +115,15 @@ function getVariantToLine(): Record<string, string> {
   return _variantToLine!;
 }
 
-/** Reverso cacheado: lineCode → [cod_variante, ...]. Para querys por línea. */
+/** Reverso cacheado: lineCode CANÓNICO → [cod_variante, ...]. Para querys por línea.
+ *  Las keys van canonicalizadas (canonLine) porque variant_to_line.json usa "CE2"/"BT1"
+ *  mientras el GTFS y la API en vivo mezclan "Ce2"/"CE2" (bug R57). */
 function getLineToVariants(): Record<string, string[]> {
   if (_lineToVariants) return _lineToVariants;
   const v2l = getVariantToLine();
   const map: Record<string, string[]> = {};
   for (const [variant, line] of Object.entries(v2l)) {
-    (map[line] ||= []).push(variant);
+    (map[canonLine(line)] ||= []).push(variant);
   }
   _lineToVariants = map;
   return map;
@@ -159,7 +162,7 @@ export function getLastDepartureForLine(
 ): number | null {
   const db = getDb();
   if (!db) return null;
-  const variants = getLineToVariants()[lineCode];
+  const variants = getLineToVariants()[canonLine(lineCode)];
   if (!variants || !variants.length) return null;
   const tipo = tipoDia ?? getTipoDia();
   try {
@@ -268,13 +271,13 @@ export function getNextScheduledForLine(
 
   // Parada metropolitana: filtrar el metro-schedule por esta línea.
   if (isMetroStop(stopId)) {
-    return getMetroScheduled(stopId, curMin0, windowMinutes, tipo0, new Set([lineCode])).slice(0, limit);
+    return getMetroScheduled(stopId, curMin0, windowMinutes, tipo0, new Set([canonLine(lineCode)])).slice(0, limit);
   }
 
   const db = getDb();
   if (!db) return [];
 
-  const variants = getLineToVariants()[lineCode];
+  const variants = getLineToVariants()[canonLine(lineCode)];
   if (!variants || !variants.length) return [];
 
   const tipo = tipo0;
@@ -325,15 +328,24 @@ export function getNextScheduledPerLine(
   const currentMinutes = refMinutes ?? (mvd.getUTCHours() * 60 + mvd.getUTCMinutes());
   const pool = getScheduledArrivals(stopId, tipo, currentMinutes, windowMinutes);
 
-  // Mapa línea → próximo horario
+  // Mapa línea → próximo horario. Matching CANÓNICO entre fuentes (la API en vivo
+  // pide "CE1", el schedule devuelve "CE1" o "Ce1" según dataset — bug R57). El
+  // resultado conserva la grafía del CALLER para que el dedupe/display aguas
+  // arriba (lineDestMap, linesWithLive) siga matcheando.
   const seen = new Set<string>();
   const result: ScheduledArrival[] = [];
-  const linesWanted = new Set(lineCodes);
+  const wantedByCanon = new Map<string, string>();
+  for (const lc of lineCodes) {
+    const c = canonLine(lc);
+    if (!wantedByCanon.has(c)) wantedByCanon.set(c, lc);
+  }
   for (const s of pool) {
-    if (!linesWanted.has(s.lineCode)) continue;
-    if (seen.has(s.lineCode)) continue;
-    seen.add(s.lineCode);
-    result.push(s);
+    const c = canonLine(s.lineCode);
+    const requested = wantedByCanon.get(c);
+    if (!requested) continue;
+    if (seen.has(c)) continue;
+    seen.add(c);
+    result.push({ ...s, lineCode: requested });
     if (result.length >= lineCodes.length) break;
   }
   return result;

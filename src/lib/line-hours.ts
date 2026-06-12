@@ -17,6 +17,8 @@ const fs = require("fs") as typeof import("fs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require("path") as typeof import("path");
 
+import { canonLine } from "@/lib/line-name";
+
 const QUARTERS = 96;
 
 let _cache: Record<string, { 1?: string; 2?: string; 3?: string }> | null = null;
@@ -30,8 +32,17 @@ function getData(): Record<string, { 1?: string; 2?: string; 3?: string }> {
     return _cache;
   }
   try {
-    _cache = JSON.parse(fs.readFileSync(FILE, "utf-8"));
-    return _cache!;
+    const raw = JSON.parse(fs.readFileSync(FILE, "utf-8")) as Record<string, Record<string, string>>;
+    // R58d: keys CANÓNICAS (mayúsculas). line-hours.json hereda la grafía de
+    // variant_to_line ("CE2"/"BT1") pero los consumidores buscan con la del GTFS
+    // ("Ce2") → esas líneas nunca mostraban ventana horaria (familia del bug R57).
+    const canon: Record<string, Record<string, string>> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      const ck = canonLine(k);
+      if (!canon[ck]) canon[ck] = v;
+    }
+    _cache = canon;
+    return _cache;
   } catch (err) {
     console.error("[line-hours] error parseando:", err);
     _cache = {};
@@ -54,7 +65,7 @@ function fmtMin(min: number): string {
  */
 export function getServiceWindow(line: string, tipoDia: TipoDia = 1): { first: string; last: string } | null {
   const data = getData();
-  const entry = data[line];
+  const entry = data[canonLine(line)];
   const b64 = entry?.[tipoDia];
   if (!b64) return null;
   const bytes = decodeBitset(b64);
@@ -126,7 +137,7 @@ export function getLineHoursLookup(now: Date = nowMvd()): LineHoursLookup {
   const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
 
   function bytesFor(line: string): Uint8Array | null {
-    const entry = data[line];
+    const entry = data[canonLine(line)];
     if (!entry) return null;
     const b64 = entry[tipo];
     if (!b64) return null;
@@ -155,7 +166,7 @@ export function getLineHoursLookup(now: Date = nowMvd()): LineHoursLookup {
   }
 
   function hasData(line: string): boolean {
-    const entry = data[line];
+    const entry = data[canonLine(line)];
     return !!(entry && (entry[1] || entry[2] || entry[3]));
   }
 
