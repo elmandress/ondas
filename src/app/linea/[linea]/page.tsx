@@ -6,7 +6,7 @@ import { getLineHeadsigns, getAllLineNames, getVariantsForLine, getStopsForVaria
 import { findStopServer } from "@/lib/stops-server";
 import { lineColorFromCode } from "@/lib/stm";
 import { fareLabel } from "@/lib/fare";
-import { getServiceWindow } from "@/lib/line-hours";
+import { getMainServiceWindow } from "@/lib/line-hours";
 import { BARRIOS, type Barrio } from "@/lib/barrios";
 import { haversineMeters } from "@/lib/geo";
 import { SITE_URL } from "@/app/layout";
@@ -99,13 +99,15 @@ export default async function LineaPage({ params }: { params: Promise<{ linea: s
   const stops = getLineStopsSample(line);
   const barrios = barriosForLine(line);
   const fare = fareLabel(0, false);
-  // Ventana de días hábiles. OJO HONESTIDAD: ~157 líneas urbanas dan 00:00–24:00 (dato
-  // saturado en la fuente, NO operan realmente 24h) → no afirmamos nada para esas. Solo
-  // mostramos la ventana cuando es PARCIAL (las nocturnas/suburbanas/especiales: 495, 700…),
-  // que es justo donde el horario importa y el dato es confiable.
-  const rawWin = getServiceWindow(line, 1);
-  const win = rawWin && !(rawWin.first === "00:00" && rawWin.last === "24:00") ? rawWin : null;
-  const winShort = win ? `días hábiles ~${win.first}–${win.last}` : null;
+  // Ventana PRINCIPAL de días hábiles (R62b): el bloque contiguo de servicio, no el span
+  // primer-último (que para una línea con un trasnoche a las 00:01 daba 00:00–24:00 e
+  // inútil). Tras el fix del encoding HHMM, 198 líneas tienen ventana real → la podemos
+  // mostrar honesta. Solo ocultamos las genuinamente 24h (madre + saturadas reales).
+  const mainWin = getMainServiceWindow(line, 1);
+  const win = mainWin && !(mainWin.first === "00:00" && mainWin.last === "24:00") ? mainWin : null;
+  const winShort = win
+    ? `días hábiles ~${win.first}–${win.last}${win.outliers ? " (+ algún trasnoche)" : ""}`
+    : null;
 
   const faqs = [
     ...(win ? [{

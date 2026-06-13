@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getLineHoursLookup, getTipoDia } from "@/lib/line-hours";
+import { getLineHoursLookup, getTipoDia, getMainServiceWindow } from "@/lib/line-hours";
 
 // Convención de hora MVD en tests: getLineHoursLookup y getTipoDia usan getUTCHours/getUTCDay
 // sobre fechas MVD-ajustadas (UTC-3 permanente). Para representar "X:00 MVD", pasar
@@ -44,5 +44,22 @@ describe("line-hours", () => {
     if (!lookup.hasData("183")) return;
     // 183 opera 23:15-24:00 → debe encontrar servicio
     expect(lookup.operatesNowOrSoon("183", 90)).toBe(true);
+  });
+});
+
+// R62b: ventana PRINCIPAL (bloque contiguo) en vez del span primer-último.
+describe("getMainServiceWindow", () => {
+  it("una línea con datos da un bloque con HH:MM válidos y first<last", () => {
+    const w = getMainServiceWindow("183", 1);
+    if (!w) return; // sin datos en el entorno → nada que validar
+    expect(w.first).toMatch(/^\d\d:\d\d$/);
+    expect(w.last).toMatch(/^\d\d:\d\d$/);
+    expect(typeof w.outliers).toBe("boolean");
+    // el inicio del bloque principal no debe ser después del fin
+    expect(w.first <= w.last || w.last === "24:00").toBe(true);
+  });
+
+  it("línea inexistente → null", () => {
+    expect(getMainServiceWindow("XXX_FAKE_999", 1)).toBeNull();
   });
 });

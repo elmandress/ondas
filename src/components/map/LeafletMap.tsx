@@ -414,7 +414,7 @@ export default function LeafletMap({
       html: `
         <div style="position:relative;width:36px;height:48px;">
           <div style="position:absolute;left:50%;top:0;transform:translateX(-50%);width:36px;height:36px;border-radius:50% 50% 50% 0;transform-origin:center;rotate:-45deg;background:linear-gradient(135deg,#dc2626,#991b1b);border:2px solid white;box-shadow:0 4px 12px rgba(220,38,38,0.55);display:flex;align-items:center;justify-content:center;">
-            <span style="rotate:45deg;font-size:16px;line-height:1;">${placePin.icon || "📍"}</span>
+            <span style="rotate:45deg;width:11px;height:11px;border-radius:50%;background:white;line-height:0;"></span>
           </div>
           <div style="position:absolute;left:50%;bottom:-4px;transform:translateX(-50%);width:14px;height:6px;border-radius:50%;background:rgba(0,0,0,0.35);filter:blur(2px);"></div>
         </div>

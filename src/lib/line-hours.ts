@@ -77,6 +77,49 @@ export function getServiceWindow(line: string, tipoDia: TipoDia = 1): { first: s
   return { first: fmtMin(firstQ * 15), last: fmtMin((lastQ + 1) * 15) };
 }
 
+/**
+ * Ventana PRINCIPAL de servicio: el bloque contiguo más largo de operación (tolera
+ * huecos de hasta 30 min). Responde mejor "¿a qué hora arranca/termina el 187?" que
+ * el span primer-último (getServiceWindow), que para una línea con un trasnoche a las
+ * 00:01 + servicio 05:30-23:50 daría "00:00-24:00" (inútil). Acá da 05:30-23:50.
+ *
+ * `outliers` = true si hay corridas fuera del bloque principal (trasnoches sueltos):
+ * la UI puede aclarar "+ algún servicio nocturno". Devuelve null si no hay datos.
+ */
+export function getMainServiceWindow(
+  line: string,
+  tipoDia: TipoDia = 1
+): { first: string; last: string; outliers: boolean } | null {
+  const data = getData();
+  const b64 = data[canonLine(line)]?.[tipoDia];
+  if (!b64) return null;
+  const bytes = decodeBitset(b64);
+  const on: boolean[] = [];
+  let total = 0;
+  for (let q = 0; q < QUARTERS; q++) { const b = bitAt(bytes, q); on.push(b); if (b) total++; }
+  if (total === 0) return null;
+
+  // Bloques contiguos tolerando huecos ≤2 cuartos (30 min) — un par de quarters sin
+  // corrida no parte el servicio (frecuencias bajas en hora valle).
+  const blocks: Array<{ start: number; end: number; count: number }> = [];
+  let start = -1, gap = 0, count = 0;
+  for (let q = 0; q < QUARTERS; q++) {
+    if (on[q]) {
+      if (start === -1) start = q;
+      count++; gap = 0;
+    } else if (start !== -1) {
+      gap++;
+      if (gap > 2) { blocks.push({ start, end: q - gap, count }); start = -1; count = 0; gap = 0; }
+    }
+  }
+  if (start !== -1) blocks.push({ start, end: QUARTERS - 1 - (on[QUARTERS - 1] ? 0 : gap), count });
+  if (!blocks.length) return null;
+
+  const main = blocks.reduce((a, b) => (b.count > a.count ? b : a));
+  const outliers = blocks.some((b) => b !== main && b.count >= 1);
+  return { first: fmtMin(main.start * 15), last: fmtMin((main.end + 1) * 15), outliers };
+}
+
 /** Uruguay = UTC-3 permanente (sin DST desde 2015). Devuelve "ahora" en hora MVD. */
 function nowMvd(): Date { return new Date(Date.now() - 3 * 60 * 60 * 1000); }
 

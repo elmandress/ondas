@@ -251,8 +251,8 @@ export default function GtfsRouteCard({
         {/* Detalle de tarifa con VIGENCIA — en la ruta expandida (no en el resumen, para
             no saturar). Aclara que es estimado y de cuándo son los valores. */}
         {!isWalkOnly && (
-          <p style={{ font: "500 11px/1.4 var(--ff)", color: "var(--text-3)", marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
-            <span>🎫</span>{fareDetail(route.numTransfers, usesMetro)}
+          <p style={{ font: "500 11px/1.4 var(--ff)", color: "var(--text-3)", marginTop: 10 }}>
+            {fareDetail(route.numTransfers, usesMetro)}
           </p>
         )}
 

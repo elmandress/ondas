@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { STOPS_DATASET, type BusStop } from "@/lib/stm";
 import { distanceTo } from "@/lib/utils";
+import { Icons } from "@/components/brand/Icons";
 import type { SelectedPlace } from "@/lib/selected-place";
 
 interface Props {
@@ -44,9 +45,10 @@ export default function PlacePanel({ place, stopsReady, onClose, onSelectStop }:
         </div>
 
         <div className="px-4 pb-3 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl"
-               style={{ background: "rgba(220,38,38,0.15)", border: "1px solid rgba(220,38,38,0.3)" }}>
-            {place.icon || "📍"}
+          {/* R62: vector de marca (no el emoji del geocoder) — un solo sistema de íconos. */}
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0"
+               style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+            <Icons.Pin size={20} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-red-400">Lugar</p>
