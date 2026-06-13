@@ -3,7 +3,7 @@
 > **Fuente de verdad de QA/seguridad/riesgos/historial.** Parte del sistema de 3 docs:
 > [ARQUITECTURA.md](ARQUITECTURA.md) (técnico) · este (QA/estado) · [DESARROLLO.md](DESARROLLO.md) (operativo).
 > Modo de trabajo: auditar → documentar → implementar → verificar → reportar. Sin pedir permiso salvo riesgo real a producto/datos/arquitectura.
-> Última actualización: **2026-06-04**.
+> Última actualización: **2026-06-13**.
 
 ## Leyenda
 - Estado: ✅ implementado · 🟡 parcial · ⏳ pendiente · ❌ descartado
@@ -32,7 +32,7 @@
 | 15 | Anti-troll server-side ocupación (límite IP/sesión) | P2 | medio (datos) | ⏳ |
 | 12 | **Onboarding contextual (componente `Tip`, microayuda 1ª vez en hero)** | P2 | bajo | ✅ hecho R45 |
 | 18 | **Precio EFECTIVO primero + placeholder buscador acortado + SW v4** | P2 | bajo | ✅ hecho R44-45 |
-| 16 | Densidad/jerarquía de la home (scroll largo, 5 secciones) | P2 | bajo | ⏳ |
+| 16 | **Densidad/jerarquía de la home: 3 secciones + bloque "Más" colapsable** | P2 | bajo | ✅ hecho R65 |
 | 13 | Experiencia parada: paradas equivalentes + agrupar destinos | P2 | bajo | ⏳ |
 | 8 | Decisión dark-first vs pulir tema light | P2 | medio | ⏳ |
 | 9 | Estados de error consistentes + "datos de hace X" | P2 | bajo | ⏳ |
@@ -42,16 +42,16 @@
 - ✅ Nombre de parada se partía en 4 líneas (medio sheet desperdiciado) → line-clamp 2.
 - ✅ "Buscando servicios…" salía con llegadas ya visibles (confuso) → "Actualizando…".
 - ⏳ Nombre truncado pierde la calle secundaria (aceptable; completo en /parada).
-- ⏳ Backdrop del sheet deja ver el hero detrás (poco contraste).
-- ⏳ Empty del hero "No viene ninguno" sigue seco.
+- ✅ Backdrop del sheet deja ver el hero detrás → R65: light 0.45→0.72 (era el real gap), dark 0.82→0.88/blur16.
+- ✅ Empty del hero "No viene ninguno" → R65: muestra "vuelve ~HH:MM" (`inactiveLines`) + parada alternativa a pasos ≤150 m.
 
 ---
 
 ## 1. UX
-- **Problemas:** empty states históricamente fríos (Rutas mejorado R35); sin pull-to-refresh; experiencia de parada incompleta (falta incidencias/alternativas).
+- **Problemas:** experiencia de parada incompleta (agrupar destinos/equivalentes — P2).
 - **Oportunidades:** anticipación (mostrar lo que el usuario quiere sin buscar); "estás acá" llevado al extremo.
-- **Implementado:** ✅ preview de mapa en home, auto-detección de parada, big-action "¿A dónde querés ir?", hero "cuándo salir".
-- **Pendiente:** ⏳ pull-to-refresh (P2), experiencia parada mágica (P1).
+- **Implementado:** ✅ preview de mapa en home, auto-detección de parada, big-action "¿A dónde querés ir?", hero "cuándo salir", **pull-to-refresh (R58d)**, **empty states útiles con próximo retorno + alternativas (R58-R65)**, **home a 3 secciones + "Más" (R65)**.
+- **Pendiente:** ⏳ experiencia parada mágica: paradas equivalentes + agrupar destinos (P2).
 - **Impacto:** utilidad+claridad. **Prioridad media-alta.**
 
 ## 2. UI
@@ -171,6 +171,14 @@
 - **Impacto:** **todo el SEO vale 0 sin esto.** **Prioridad P0.**
 
 ---
+
+## 🛡️ QA R65 (2026-06-13) — empty state útil + home a 3 secciones + backdrop
+- **Estado QA actual**: tsc 0 errores · **199/199 tests verdes (27 archivos)** · build OK · ESLint 57 warnings (legacy `set-state-in-effect`), 0 errores. *(El 151/151 de QA R51 y el 142/142 de QA R50 son snapshots de su ronda — el conteo vigente es 199.)*
+- **Empty state del hero**: antes "No viene ninguno en 30 min" a secas. Ahora "El próximo vuelve ~HH:MM · en N min" (vía `inactiveLines`, computado server con `line-hours.ts`) + badges de líneas que retornan + **parada alternativa a pasos ≤150 m** tocable. StopPanel/RouteScreen ya tenían el patrón (R58-R64); StopPanel: copy del cartel apunta a los horarios de retorno + paradas a pasos de abajo.
+- **Home density (3 secciones)**: planner+hero "¿cuándo salir?" · paradas cerca (secundario) · **mapa promovido** (encabezado propio, 150→210 px, sombra/borde fuerte). Lo secundario (favoritos, rutas, Acciones STM) en bloque **"Más" colapsable** (`<details>`, cerrado, resumen con counts). **Saldo STM no orfanado** — sólo se abre desde ahí.
+- **Sheet backdrop**: el dark ya estaba en 0.82 (>70%, R58); el real gap era **light a 0.45 → 0.72**. Dark reforzado 0.82→0.88 / blur 16.
+- **Pull-to-refresh**: confirmado ya existente desde R58d (gesto >55 px + indicador + spin) — no se reimplementó.
+- **Sin tests nuevos**: cambios sólo en componentes/CSS de home (no se tocó `lib/` ni `api/`).
 
 ## 🛡️ QA R51 (2026-06-10) — Fable 5: monolitos partidos + MAP-1/MAP-2 + accesibilidad
 - **PG-1 + PG-2 ejecutados**: MapScreen (957→~490) y RouteScreen (1498→~430) partidos en orquestador + componentes presentacionales. Comportamiento verificado idéntico (E2E smoke Playwright: mapa monta, búsqueda 3 sugerencias, 4 rutas a Tres Cruces, 0 errores JS).

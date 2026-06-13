@@ -284,11 +284,11 @@ Si `vitest run` falla ANTES de tu cambio → documentar el fallo previo en AUDIT
 
 ---
 
-## 12. ESTADO ACTUAL Y DEUDA TÉCNICA (2026-06-10)
+## 12. ESTADO ACTUAL Y DEUDA TÉCNICA (2026-06-13)
 
 ### ✅ Sólido (no tocar sin necesidad)
 - TypeScript strict: 0 errores
-- 151/151 tests verdes
+- 199/199 tests verdes (27 archivos vitest)
 - Seguridad: XSS (`jsonLdHtml`), timeouts (`AbortSignal`), localStorage try/catch
 - PWA: SW v4 (`cache cuando-v4`), manifest completo, install prompt iOS/Android
 - SEO base: 6,600 URLs, JSON-LD, OG dinámico, sitemap
@@ -300,18 +300,20 @@ Si `vitest run` falla ANTES de tu cambio → documentar el fallo previo en AUDIT
 - **Interdepartamental completo**: ingestar CSV MTOP (sentido interior→MVD + entre-departamentos) — [TOCA DATOS: avisar antes de aplicar]
 - **Anti-troll server-side**: límite por IP/sesión en crowdsourcing (hoy solo rate-limit cliente, evitable)
 
+### ✅ Resuelto en R65 (2026-06-13)
+- **Home density**: 3 secciones (planner+hero, paradas cerca, mapa promovido) + bloque "Más" colapsable (favoritos/rutas/Acciones STM). Saldo STM no orfanado.
+- **Empty state "No viene ninguno"**: hero muestra "vuelve ~HH:MM" (`inactiveLines`) + parada alternativa a pasos ≤150 m. StopPanel/RouteScreen ya tenían el patrón (R58-R64).
+- **Backdrop del sheet**: light 0.45→0.72 (era el real gap; el dark ya estaba en 0.82), dark 0.82→0.88/blur16.
+- **Pull-to-refresh**: ya existía desde R58d (gesto + indicador + spin).
+
 ### ⏳ P2 — Media prioridad
 - **Dark-first definitivo**: decidir entre tema dark como default o resolver contraste AA en light
-- **Home density**: 5 secciones con scroll largo — revisar jerarquía y qué se puede colapsar
-- **Empty state "No viene ninguno"**: seco, necesita dirección (¿cuándo viene el próximo? ¿hay alternativas?)
-- **Backdrop del sheet**: poco contraste sobre el hero (transparencia excesiva)
-- **Pull-to-refresh**: falta en home
 - **Experiencia parada**: paradas equivalentes a pasos + agrupar destinos
 - **Monolito RouteScreen** (~1200 líneas): candidato a partir en sub-componentes
 
 ### 📊 Métricas actuales de código
 - ESLint: 57 warnings (legacy `setState in effect`), 0 errores
-- Tests: 151 verdes, 0 rojos
+- Tests: 199 verdes, 0 rojos (27 archivos)
 - TypeScript: 0 errores
 
 ---
