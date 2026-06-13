@@ -1036,3 +1036,40 @@ en /api/stm/vehicles exime al vehicleId seguido del descarte; cableado en MapScr
    en colapsado costaría 1 fetch por card (cacheado 25s). Evaluar si vale.
 4. **Pull-to-refresh en parada/rutas** [medio/bajo]: ya está en Home (R58d), faltan las
    otras pantallas con datos en vivo.
+
+---
+
+## 22. Sesión R62 (2026-06-12) — BUG GRAVE de horarios + seguridad nocturna visible + scrape
+
+### El bug más grande de toda la serie: schedule.db urbano era HHMM, no minutos
+Auditoría profunda (el usuario: "siempre hay algo mal"). El campo `hora` de schedule.db
+(2.25M filas urbanas) guarda **HHMM** (607=6:07, 1320=13:20) — prueba estadística: CERO
+filas con `(hora%100)>59` (si fueran minutos, ~40% las tendrían). metro-schedule.db SÍ son
+minutos (317k filas con %100>59). El motor leía todo como minutos →
+- Un viaje de 14:07 (HHMM 1407) se mostraba como "23:27" en el pager/próximos.
+- `build-line-hours.js` (mismo bug): **67% de líneas (157/233) parecían operar "24h"** —
+  era el scramble HHMM, no servicio real. Por eso el ruteo podía sugerir una nocturna a
+  las 14h. (Esto era el "157 saturadas, dato dudoso" que FABLE notaba sin saber la causa.)
+
+**Fix en la fuente única** (no parches): `export-schedules-json` convierte HHMM→min
+(urbano) y normaliza metro; `build-line-hours.js` idem; runtime con wrap de medianoche
+(a las 23:55 aparece el viaje de 00:15). Regenerados shards (13.4MB) + line-hours.
+Resultado medido: saturación falsa **67% → 14%** (198 líneas con ventana real ahora, eran
+73). Verificado en vivo: pager del 187 muestra 00:01 + hueco nocturno real hasta 05:37.
+
+**Lección**: cada fuente de datos UY tiene su propia convención silenciosa. Antes de
+confiar en un campo numérico de tiempo, verificar el encoding con `(v%100)>59`.
+
+### R62 — seguridad nocturna VISIBLE al elegir (diferencial único en UY)
+`assessTripSafety` ya evaluaba la caminata al destino, pero el aviso vivía enterrado en
+el taxi-por-tramo del detalle expandido. Nuevo chip en el RESUMEN de cada ruta ("caminás
+N m de noche · zona poco transitada") → comparás seguridad antes de elegir, no abriendo
+cada una. Solo de noche (de día assess da level "none"). +2 tests congelan el contrato.
+
+### Scrape MTOP interdepartamental (PG-5) — pipeline listo para correr
+`scripts/pipeline/ingest-mtop-interdept.mjs`: CKAN package_show → descarga CSVs →
+descubre el esquema real (columnas + muestra). NO lo corre el agente: los .gub.uy usan CA
+de AGESIC que Node no trae → requiere `NODE_TLS_REJECT_UNAUTHORIZED=0` (solo build) con OK
+del usuario. 1ª corrida = descubrimiento; con las columnas reales se finaliza el transform
+a public/interdept.json (salidas + llegadas + entre_deptos). Es el único espacio sin
+competencia buena (Google/Moovit flojos en interdept).
