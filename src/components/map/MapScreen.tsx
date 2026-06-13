@@ -209,6 +209,7 @@ export default function MapScreen() {
     enabled: !!selectedStop && (realLines.length > 0 || !!filterLine),
     lineIds: linesForBuses,
     stopId: selectedStopId, // server usa API autenticada con filtro upstream oficial
+    keepVehicleId: selectedVehicleId, // R60: el bus seguido no muere al pasar la parada
   });
 
   const { arrivals, loading: arrivalsLoading, lastUpdated, lastFetchFailed: arrivalsFetchFailed, isOffline: arrivalsOffline, refetch } = useArrivals(selectedStopId, 15000);

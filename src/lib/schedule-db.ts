@@ -1,11 +1,20 @@
 /**
- * Acceso al SQLite de horarios programados (uptu_pasada_variante).
- * Solo se usa en server-side (API routes de Next.js).
- * NO importar este módulo desde componentes cliente ni desde stm.ts.
+ * Horarios programados (urbano + metropolitano) — JSON puro, sin módulos nativos.
  *
- * Schema: schedules(tipo_dia, cod_variante, parada, hora)
- *   tipo_dia: 1=HABIL, 2=SABADO, 3=DOMINGO
- *   hora: minutos desde medianoche (643 = 10:43)
+ * R60 — POR QUÉ esta reescritura: "próximos horarios" estaba MUERTO en producción.
+ * Antes leía schedule.db / metro-schedule.db con better-sqlite3, un módulo NATIVO
+ * C++ que no carga en Netlify Functions (schedule.db además ni se subía: 84MB).
+ * Es la misma causa por la que el GTFS migró a JSON. Regla de arquitectura:
+ * TODO dato en runtime = JSON leído con fs.
+ *
+ * Fuente: data/sched/shard-{0..31}.json, generados por
+ * scripts/pipeline/export-schedules-json.mjs (re-correr al regenerar horarios).
+ * Formato: { [stopId]: { [tipoDia]: { [LINEA_CANON]: "m1,m2,..." } } }
+ *   - minutos del día asc; pueden superar 1440 (nocturnas del día operativo).
+ *   - urbano y metro (paradas "M…") viven JUNTOS — ya no hay dos caminos.
+ *
+ * Lazy por shard (~450KB c/u) con cache de módulo: una parada solo paga su shard.
+ * Solo server-side (API routes).
  */
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -13,121 +22,35 @@ const path = require("path") as typeof import("path");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require("fs") as typeof import("fs");
 
-import type DatabaseType from "better-sqlite3";
 import { canonLine } from "@/lib/line-name";
 
-let _db: DatabaseType.Database | null = null;
-let _metroDb: DatabaseType.Database | null = null;
-let _metroDbTried = false;
-let _variantToLine: Record<string, string> | null = null;
-let _lineToVariants: Record<string, string[]> | null = null;
+const SHARDS = 32;
+type ShardData = Record<string, Record<string, Record<string, string>>>;
+const _shards = new Map<number, ShardData | null>();
 
-/** metro-schedule.db: horarios de paso de las líneas metropolitanas (Canelones).
- *  schedule.db (MVD) usa cod_variante numéricos y solo cubre paradas de Montevideo;
- *  las paradas metro (stop_id "M…") viven acá. Schema: schedules(stop_id,line,tipo_dia,hora). */
-function getMetroDb() {
-  if (_metroDb) return _metroDb;
-  if (_metroDbTried) return null;
-  _metroDbTried = true;
-  const DB_PATH = path.join(process.cwd(), "data", "metro-schedule.db");
-  if (!fs.existsSync(DB_PATH)) return null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = require("better-sqlite3") as typeof DatabaseType;
-    _metroDb = new Database(DB_PATH, { readonly: true, fileMustExist: true });
-    return _metroDb;
-  } catch (err) {
-    console.warn("[schedule-db] no se pudo abrir metro-schedule.db:", err);
-    return null;
+/** Mismo hash que el exporter (mantener sincronizados). */
+function shardOf(stopId: string): number {
+  let h = 0;
+  for (let i = 0; i < stopId.length; i++) h = (h * 31 + stopId.charCodeAt(i)) >>> 0;
+  return h % SHARDS;
+}
+
+function getStopEntry(stopId: string): Record<string, Record<string, string>> | null {
+  const n = shardOf(stopId);
+  if (!_shards.has(n)) {
+    try {
+      const p = path.join(process.cwd(), "data", "sched", `shard-${n}.json`);
+      _shards.set(n, fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p, "utf-8")) as ShardData) : null);
+    } catch (err) {
+      console.error(`[schedule-db] error cargando shard ${n}:`, err);
+      _shards.set(n, null);
+    }
   }
+  return _shards.get(n)?.[stopId] ?? null;
 }
 
 /** Uruguay = UTC-3 permanente (sin DST desde 2015). Devuelve "ahora" en hora MVD. */
 function nowMvd(): Date { return new Date(Date.now() - 3 * 60 * 60 * 1000); }
-
-/** ¿Es una parada metropolitana (Canelones)? Sus stop_id llevan prefijo "M". */
-function isMetroStop(stopId: string): boolean {
-  return stopId.startsWith("M");
-}
-
-/** Horarios de paso programados de una parada METRO, ya como ScheduledArrival. */
-function getMetroScheduled(
-  stopId: string,
-  refMinutes: number,
-  windowMinutes: number,
-  tipoDia: TipoDia,
-  lineFilter?: Set<string>,
-): ScheduledArrival[] {
-  const db = getMetroDb();
-  if (!db) return [];
-  const minHora = refMinutes - 2;
-  const maxHora = refMinutes + windowMinutes;
-  try {
-    const rows = db.prepare(
-      `SELECT line, hora FROM schedules
-       WHERE stop_id = ? AND tipo_dia = ? AND hora >= ? AND hora <= ?
-       ORDER BY hora ASC LIMIT 60`
-    ).all(stopId, tipoDia, minHora, maxHora) as { line: string; hora: number }[];
-    const out: ScheduledArrival[] = [];
-    for (const r of rows) {
-      if (lineFilter && !lineFilter.has(canonLine(r.line))) continue;
-      const hh = Math.floor(r.hora / 60), mm = r.hora % 60;
-      out.push({
-        variantCode: "", lineCode: r.line, hora: r.hora,
-        horaStr: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`,
-        minutesFromNow: r.hora - refMinutes,
-      });
-    }
-    return out;
-  } catch (err) {
-    console.error("[metro-schedule] query error:", err);
-    return [];
-  }
-}
-
-function getDb() {
-  if (_db) return _db;
-  // schedule.db (84MB) NO se incluye en bundle serverless por tamaño.
-  // En producción serverless, el fallback de horarios no está disponible
-  // — la app sigue funcionando con API live + GTFS sin problema.
-  // Migrar a usar arrival_seconds del GTFS (queda pendiente).
-  const DB_PATH = path.join(process.cwd(), "data", "schedule.db");
-  if (!fs.existsSync(DB_PATH)) {
-    // No es error en prod, es esperado
-    return null;
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = require("better-sqlite3") as typeof DatabaseType;
-    _db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
-    return _db;
-  } catch (err) {
-    console.warn("[schedule-db] no se pudo abrir schedule.db:", err);
-    return null;
-  }
-}
-
-function getVariantToLine(): Record<string, string> {
-  if (_variantToLine) return _variantToLine;
-  const MAP_PATH = path.join(process.cwd(), "data", "variant_to_line.json");
-  if (!fs.existsSync(MAP_PATH)) return {};
-  _variantToLine = JSON.parse(fs.readFileSync(MAP_PATH, "utf-8"));
-  return _variantToLine!;
-}
-
-/** Reverso cacheado: lineCode CANÓNICO → [cod_variante, ...]. Para querys por línea.
- *  Las keys van canonicalizadas (canonLine) porque variant_to_line.json usa "CE2"/"BT1"
- *  mientras el GTFS y la API en vivo mezclan "Ce2"/"CE2" (bug R57). */
-function getLineToVariants(): Record<string, string[]> {
-  if (_lineToVariants) return _lineToVariants;
-  const v2l = getVariantToLine();
-  const map: Record<string, string[]> = {};
-  for (const [variant, line] of Object.entries(v2l)) {
-    (map[canonLine(line)] ||= []).push(variant);
-  }
-  _lineToVariants = map;
-  return map;
-}
 
 export type TipoDia = 1 | 2 | 3; // 1=HABIL, 2=SABADO, 3=DOMINGO
 
@@ -150,33 +73,25 @@ export interface ScheduledArrival {
   minutesFromNow: number;
 }
 
-/**
- * Última corrida PROGRAMADA del día de una línea en una parada (minuto del día).
- * Dato 100% honesto (viene de schedule.db). null si no hay servicio hoy.
- * Sirve para el "modo último bus": avisar que un servicio es el último.
- */
-export function getLastDepartureForLine(
-  stopId: string,
-  lineCode: string,
-  tipoDia?: TipoDia
-): number | null {
-  const db = getDb();
-  if (!db) return null;
-  const variants = getLineToVariants()[canonLine(lineCode)];
-  if (!variants || !variants.length) return null;
-  const tipo = tipoDia ?? getTipoDia();
-  try {
-    const placeholders = variants.map(() => "?").join(",");
-    const row = db.prepare(
-      `SELECT MAX(hora) AS lastHora
-       FROM schedules
-       WHERE parada = ? AND tipo_dia = ? AND cod_variante IN (${placeholders})`
-    ).get(stopId, tipo, ...variants) as { lastHora: number | null };
-    return row?.lastHora ?? null;
-  } catch (err) {
-    console.error("[schedule-db] getLastDepartureForLine error:", err);
-    return null;
+function toArrival(line: string, hora: number, refMinutes: number): ScheduledArrival {
+  const hh = Math.floor((hora % 1440) / 60), mm = hora % 60;
+  return {
+    variantCode: "", // el pack agrupa por línea (la variante no se muestra en la UI)
+    lineCode: line,
+    hora,
+    horaStr: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`,
+    minutesFromNow: hora - refMinutes,
+  };
+}
+
+/** Minutos de una línea dentro de [min, max], desde el string empaquetado. */
+function minutesInWindow(packed: string, min: number, max: number): number[] {
+  const out: number[] = [];
+  for (const part of packed.split(",")) {
+    const h = Number(part);
+    if (h >= min && h <= max) out.push(h);
   }
+  return out;
 }
 
 export function getScheduledArrivals(
@@ -185,51 +100,25 @@ export function getScheduledArrivals(
   nowMinutes?: number,
   windowMinutes = 120
 ): ScheduledArrival[] {
-  const tipo = tipoDia ?? getTipoDia();
-  const mvd0 = nowMvd();
-  const currentMin0 = nowMinutes ?? (mvd0.getUTCHours() * 60 + mvd0.getUTCMinutes());
-
-  // Parada metropolitana (Canelones): su horario vive en metro-schedule.db.
-  if (isMetroStop(stopId)) {
-    return getMetroScheduled(stopId, currentMin0, windowMinutes, tipo);
-  }
-
-  const db = getDb();
-  if (!db) return [];
-
-  const variantToLine = getVariantToLine();
+  const entry = getStopEntry(stopId);
+  if (!entry) return [];
+  const tipo = String(tipoDia ?? getTipoDia());
+  const byLine = entry[tipo];
+  if (!byLine) return [];
 
   const mvd = nowMvd();
   const currentMinutes = nowMinutes ?? (mvd.getUTCHours() * 60 + mvd.getUTCMinutes());
-
   const minHora = currentMinutes - 2;
   const maxHora = currentMinutes + windowMinutes;
 
-  try {
-    const rows = db.prepare(
-      `SELECT DISTINCT cod_variante, hora
-       FROM schedules
-       WHERE parada = ? AND tipo_dia = ? AND hora >= ? AND hora <= ?
-       ORDER BY hora ASC
-       LIMIT 40`
-    ).all(stopId, tipo, minHora, maxHora) as { cod_variante: string; hora: number }[];
-
-    return rows.map((row: { cod_variante: string; hora: number }) => {
-      const hh = Math.floor(row.hora / 60);
-      const mm = row.hora % 60;
-      const lineCode = variantToLine[row.cod_variante] || row.cod_variante;
-      return {
-        variantCode: row.cod_variante,
-        lineCode,
-        hora: row.hora,
-        horaStr: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`,
-        minutesFromNow: row.hora - currentMinutes,
-      };
-    });
-  } catch (err) {
-    console.error("[schedule-db] query error:", err);
-    return [];
+  const out: ScheduledArrival[] = [];
+  for (const [line, packed] of Object.entries(byLine)) {
+    for (const h of minutesInWindow(packed, minHora, maxHora)) {
+      out.push(toArrival(line, h, currentMinutes));
+    }
   }
+  out.sort((a, b) => a.hora - b.hora);
+  return out.slice(0, 40);
 }
 
 export function getScheduledArrivalsForStop(stopId: string): ScheduledArrival[] {
@@ -242,21 +131,28 @@ export function getScheduledArrivalsForStop(stopId: string): ScheduledArrival[] 
 }
 
 /**
- * Devuelve el próximo horario programado para cada línea pedida.
- * Si una línea no tiene servicio hoy, no aparece en el resultado.
- *
- * SRS FR-1.5: cada línea de la parada debe tener al menos un "próximo bus"
- * mostrado (sea live o scheduled), nunca silencio total mientras haya servicio.
+ * Última corrida PROGRAMADA del día de una línea en una parada (minuto del día).
+ * Dato 100% honesto. null si no hay servicio hoy. Para el "modo último bus".
  */
+export function getLastDepartureForLine(
+  stopId: string,
+  lineCode: string,
+  tipoDia?: TipoDia
+): number | null {
+  const entry = getStopEntry(stopId);
+  if (!entry) return null;
+  const byLine = entry[String(tipoDia ?? getTipoDia())];
+  const packed = byLine?.[canonLine(lineCode)];
+  if (!packed) return null;
+  // El pack está ordenado asc → el último elemento es la última corrida.
+  const idx = packed.lastIndexOf(",");
+  return Number(idx === -1 ? packed : packed.slice(idx + 1));
+}
+
 /**
  * Próximas N llegadas PROGRAMADAS de UNA línea en una parada, ordenadas.
- *
- * Es el dato detrás del "pager" estilo maprab: el usuario ya ve el próximo bus
- * (live o scheduled) en la fila; con ‹ › puede recorrer los siguientes horarios
- * programados de esa misma línea ("y el de después, ¿a qué hora?").
- *
- * Honesto: son horarios PROGRAMADOS (no posiciones en vivo). La ventana se
- * extiende hasta 8h para que haya varios para paginar incluso en horas valle.
+ * Es el dato detrás del "pager" (‹ ›) de horarios por línea. Ventana larga (8h)
+ * para que haya varios para paginar incluso en horas valle. Honesto: programados.
  */
 export function getNextScheduledForLine(
   stopId: string,
@@ -265,52 +161,17 @@ export function getNextScheduledForLine(
   windowMinutes = 480
 ): ScheduledArrival[] {
   if (!lineCode) return [];
-  const tipo0 = getTipoDia();
-  const mvd0 = nowMvd();
-  const curMin0 = mvd0.getUTCHours() * 60 + mvd0.getUTCMinutes();
+  const entry = getStopEntry(stopId);
+  if (!entry) return [];
+  const byLine = entry[String(getTipoDia())];
+  const packed = byLine?.[canonLine(lineCode)];
+  if (!packed) return [];
 
-  // Parada metropolitana: filtrar el metro-schedule por esta línea.
-  if (isMetroStop(stopId)) {
-    return getMetroScheduled(stopId, curMin0, windowMinutes, tipo0, new Set([canonLine(lineCode)])).slice(0, limit);
-  }
-
-  const db = getDb();
-  if (!db) return [];
-
-  const variants = getLineToVariants()[canonLine(lineCode)];
-  if (!variants || !variants.length) return [];
-
-  const tipo = tipo0;
-  const currentMinutes = curMin0;
-  const minHora = currentMinutes - 2;
-  const maxHora = currentMinutes + windowMinutes;
-
-  try {
-    const placeholders = variants.map(() => "?").join(",");
-    const rows = db.prepare(
-      `SELECT DISTINCT cod_variante, hora
-       FROM schedules
-       WHERE parada = ? AND tipo_dia = ? AND hora >= ? AND hora <= ?
-         AND cod_variante IN (${placeholders})
-       ORDER BY hora ASC
-       LIMIT ?`
-    ).all(stopId, tipo, minHora, maxHora, ...variants, limit) as { cod_variante: string; hora: number }[];
-
-    return rows.map((row) => {
-      const hh = Math.floor(row.hora / 60);
-      const mm = row.hora % 60;
-      return {
-        variantCode: row.cod_variante,
-        lineCode,
-        hora: row.hora,
-        horaStr: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`,
-        minutesFromNow: row.hora - currentMinutes,
-      };
-    });
-  } catch (err) {
-    console.error("[schedule-db] getNextScheduledForLine error:", err);
-    return [];
-  }
+  const mvd = nowMvd();
+  const currentMinutes = mvd.getUTCHours() * 60 + mvd.getUTCMinutes();
+  return minutesInWindow(packed, currentMinutes - 2, currentMinutes + windowMinutes)
+    .slice(0, limit)
+    .map((h) => toArrival(lineCode, h, currentMinutes));
 }
 
 export function getNextScheduledPerLine(
@@ -328,10 +189,8 @@ export function getNextScheduledPerLine(
   const currentMinutes = refMinutes ?? (mvd.getUTCHours() * 60 + mvd.getUTCMinutes());
   const pool = getScheduledArrivals(stopId, tipo, currentMinutes, windowMinutes);
 
-  // Mapa línea → próximo horario. Matching CANÓNICO entre fuentes (la API en vivo
-  // pide "CE1", el schedule devuelve "CE1" o "Ce1" según dataset — bug R57). El
-  // resultado conserva la grafía del CALLER para que el dedupe/display aguas
-  // arriba (lineDestMap, linesWithLive) siga matcheando.
+  // Próximo horario por línea pedida. Matching CANÓNICO entre fuentes; el resultado
+  // conserva la grafía del CALLER (la UI/dedupe aguas arriba usa esa).
   const seen = new Set<string>();
   const result: ScheduledArrival[] = [];
   const wantedByCanon = new Map<string, string>();

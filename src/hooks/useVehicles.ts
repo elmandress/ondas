@@ -11,9 +11,9 @@ import { adaptInterval } from "@/lib/network";
  */
 export function useVehicles(
   intervalMs = 10000,
-  options: { enabled?: boolean; lineIds?: string[]; stopId?: string | null } = {}
+  options: { enabled?: boolean; lineIds?: string[]; stopId?: string | null; keepVehicleId?: string | null } = {}
 ) {
-  const { enabled = false, lineIds, stopId } = options;
+  const { enabled = false, lineIds, stopId, keepVehicleId } = options;
   const [vehicles, setVehicles] = useState<VehiclePosition[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -34,6 +34,10 @@ export function useVehicles(
     const params = new URLSearchParams();
     if (filterKey) params.set("lineIds", filterKey);
     if (stopId) params.set("stopId", stopId);
+    // R60: el bus SEGUIDO no debe desaparecer del tracking cuando pasa la parada
+    // (el filtro upstream lo descartaba como "passed" y la card quedaba congelada
+    // justo cuando más importa: para saber cuándo bajarte).
+    if (keepVehicleId) params.set("keep", keepVehicleId);
     const url = "/api/stm/vehicles" + (params.toString() ? "?" + params.toString() : "");
 
     const load = () => {
@@ -80,7 +84,7 @@ export function useVehicles(
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("online", onOnline);
     };
-  }, [enabled, intervalMs, filterKey, stopId]);
+  }, [enabled, intervalMs, filterKey, stopId, keepVehicleId]);
 
   return { vehicles, loading, lastUpdated };
 }

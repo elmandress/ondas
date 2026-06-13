@@ -51,6 +51,10 @@ export async function GET(req: NextRequest) {
   const lineIds = lineIdsParam && lineIdsParam.length <= 200 ? lineIdsParam.split(",").filter(Boolean).slice(0, 20) : undefined;
   const stopId = req.nextUrl.searchParams.get("stopId");
   const dest = req.nextUrl.searchParams.get("dest"); // "que va a X" en vivo
+  // R60: vehicleId que NO se descarta aunque ya haya pasado la parada — es el bus
+  // que el usuario está SIGUIENDO (la card moría congelada al pasar tu parada,
+  // justo cuando el seguimiento más importa: para saber cuándo bajarte).
+  const keep = req.nextUrl.searchParams.get("keep");
 
   // ── Búsqueda "que va a X" (F2.3): todos los buses en vivo cuyo DESTINO matchea X.
   // Es lo que la gente ama: "a Pando" → solo los que van ahí, en tiempo real.
@@ -97,8 +101,10 @@ export async function GET(req: NextRequest) {
         if (!ourLines.has(b.line)) continue;
         const v = mvdBusToVehicle(b);
         if (seen.has(v.vehicleId)) continue;
-        const gtfsReason = busTowardsStopGtfs(v, stopId).reason;
-        if (gtfsReason === "passed" || gtfsReason === "stop-not-in-route") continue;
+        if (v.vehicleId !== keep) {
+          const gtfsReason = busTowardsStopGtfs(v, stopId).reason;
+          if (gtfsReason === "passed" || gtfsReason === "stop-not-in-route") continue;
+        }
         // Respaldo geométrico: descartar también los que quedaron más allá de la parada
         // aunque el GPS no haya snapeado (mismo bug del "estoy en la 160, está en la 162").
         if (busLikelyPassedStop({ lat: v.lat, lon: v.lon, lineName: v.lineName, destinoDesc: v.destinoDesc }, stopId)) continue;
@@ -112,7 +118,7 @@ export async function GET(req: NextRequest) {
         if (!ourLines.has(b.line)) continue;
         const v = mvdBusToVehicle(b);
         if (seen.has(v.vehicleId)) continue;
-        if (busTowardsStopGtfs(v, stopId).goingTo) { out.push(v); seen.add(v.vehicleId); far++; }
+        if (v.vehicleId === keep || busTowardsStopGtfs(v, stopId).goingTo) { out.push(v); seen.add(v.vehicleId); far++; }
       }
       if (far > 0) sources.push("gtfs-far");
 

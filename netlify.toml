@@ -16,15 +16,15 @@
   NPM_FLAGS = "--include=optional"
 
 # Bundlear los archivos de datos que el server lee en runtime dentro de las API
-# routes serverless. El GTFS de rutas/recorridos ahora es gtfs-v2.JSON (no .db): se
-# migró desde SQLite porque better-sqlite3 (módulo nativo) fallaba en Netlify Functions
-# → las rutas/recorridos no andaban en prod aunque las paradas (JSON) sí. metro-schedule.db
-# sigue en SQLite pero degrada solo si no carga. schedule.db (84MB) no entra → horarios
-# urbanos degradan a las llegadas en vivo.
+# routes serverless. REGLA: todo dato en runtime = JSON leído con fs (better-sqlite3
+# es un módulo nativo que NO carga en Netlify Functions — por eso el GTFS migró a
+# gtfs-v2.json y por eso R60 migró TODOS los horarios a data/sched/*.json: antes
+# "próximos horarios" estaba muerto en prod, schedule.db ni se subía y
+# metro-schedule.db no podía abrirse).
 [functions]
   included_files = [
     "data/gtfs-v2.json",
-    "data/metro-schedule.db",
+    "data/sched/*.json",
     "data/mvd-pois.json",
     "data/variant_to_line.json",
     "data/line-hours.json",
@@ -32,7 +32,6 @@
     "public/interdept.json",
     "public/interior-cities.json"
   ]
-  external_node_modules = ["better-sqlite3"]
   node_bundler = "nft"
 
 [[headers]]
