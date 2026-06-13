@@ -68,10 +68,16 @@ function describe(line: string) {
   const headsigns = getLineHeadsigns(line);
   const exists = headsigns.length > 0;
   const dests = headsigns.slice(0, 2).join(" y ");
+  // R62b: horario real en la meta description (tras el fix HHMM). Responde la búsqueda
+  // literal "a qué hora pasa el primer/último 187" en el snippet de Google → CTR.
+  const mw = getMainServiceWindow(line, 1);
+  const hours = mw && !(mw.first === "00:00" && mw.last === "24:00")
+    ? ` Días hábiles ~${mw.first} a ${mw.last}.`
+    : "";
   // El TÍTULO es la búsqueda literal de la gente: "cuándo pasa el 103". Nuestra marca
   // ("Cuándo") coincide con esa intención → ventaja semántica real.
   const title = `¿Cuándo pasa el ${line}?${dests ? ` ${dests}` : ""} — Horarios en vivo`;
-  const desc = `¿Cuándo pasa el ${line}? Mirá en tiempo real cuándo llega el ${line} a tu parada${dests ? `, recorrido hacia ${dests}` : ""}. Horarios, paradas y mapa en vivo del transporte de Montevideo. Sin inventar: datos del STM.`;
+  const desc = `¿Cuándo pasa el ${line}? Mirá en tiempo real cuándo llega el ${line} a tu parada${dests ? `, recorrido hacia ${dests}` : ""}.${hours} Horarios, paradas y mapa en vivo del transporte de Montevideo. Sin inventar: datos del STM.`;
   return { exists, headsigns, dests, title, desc };
 }
 

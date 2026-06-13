@@ -1073,3 +1073,29 @@ de AGESIC que Node no trae → requiere `NODE_TLS_REJECT_UNAUTHORIZED=0` (solo b
 del usuario. 1ª corrida = descubrimiento; con las columnas reales se finaliza el transform
 a public/interdept.json (salidas + llegadas + entre_deptos). Es el único espacio sin
 competencia buena (Google/Moovit flojos en interdept).
+
+---
+
+## 23. Sesión R62b (2026-06-13) — capitalizar el fix de horarios + limpieza
+
+Con `line-hours.json` ya correcto (R62), se desbloqueó valor real:
+- **getMainServiceWindow()**: bloque contiguo de servicio (no el span primer-último).
+  La 187 pasó de oculta ("00:00-24:00" dudoso) a "~05:15-24:00 (+ algún trasnoche)".
+  ~100 líneas ganan horario honesto en su landing /linea. +2 tests.
+- **SEO**: la meta description de /linea incluye el horario real ("Días hábiles ~05:15
+  a 24:00") → responde "a qué hora pasa el primer 187" en el snippet de Google (CTR).
+- **Limpieza de íconos** (un solo sistema): fuera 🎫 del detalle de tarifa; pin de lugar
+  del mapa = punto blanco limpio; PlacePanel = vector de marca (no emoji del geocoder).
+
+### Próximo paso de MAYOR valor (no hecho — requiere tocar /api/stm/arrivals con cuidado)
+**"No corre ahora · vuelve ~05:15"** en el sheet de parada: hoy una línea fuera de
+servicio simplemente no aparece → el usuario no sabe si la app falló o si el bus no
+pasa. Con line-hours ya correcto, se puede mostrar la línea muteada con su hora de
+retorno. Es el diferencial "honestidad" llevado al caso nocturno. Dejarlo para una
+sesión dedicada (el endpoint de arrivals es central; no apurarlo).
+
+### Estado de datos tras R60-R62 (todo verificado)
+- Horarios: 3M en JSON shards, encoding HHMM/min resuelto, wrap de medianoche. ✓
+- line-hours: saturación falsa 67%→14%, 198 líneas con ventana real. ✓
+- Detección de buses: canon de líneas, proyección "ya pasó", filtro horario correcto. ✓
+- El bus seguido no muere al pasar la parada. ✓
