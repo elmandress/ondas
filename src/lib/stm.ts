@@ -78,6 +78,9 @@ export interface Arrival {
   hasWifi?: boolean;
   /** true si el dato viene de horario programado (no GPS en vivo) */
   isScheduled?: boolean;
+  /** R61 (patrón Transit): hora del SIGUIENTE programado de la misma línea
+   *  ("luego 23:55") — responde "¿y el de después?" sin abrir el pager. */
+  nextHoraStr?: string;
   /**
    * Accesibilidad REAL por bus (dato oficial API IM).
    * Valores típicos: "PISO BAJO", "PLATAFORMA ELEVADORA", "PISO ALTO", "COMÚN".

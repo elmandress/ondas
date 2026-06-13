@@ -22,6 +22,7 @@ import {
 import {
   getScheduledArrivalsForStop,
   getNextScheduledPerLine,
+  getNextScheduledForLine,
   getLastDepartureForLine,
 } from "@/lib/schedule-db";
 import { detectLastBus } from "@/lib/delay-prediction";
@@ -260,7 +261,12 @@ export async function GET(req: NextRequest) {
       // Próximo schedule para cada línea sin live (ventana extendida a 3h)
       const nextPerLine = getNextScheduledPerLine(stopId, linesNeedingSchedule, 180);
       for (const s of nextPerLine) {
+        // R61: también el SIGUIENTE de la misma línea ("luego 23:55") — patrón
+        // Transit: la pregunta inmediata tras ver un horario es "¿y el de después?".
+        const next2 = getNextScheduledForLine(stopId, s.lineCode, 2);
+        const nextHoraStr = next2.length > 1 && next2[1].hora !== s.hora ? next2[1].horaStr : undefined;
         scheduledArrivals.push({
+          nextHoraStr,
           lineId: s.lineCode,
           lineName: s.lineCode,
           lineColor: lineColorFromCode(s.lineCode),

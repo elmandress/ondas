@@ -63,6 +63,11 @@ export default function ArrivalRow({
           ) : (
             <span className="as-muted">horario</span>
           )}
+          {/* R61 (patrón Transit): el siguiente programado inline — responde
+              "¿y el de después?" sin abrir el pager. */}
+          {arrival.isScheduled && arrival.nextHoraStr && (
+            <span className="as-muted">· luego {arrival.nextHoraStr}</span>
+          )}
           {arrival.remainingStops !== undefined && arrival.remainingStops > 0 && (
             <span className="as-muted">· a {arrival.remainingStops} {arrival.remainingStops === 1 ? "parada" : "paradas"}</span>
           )}
