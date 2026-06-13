@@ -336,9 +336,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 /* Acción principal del home — grande y obvia para cualquiera. */
 /* ── Preview del mapa en la Home ─────────────────────────────────────── */
 .home-map-preview {
-  position: relative; display: block; width: 100%; height: 150px;
-  border-radius: var(--r-card); overflow: hidden; border: 1px solid var(--border);
-  margin: 4px 0 var(--gap-section); background: var(--bg-elevated); cursor: pointer;
+  position: relative; display: block; width: 100%; height: 210px;
+  border-radius: var(--r-card); overflow: hidden; border: 1px solid var(--border-strong);
+  margin: 0 0 var(--gap-section); background: var(--bg-elevated); cursor: pointer;
+  box-shadow: var(--shadow-card);
   -webkit-tap-highlight-color: transparent;
   /* CLAVE: aísla el stacking context. Sin esto, el z-index:1200 del overlay y los
      panes internos de Leaflet (z 400-700) se escapan al contexto raíz y tapan los
@@ -348,7 +349,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 }
 /* El mapa llena el contenedor pero no interactúa (en la preview el tap = abrir). */
 .home-map-preview > :first-child { position: absolute; inset: 0; pointer-events: none; }
-.hmp-skel { width: 100%; height: 150px; }
+.hmp-skel { width: 100%; height: 210px; }
 .hmp-overlay {
   position: absolute; inset: 0; z-index: 1200; /* encima de los panes/controles de Leaflet */
   display: flex; flex-direction: column;
@@ -381,6 +382,26 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .il-when b { color: var(--text-2); font-weight: 700; }
 .il-soon { color: var(--accent); }
 
+/* ── Hero empty state — útil: próximo retorno + alternativa a pasos ──────── */
+.hero-empty { display: flex; flex-direction: column; gap: 12px; padding: 16px; min-height: 0; grid-template-columns: none; grid-template-rows: none; }
+.he-main { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; position: relative; z-index: 1; }
+.he-main:active { transform: scale(0.992); }
+.he-icon { width: 46px; height: 46px; border-radius: 13px; flex-shrink: 0; display: grid; place-items: center; background: var(--surface); color: var(--text-3); }
+.he-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.he-title { font: 700 16px/1.2 var(--ff); color: var(--text); }
+.he-sub { font: var(--font-small); color: var(--text-2); }
+.he-sub b { color: var(--text); font-weight: 700; }
+.he-main > svg { color: var(--text-3); flex-shrink: 0; }
+.he-lines { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; position: relative; z-index: 1; }
+.he-more { font: var(--font-small); color: var(--text-3); }
+.he-alt { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 11px 13px; border-radius: var(--r-chip); background: var(--surface); border: 1px solid var(--border); color: var(--text-2); position: relative; z-index: 1; }
+.he-alt:active { transform: scale(0.99); }
+.he-alt-txt { flex: 1; min-width: 0; font: var(--font-small); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.he-alt-txt b { color: var(--text); font-weight: 700; }
+.he-alt > svg:first-child { color: var(--accent); flex-shrink: 0; }
+.he-alt > svg:last-child { color: var(--text-3); flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { .he-main:active, .he-alt:active { transform: none; } }
+
 /* ── Pull-to-refresh (R58d) ──────────────────────────────────────────── */
 .ptr-indicator {
   position: absolute; top: -34px; left: 0; right: 0;
@@ -407,6 +428,21 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .home-alerts .ha-item { font: 400 13px/1.45 var(--ff); color: var(--text-2); }
 .home-alerts .ha-item b { display: block; color: var(--text); font: 700 14px/1.3 var(--ff); margin-bottom: 2px; }
 .home-alerts .ha-all { font: 700 13px/1 var(--ff); color: var(--accent); padding-top: 2px; }
+
+/* ── "Más" — secundario plegable (favoritos, rutas, Acciones STM) (R65) ── */
+.home-more { margin: var(--gap-section) 0 0; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--border); overflow: hidden; }
+.home-more > summary {
+  display: flex; align-items: center; gap: 10px; padding: 15px 16px; min-height: 52px;
+  cursor: pointer; list-style: none; color: var(--text);
+}
+.home-more > summary::-webkit-details-marker { display: none; }
+.home-more .hm-title { font: 700 15px/1 var(--ff); color: var(--text); flex-shrink: 0; }
+.home-more .hm-meta { flex: 1; min-width: 0; font: var(--font-small); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-more > summary > svg:last-child { color: var(--text-3); flex-shrink: 0; transition: transform .18s; }
+.home-more[open] > summary > svg:last-child { transform: rotate(90deg); }
+.home-more .hm-body { padding: 0 14px 16px; }
+/* Dentro del acordeón los section-head no necesitan tanto aire arriba. */
+.home-more .hm-body .section-head { padding-top: 18px; }
 
 .big-action { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
   margin-top: 6px; padding: 18px 18px; border-radius: var(--r-card);
@@ -530,9 +566,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .fav-row .eta-unit { font: 500 12px/1 var(--ff); color: var(--text-2); margin-left: 2px; }
 
 /* ============== Bottom sheet ============== */
-/* R58 (UI-2): backdrop más firme — antes (0.74) la home seguía compitiendo con el
-   sheet abierto. El blur queda; sube la opacidad para foco claro en el contenido. */
-.sheet-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(2,4,9,0.82); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+/* R58 (UI-2) + R65: backdrop firme — el hero debajo distraía y bajaba el contraste de
+   lectura del sheet. Opacidad ≥0.85 y más blur para foco claro en el contenido. */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(2,4,9,0.88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
 .bottom-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 101; max-height: 84vh;
@@ -992,9 +1028,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 [data-theme="light"] .glass { background: var(--surface); border-color: var(--border); }
 [data-theme="light"] .bottom-nav { background: rgba(255,255,255,0.92); }
 [data-theme="light"] .leaflet-container { background: #e8ebf0 !important; }
-/* R58: velo del backdrop más liviano en light (el negro 0.82 pensado para dark
-   aplasta el tema claro; acá alcanza menos para dar foco). */
-[data-theme="light"] .sheet-backdrop { background: rgba(40,33,20,0.45); }
+/* R65: velo del backdrop en light subido a ≥0.70 — a 0.45 el hero se transparentaba
+   detrás del sheet y competía por la atención. Tono cálido propio del tema claro. */
+[data-theme="light"] .sheet-backdrop { background: rgba(40,33,20,0.72); }
 
 /* Paneles/sheets con dark HARDCODEADO (Tailwind arbitrary) → claros en light, para
    que el texto (que el puente vuelve oscuro) sea legible. Solo aplica en light. */

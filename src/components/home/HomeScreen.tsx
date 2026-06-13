@@ -151,7 +151,25 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     }
   }, [location, stopsReady]);
 
-  const { arrivals: heroArrivals, loading: heroLoading, refetch: heroRefetch } = useArrivals(heroSource?.stopId ?? null, 20000);
+  const { arrivals: heroArrivals, inactiveLines: heroInactive, loading: heroLoading, refetch: heroRefetch } = useArrivals(heroSource?.stopId ?? null, 20000);
+
+  // Parada alternativa a pasos (≤150 m de la del hero) para el empty state "no viene
+  // ninguno": en vez de dejar al usuario sin salida, le ofrecemos otra parada cerca.
+  const heroAlt = useMemo(() => {
+    if (!heroSource) return null;
+    const src = STOPS_DATASET.find((s) => s.stopId === heroSource.stopId);
+    if (!src) return null;
+    const near = getNearbyStopsClient(src.stopLat, src.stopLon, 150, 5)
+      .filter((s) => s.stopId !== heroSource.stopId)
+      .map((s) => ({
+        stopId: s.stopId,
+        name: s.stopName.split(" – ")[0],
+        dist: Math.round(distanceTo(src.stopLat, src.stopLon, s.stopLat, s.stopLon)),
+        lines: s.lines.length,
+      }))
+      .sort((a, b) => a.dist - b.dist);
+    return near[0] ?? null;
+  }, [heroSource]);
 
   // Pull-to-refresh (QW-3, R58d): gesto esperado en mobile. Solo cuando el scroll
   // está arriba del todo; tirar >70px refresca las llegadas del hero. Sin
@@ -323,7 +341,10 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
             stopName={heroSource.stopName}
             stopAlias={heroSource.alias}
             atStop={heroSource.atStop}
+            inactiveLines={heroInactive}
+            altStop={heroAlt}
             onTap={() => setSheetStopId(heroSource.stopId)}
+            onAltTap={heroAlt ? () => setSheetStopId(heroAlt.stopId) : undefined}
           />
         ) : (!mounted || !stopsReady || locationStatus === "pending") ? (
           /* CARGANDO: skeleton del hero en vez de un empty state seco. Da sensación de
@@ -348,12 +369,8 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         )}
       </div>
 
-      {/* Preview del mapa: TU zona (ubicación + paradas + buses), tocar abre el mapa
-          completo. R58b: bajó debajo del hero — la pregunta que la app responde
-          ("¿cuándo salgo?") va ARRIBA del pliegue; el mapa es contexto, no la estrella. */}
-      <HomeMapPreview onOpen={() => onTabChange("map")} />
-
-      {/* Aviso de hora pico (solo dentro de la franja) */}
+      {/* Aviso de hora pico (solo dentro de la franja) — contextual al "cuándo salir",
+          va pegado al hero. */}
       <PeakHint />
 
       {/* Paradas cercanas (chips). Si estás PARADO en una parada, estas son ALTERNATIVAS:
@@ -386,73 +403,97 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         </>
       )}
 
-      {/* NOTA: la sección "Mis atajos" se eliminó — duplicaba los favoritos con alias
-          (Casa/Trabajo) que ya aparecen arriba como source-tabs (cambian el contador) y
-          como botones "A casa/A trabajo" (planifican la ruta). Mostrar el mismo dato 3
-          veces era complejidad innecesaria. Editar alias se hace desde "Paradas favoritas". */}
-
-      {/* Paradas favoritas — TODAS (con alias Casa/Trabajo y sin alias). Antes solo
-          mostraba las sin-alias porque las otras estaban en "Mis atajos"; al eliminar esa
-          sección, acá viven todas (editar/borrar incluido). */}
-      {mounted && favoriteStops.length > 0 && (
-        <>
-          <div className="section-head"><h2>Paradas favoritas</h2><span className="link">{favoriteStops.length}</span></div>
-          <div className="list-stack">
-            {favoriteStops.slice(0, 6).map((fav) => (
-              <FavoriteStopRow
-                key={fav.stopId}
-                fav={fav}
-                onTap={() => setSheetStopId(fav.stopId)}
-                onRemove={() => removeFavoriteStop(fav.stopId)}
-                onEditAlias={() => setEditingAlias({ stopId: fav.stopId, stopName: fav.stopName, alias: fav.alias })}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Mis rutas */}
-      {mounted && (
+      {/* Sección 3 — Mapa en vivo, prominente (R65). Antes quedaba enterrado entre
+          listas; ahora es una de las 3 secciones principales de la home, con encabezado
+          propio y más alto. Solo si hay ubicación (HomeMapPreview ya devuelve null sin ella). */}
+      {location && (
         <>
           <div className="section-head">
-            <h2>Mis rutas</h2>
-            <button className="link" onClick={() => setShowRoutesManager(true)}>
-              {favorites.length > 0 ? "Editar" : <><Icons.Plus size={14} /> Agregar</>}
-            </button>
+            <h2>Mapa en vivo</h2>
+            <button className="link" onClick={() => onTabChange("map")}>Abrir <Icons.Chevron size={14} /></button>
           </div>
-          {favorites.length > 0 ? (
-            <div className="list-stack">
-              {favorites.map((fav) => (
-                <FavoriteRouteRow key={fav.id} route={fav} onTap={() => openFavorite(fav)} />
-              ))}
-            </div>
-          ) : (
-            <button onClick={() => setShowRoutesManager(true)} className="fav-row" style={{ borderStyle: "dashed", width: "100%", cursor: "pointer" }}>
-              <span className="lead-icon" style={{ color: "var(--accent)" }}><Icons.Route size={18} /></span>
-              <div className="text"><div className="meta" style={{ marginTop: 0 }}>Guardá tus rutas favoritas para acceso rápido</div></div>
-            </button>
-          )}
+          <HomeMapPreview onOpen={() => onTabChange("map")} />
         </>
       )}
 
-      {/* Acciones STM */}
-      <div className="section-head"><h2>Acciones STM</h2></div>
-      <div className="shortcut-grid">
-        <button onClick={() => { setShowSaldo(true); track("open_saldo_stm"); }} className="shortcut-card tap-card" style={{ textAlign: "left" }}>
-          <div className="top">
-            <span className="emo" style={{ background: "var(--live-soft)", color: "var(--live)" }}>💳</span>
-            <span className="alias">Saldo STM</span>
+      {/* ── "Más" (R65): lo secundario plegado para bajar densidad sin perder acceso
+          ni retención. Favoritos y rutas son el gancho de volver; Saldo STM solo se abre
+          desde acá (no orfanarlo). Cerrado por defecto; el resumen anticipa qué hay.
+          NOTA: la vieja sección "Mis atajos" se eliminó — duplicaba los favoritos con
+          alias (Casa/Trabajo) que ya aparecen arriba como source-tabs y botones. */}
+      {mounted && (
+        <details className="home-more">
+          <summary>
+            <span className="hm-title">Más</span>
+            <span className="hm-meta">
+              {[
+                favoriteStops.length > 0 ? `${favoriteStops.length} ${favoriteStops.length === 1 ? "favorita" : "favoritas"}` : null,
+                favorites.length > 0 ? `${favorites.length} ${favorites.length === 1 ? "ruta" : "rutas"}` : null,
+                "Saldo STM",
+              ].filter(Boolean).join(" · ")}
+            </span>
+            <Icons.Chevron size={16} />
+          </summary>
+          <div className="hm-body">
+            {/* Paradas favoritas — todas (con alias Casa/Trabajo y sin alias) */}
+            {favoriteStops.length > 0 && (
+              <>
+                <div className="section-head"><h2>Paradas favoritas</h2><span className="link">{favoriteStops.length}</span></div>
+                <div className="list-stack">
+                  {favoriteStops.slice(0, 6).map((fav) => (
+                    <FavoriteStopRow
+                      key={fav.stopId}
+                      fav={fav}
+                      onTap={() => setSheetStopId(fav.stopId)}
+                      onRemove={() => removeFavoriteStop(fav.stopId)}
+                      onEditAlias={() => setEditingAlias({ stopId: fav.stopId, stopName: fav.stopName, alias: fav.alias })}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Mis rutas */}
+            <div className="section-head">
+              <h2>Mis rutas</h2>
+              <button className="link" onClick={() => setShowRoutesManager(true)}>
+                {favorites.length > 0 ? "Editar" : <><Icons.Plus size={14} /> Agregar</>}
+              </button>
+            </div>
+            {favorites.length > 0 ? (
+              <div className="list-stack">
+                {favorites.map((fav) => (
+                  <FavoriteRouteRow key={fav.id} route={fav} onTap={() => openFavorite(fav)} />
+                ))}
+              </div>
+            ) : (
+              <button onClick={() => setShowRoutesManager(true)} className="fav-row" style={{ borderStyle: "dashed", width: "100%", cursor: "pointer" }}>
+                <span className="lead-icon" style={{ color: "var(--accent)" }}><Icons.Route size={18} /></span>
+                <div className="text"><div className="meta" style={{ marginTop: 0 }}>Guardá tus rutas favoritas para acceso rápido</div></div>
+              </button>
+            )}
+
+            {/* Acciones STM */}
+            <div className="section-head"><h2>Acciones STM</h2></div>
+            <div className="shortcut-grid">
+              <button onClick={() => { setShowSaldo(true); track("open_saldo_stm"); }} className="shortcut-card tap-card" style={{ textAlign: "left" }}>
+                <div className="top">
+                  <span className="emo" style={{ background: "var(--live-soft)", color: "var(--live)" }}>💳</span>
+                  <span className="alias">Saldo STM</span>
+                </div>
+                <div className="nextline">Consultar y recargar</div>
+              </button>
+              <a href="https://montevideo.gub.uy/buzon-ciudadano" target="_blank" rel="noopener noreferrer" className="shortcut-card tap-card">
+                <div className="top">
+                  <span className="emo" style={{ background: "var(--sched-soft)", color: "var(--sched)" }}>📣</span>
+                  <span className="alias">Reportar</span>
+                </div>
+                <div className="nextline">Buzón ciudadano IM</div>
+              </a>
+            </div>
           </div>
-          <div className="nextline">Consultar y recargar</div>
-        </button>
-        <a href="https://montevideo.gub.uy/buzon-ciudadano" target="_blank" rel="noopener noreferrer" className="shortcut-card tap-card">
-          <div className="top">
-            <span className="emo" style={{ background: "var(--sched-soft)", color: "var(--sched)" }}>📣</span>
-            <span className="alias">Reportar</span>
-          </div>
-          <div className="nextline">Buzón ciudadano IM</div>
-        </a>
-      </div>
+        </details>
+      )}
 
       <div style={{ height: 28 }} />
 

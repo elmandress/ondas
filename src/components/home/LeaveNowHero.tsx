@@ -16,10 +16,16 @@ interface LeaveNowHeroProps {
   stopAlias?: string;
   /** La ubicación coincide con la parada (≤40 m) → "estás parado acá ahora". */
   atStop?: boolean;
+  /** Líneas de la parada que no corren ahora, con su retorno (R64). Para el empty state. */
+  inactiveLines?: Array<{ line: string; resumesHHMM: string; resumesInMin: number }>;
+  /** Parada alternativa a pasos (≤150 m) — sugerencia cuando no viene ninguno. */
+  altStop?: { stopId: string; name: string; dist: number; lines: number } | null;
   onTap: () => void;
+  /** Abrir la parada alternativa sugerida. */
+  onAltTap?: () => void;
 }
 
-export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName, stopAlias, atStop, onTap }: LeaveNowHeroProps) {
+export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName, stopAlias, atStop, inactiveLines, altStop, onTap, onAltTap }: LeaveNowHeroProps) {
   const first = arrivals[0];
 
   // Tick de 1s para re-renderizar el countdown; el valor no se lee directamente.
@@ -48,14 +54,41 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
   }
 
   if (!arrivals.length) {
+    // Empty state útil (no seco): decimos a qué hora VUELVE el próximo servicio y
+    // ofrecemos una parada alternativa a pasos. "No viene ninguno" a secas manda al
+    // usuario a adivinar; esto le da la próxima acción concreta.
+    const emptyName = stopAlias || stopName?.split(" – ")[0] || stopName;
+    const soonest = inactiveLines && inactiveLines.length > 0 ? inactiveLines[0] : null;
     return (
-      <button onClick={onTap} className="hero-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10, cursor: "pointer", width: "100%" }}>
-        <div style={{ width: 48, height: 48, borderRadius: 14, background: "var(--surface)", display: "grid", placeItems: "center", color: "var(--text-3)" }}>
-          <Icons.Bus size={24} />
-        </div>
-        <p style={{ font: "700 15px/1.2 var(--ff)", color: "var(--text-2)" }}>No viene ninguno en los próximos 30 min</p>
-        <p style={{ font: "var(--font-small)", color: "var(--text-3)" }}>{(stopAlias || stopName) ? `Tocá para ver ${stopAlias || stopName?.split(" – ")[0]}` : "Tocá para ver la parada o probá otra cercana"}</p>
-      </button>
+      <div className="hero-card hero-empty">
+        <button onClick={onTap} className="he-main" aria-label={emptyName ? `Ver la parada ${emptyName}` : "Ver la parada"}>
+          <span className="he-icon"><Icons.Bus size={22} /></span>
+          <span className="he-text">
+            <span className="he-title">No viene ninguno ahora</span>
+            {soonest ? (
+              <span className="he-sub">El próximo vuelve ~<b>{soonest.resumesHHMM}</b>{soonest.resumesInMin < 120 ? ` · en ${soonest.resumesInMin} min` : ""}</span>
+            ) : (
+              <span className="he-sub">Sin servicios en los próximos 30 min{emptyName ? ` en ${emptyName}` : ""}</span>
+            )}
+          </span>
+          <Icons.Chevron size={18} />
+        </button>
+
+        {inactiveLines && inactiveLines.length > 0 && (
+          <div className="he-lines" aria-label="Líneas que vuelven a pasar más tarde">
+            {inactiveLines.slice(0, 6).map((il) => <LineBadge key={il.line} num={il.line} size="xs" />)}
+            {inactiveLines.length > 6 && <span className="he-more">+{inactiveLines.length - 6}</span>}
+          </div>
+        )}
+
+        {altStop && onAltTap && (
+          <button className="he-alt" onClick={onAltTap}>
+            <Icons.Walk size={15} />
+            <span className="he-alt-txt">A <b>{altStop.dist} m</b> tenés otra parada · {altStop.name}</span>
+            <Icons.Chevron size={15} />
+          </button>
+        )}
+      </div>
     );
   }
 

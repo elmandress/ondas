@@ -232,7 +232,13 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
             ) : interior ? (
               <EmptyState icon={<Icons.Bus size={28} />} title="Ningún bus se acerca ahora" sub="Mostramos los buses del interior en vivo cuando esta parada es su próxima. Mirá el mapa para ver todos los que circulan en la zona." />
             ) : (
-              <EmptyState icon={<Icons.Bus size={28} />} title="Sin buses próximamente" sub="No hay servicios en los próximos 30 min." />
+              <EmptyState
+                icon={<Icons.Bus size={28} />}
+                title="No viene ninguno ahora"
+                sub={inactiveLines.length > 0
+                  ? "Abajo te decimos a qué hora vuelven y qué para a pasos."
+                  : "Sin servicios en los próximos 30 min. Mirá las paradas a pasos abajo."}
+              />
             )
           ) : shown.length === 0 ? (
             <EmptyState icon={<Icons.Bus size={28} />} title="Ninguno confirma ese filtro" sub="El dato de accesibilidad/aire no siempre viene por bus. Probá sin filtro." />
