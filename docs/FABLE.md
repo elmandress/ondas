@@ -1099,3 +1099,30 @@ sesión dedicada (el endpoint de arrivals es central; no apurarlo).
 - line-hours: saturación falsa 67%→14%, 198 líneas con ventana real. ✓
 - Detección de buses: canon de líneas, proyección "ya pasó", filtro horario correcto. ✓
 - El bus seguido no muere al pasar la parada. ✓
+
+---
+
+## 24. Sesión R63 (2026-06-13) — investigación competitiva, auditoría, simplificación
+
+### Investigación de competidores y fuentes de datos (web, a fondo)
+- **No existe GTFS-realtime público para Montevideo.** El API oficial
+  (api.montevideo.gub.uy/apidocs) expone SOLO 2 servicios: transporte público (buses +
+  busstopId + upcomingbuses + GTFS estático — lo que Cuándo YA usa entero) y playas.
+  No hay feed estándar de vehicle-positions/trip-updates/alerts que tomar.
+- **catalogodatos.gub.uy** (interdept CSV, PG-5) tiene cert auto-firmado (AGESIC) que
+  rompe TODO fetch automático, incluso WebFetch server-side. El dato es público pero la
+  automatización requiere el CA de AGESIC o bajada manual. No bloqueante.
+- **Maprab** (principal competidor UY): paridad de features de ruteo con Cuándo
+  (origen/destino, 3 paradas, optimizar rápido/transbordos/caminata, salir ya). Los
+  diferenciales de Cuándo se sostienen: "cuándo SALIR", seguridad nocturna, honestidad,
+  SEO por entidad, GPS interior. Conclusión: Cuándo ya está sobre la mejor data disponible.
+
+### Auditoría del motor de horarios (post-fix HHMM) — SIN bugs
+Verificado en vivo a las 10:38 sábado contra los shards: 4D eta 3, 2A eta 16 coinciden
+exacto. El fix HHMM es correcto en todos los tipos de día (un falso positivo inicial fue
+mi probe usando tipo 1 en sábado). Nota menor aceptada: un programado que salió hace
+≤2 min se muestra "ahora" (tolerancia de reconciliación con vivo).
+
+### Diseño — simplificación
+El selector de fuente del hero ("Estás acá") solo aparece con 2+ paradas. Con una sola,
+"Estás acá" se repetía 3 veces (label + pill + dentro del hero) → ahora una sola vez.

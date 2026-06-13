@@ -294,7 +294,9 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       {/* Selector de origen + Hero. Si estás PARADO en una parada (≤40m), lo decimos
           derecho ("Estás en esta parada") y mostramos sus buses sin que toques nada. */}
       <label className="source-label">{atStopNow && heroSource?.atStop ? "Estás en esta parada" : "¿Cuándo te tenés que ir?"}</label>
-      {heroSources.length > 0 && (
+      {/* R63: el selector de fuente solo si hay ELECCIÓN real (2+). Con una sola parada
+          el pill "Estás acá" repetía lo que ya dicen el label y el hero (3 veces lo mismo). */}
+      {heroSources.length > 1 && (
         <div className="source-tabs">
           {heroSources.map((src, i) => (
             <button
