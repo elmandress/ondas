@@ -41,6 +41,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
   const lastUpdated = interior ? new Date() : stm.lastUpdated;
   const lastFetchFailed = interior ? false : stm.lastFetchFailed;
   const isOffline = interior ? false : stm.isOffline;
+  const inactiveLines = interior ? [] : stm.inactiveLines;
   const refetch = interior ? () => {} : stm.refetch;
   const realLines = info?.variants.map((v) => v.lineCode) || stop?.lines || [];
   const [lineDetail, setLineDetail] = useState<{ line: string; destination?: string; company?: string } | null>(null);
@@ -246,6 +247,23 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
 
         {arrivals.length > 0 && (
           <OccupancySection stopId={stopId} lines={[...new Set(arrivals.map((a) => a.lineName))]} />
+        )}
+
+        {/* R64: líneas que paran acá pero NO corren ahora — honestidad. En vez de
+            ocultarlas (¿falló la app o no pasa el bus?), las mostramos con su retorno. */}
+        {!interior && inactiveLines.length > 0 && (
+          <div className="inactive-lines">
+            <div className="il-head">No están pasando ahora</div>
+            {inactiveLines.slice(0, 6).map((il) => (
+              <div key={il.line} className="il-row">
+                <LineBadge num={il.line} size="sm" />
+                <span className="il-when">
+                  vuelve ~<b>{il.resumesHHMM}</b>
+                  {il.resumesInMin < 90 ? <span className="il-soon"> · en {il.resumesInMin} min</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
 
         {stop && <NearbyAlternatives stop={stop} currentLines={realLines.length ? realLines : stop.lines} />}

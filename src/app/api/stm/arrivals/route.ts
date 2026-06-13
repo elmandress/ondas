@@ -26,6 +26,7 @@ import {
   getLastDepartureForLine,
 } from "@/lib/schedule-db";
 import { detectLastBus } from "@/lib/delay-prediction";
+import { getLineHoursLookup } from "@/lib/line-hours";
 import {
   isMvdApiConfigured,
   getBuses,
@@ -334,9 +335,31 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ─── R64: líneas de la parada que NO están corriendo ahora (honestidad) ───
+    // En vez de OMITIR una línea sin llegada (¿falló la app o el bus no pasa?), la
+    // mostramos muteada con su retorno. CLAVE (fix del 1er intento): solo si la línea
+    // GENUINAMENTE no opera ahora según su ventana AGREGADA (line-hours, bitset más
+    // completo que el horario por-parada). Sin este guard, una línea que SÍ corre pero
+    // sin bus cerca + horario sparse en este stop se mostraba "vuelve 20:00" = mentira.
+    const linesWithArrival = new Set(combined.map((a) => a.lineName));
+    const hoursLookup = getLineHoursLookup();
+    const inactiveLines: Array<{ line: string; resumesHHMM: string; resumesInMin: number }> = [];
+    for (const lc of lineCodes) {
+      if (linesWithArrival.has(lc)) continue;
+      // Si la línea opera ahora o en los próximos 60 min (ventana agregada), NO es
+      // inactiva: simplemente no hay bus cerca / falta el dato puntual → no la mostramos.
+      if (!hoursLookup.hasData(lc) || hoursLookup.operatesNowOrSoon(lc, 60)) continue;
+      const next = getNextScheduledForLine(stopId, lc, 1, 16 * 60); // próximas 16h
+      if (next.length > 0 && next[0].minutesFromNow > 0) {
+        inactiveLines.push({ line: lc, resumesHHMM: next[0].horaStr, resumesInMin: next[0].minutesFromNow });
+      }
+    }
+    inactiveLines.sort((a, b) => a.resumesInMin - b.resumesInMin);
+
     return NextResponse.json(
       {
         arrivals: combined,
+        inactiveLines: inactiveLines.slice(0, 8),
         stopId,
         updatedAt: Date.now(),
         source: sources.join("+") || "empty",

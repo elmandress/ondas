@@ -1126,3 +1126,37 @@ mi probe usando tipo 1 en sábado). Nota menor aceptada: un programado que sali�
 ### Diseño — simplificación
 El selector de fuente del hero ("Estás acá") solo aparece con 2+ paradas. Con una sola,
 "Estás acá" se repetía 3 veces (label + pill + dentro del hero) → ahora una sola vez.
+
+---
+
+## 25. Sesión R64 (2026-06-13) — rediseño visual + "no corre ahora" (mayor próximo paso)
+
+### Rediseño a nivel design-tokens (cascada a toda la app)
+- **Fondo neutro near-black** (#0a0b0f) en vez del azul (#070b14) → el ámbar (marca)
+  resalta más; se siente premium, no "utilitario genérico".
+- **Radios más generosos** (card 14→18, lg 18→24, chip 10→12) → look de app moderna.
+- **Sombras más suaves y amplias**; **ámbar un punto más vivo** (#f5a623) + token
+  `--accent-grad` para superficies firma. Glow del hero más presente.
+- **Bottom nav**: estado activo = pastilla ámbar suave detrás del ícono + micro-scale
+  (patrón contemporáneo) en vez de la barrita.
+- **Home**: el selector de fuente del hero solo con 2+ paradas (antes "Estás acá" ×3).
+
+### "No corre ahora · vuelve ~05:15" — el mayor próximo paso (HECHO)
+Honestidad llevada al caso nocturno: una línea de la parada sin llegada ya no se OMITE
+(¿falló la app o no pasa el bus?) — se muestra muteada con su retorno.
+- `arrivals` route: campo aditivo `inactiveLines` (línea + resumesHHMM + resumesInMin).
+- **Guard de honestidad CLAVE** (bug del 1er intento, corregido): solo se marca inactiva
+  si la línea GENUINAMENTE no opera ahora según `getLineHoursLookup().operatesNowOrSoon`
+  (bitset agregado, más completo que el horario sparse por-parada). Sin el guard, una
+  línea que SÍ corre pero sin bus cerca + dato puntual faltante mostraba "vuelve 20:00"
+  = mentira. Verificado: 187/102/148 (corren todo el día) YA NO aparecen; solo 106/133
+  (tardías reales) y 495 (nocturna) → su hora de retorno real.
+- Threaded aditivo por useArrivals (sin tocar el array `arrivals`) → StopArrivalSheet
+  renderiza sección muteada "No están pasando ahora".
+
+tsc 0 · 199/199 · build OK · verificado en vivo (parada 4769: 106→00:51, 133→01:11).
+
+### Investigación web (R63) — conclusión
+No hay GTFS-realtime público para MVD; Cuándo ya usa la única fuente oficial. Maprab a
+paridad de ruteo. La ventaja se gana con SEO + diferenciales (cuándo salir, seguridad
+nocturna, honestidad), no con más datos.

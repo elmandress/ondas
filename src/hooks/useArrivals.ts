@@ -25,6 +25,8 @@ function writeCache(stopId: string, arrivals: Arrival[]) {
 
 export function useArrivals(stopId: string | null, intervalMs = 20000) {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
+  // R64: líneas de la parada que no corren ahora (con su hora de retorno). Aditivo.
+  const [inactiveLines, setInactiveLines] = useState<Array<{ line: string; resumesHHMM: string; resumesInMin: number }>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -55,6 +57,7 @@ export function useArrivals(stopId: string | null, intervalMs = 20000) {
       const data = await res.json();
       const fresh = data.arrivals || [];
       setArrivals(fresh);
+      setInactiveLines(data.inactiveLines || []);
       writeCache(stopId, fresh);
       setLastUpdated(new Date());
       setLastFetchFailed(false);
@@ -127,5 +130,5 @@ export function useArrivals(stopId: string | null, intervalMs = 20000) {
     };
   }, [fetchArrivals, stopId, intervalMs]);
 
-  return { arrivals, loading, error, lastUpdated, lastFetchFailed, isOffline, refetch: fetchArrivals };
+  return { arrivals, inactiveLines, loading, error, lastUpdated, lastFetchFailed, isOffline, refetch: fetchArrivals };
 }
