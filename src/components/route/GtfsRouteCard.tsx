@@ -10,6 +10,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import type { PlannedRouteDto, RouteLegDto } from "@/hooks/useRouteplanner";
 import { fareLabel, fareDetail } from "@/lib/fare";
+import { walkToLeaveTime, leaveNowUrgency } from "@/lib/utils";
 import { tripImpactLabel } from "@/lib/trip-impact";
 import { shareTrip } from "@/lib/share-trip";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
@@ -128,6 +129,24 @@ export default function GtfsRouteCard({
       <div className="divider" />
 
       <div className="px-4 py-5">
+        {/* R61: "Salí en X" — el DIFERENCIAL de la app ("te decimos cuándo SALIR")
+            llevado al paso a paso, donde más importa. Solo en modo "salí ahora"
+            (no si elegiste "Más tarde", donde la salida es la hora elegida). Usa el
+            MISMO fetch que el timeline (cache compartido) → cero red extra. */}
+        {!isWalkOnly && !departAt && (() => {
+          let walkBefore = 0;
+          for (const l of route.legs) {
+            if (l.type === "walk") { walkBefore += l.durationS; continue; }
+            return (
+              <LeaveBanner
+                stopId={l.fromStopId}
+                line={(l.lines && l.lines[0]) || ""}
+                walkMin={Math.round(walkBefore / 60)}
+              />
+            );
+          }
+          return null;
+        })()}
         {usesMetro && (
           <div className="metro-note" style={{ marginBottom: 16 }}>
             <Icons.Bus size={15} />
@@ -259,6 +278,27 @@ export default function GtfsRouteCard({
       </div>
       </>}
     </motion.div>
+  );
+}
+
+// ── LeaveBanner ────────────────────────────────────────────────────
+// "Salí en X min / Salí ahora" — el diferencial de Cuándo en el paso a paso.
+// Comparte el cache de useNextArrivalForLine con el timeline (mismo stopId+line),
+// así que no agrega ninguna llamada de red.
+function LeaveBanner({ stopId, line, walkMin }: { stopId?: string; line: string; walkMin: number }) {
+  const { etaMin, realtime, loading } = useNextArrivalForLine(stopId, line);
+  if (loading || etaMin === null) return null;
+  const leaveIn = walkToLeaveTime(walkMin, etaMin);
+  const urgency = leaveNowUrgency(leaveIn);
+  const txt = leaveIn <= 0 ? "Salí ahora" : `Salí en ${leaveIn} min`;
+  const sub = leaveIn <= 0
+    ? `el ${line} llega en ${etaMin === 0 ? "<1" : etaMin} min`
+    : `para tomar el ${line} (${realtime ? "en vivo" : "horario"})`;
+  return (
+    <div className={`leave-banner u-${urgency}`} role="status">
+      <span className="lb-icon"><Icons.Clock size={16} /></span>
+      <div className="lb-text"><b>{txt}</b><span>{sub}</span></div>
+    </div>
   );
 }
 
