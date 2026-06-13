@@ -12,6 +12,7 @@ import type { PlannedRouteDto, RouteLegDto } from "@/hooks/useRouteplanner";
 import { fareLabel, fareDetail } from "@/lib/fare";
 import { walkToLeaveTime, leaveNowUrgency } from "@/lib/utils";
 import { tripImpactLabel } from "@/lib/trip-impact";
+import { assessTripSafety } from "@/lib/trip-safety";
 import { shareTrip } from "@/lib/share-trip";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
 import { Icons } from "@/components/brand/Icons";
@@ -41,6 +42,11 @@ export default function GtfsRouteCard({
   // suburbanas. Lo decimos derecho (honestidad #1).
   const usesMetro = route.legs.some((l) => l.type === "bus" && l.variantId?.startsWith("M-"));
   const isWalkOnly = route.signature === "walk";
+  // R62: exposición a pie de noche, VISIBLE al elegir (no enterrada en el taxi del
+  // detalle). De día assess da level "none" → no muestra nada. El diferencial único
+  // de Cuándo en UY (seguridad nocturna contextual), al frente, en el punto de decisión.
+  const nightAdvice = assessTripSafety(route);
+  const showNightWalk = !isWalkOnly && (nightAdvice.level === "recommend" || nightAdvice.level === "soft") && nightAdvice.nightWalkM >= 450;
   // Continuación de la misma línea (183→183): el recorrido cambia, no es "otra línea".
   const contLine = route.sameLineContinuation
     ? (route.legs.find((l) => l.type === "bus")?.lines?.[0] ?? null)
@@ -104,6 +110,19 @@ export default function GtfsRouteCard({
           <Icons.Chevron size={18} />
         </span>
       </button>
+
+      {/* R62: exposición a pie de noche del viaje, en el resumen. Te deja COMPARAR
+          rutas por seguridad antes de elegir (no abrir cada una). El detalle + la
+          opción de taxi por tramo siguen en MixedTripOption al expandir. */}
+      {showNightWalk && !safeBadge && (
+        <div className={`night-walk ${nightAdvice.level === "recommend" ? "rec" : ""}`}>
+          <span className="nw-ico" aria-hidden><Icons.Moon size={13} /></span>
+          <span>
+            Caminás <b>{Math.round(nightAdvice.nightWalkM)} m de noche</b>
+            {nightAdvice.level === "recommend" ? <> por zona poco transitada · <b>mirá el taxi por tramo</b></> : <> · tocá para ver opciones</>}
+          </span>
+        </div>
+      )}
 
       {/* Sello "más tranquila de noche": recomendación contextual real (no decorativa) —
           esta opción reduce la caminata nocturna por poco más de tiempo. */}

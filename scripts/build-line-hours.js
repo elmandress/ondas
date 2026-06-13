@@ -69,7 +69,11 @@ function main() {
         )
         .all(...vars, tipo);
       for (const r of rows) {
-        const minOfDay = ((r.hora % 1440) + 1440) % 1440;
+        // ⚠ schedule.db urbano guarda `hora` como HHMM (607 = 6:07), NO como minutos
+        // (auditado R62). Sin convertir, 13:20 (1320) caía en el cuarto de las 22:00 →
+        // ventanas de servicio CORRUPTAS en las landings /linea y el filtro horario del
+        // ruteo. (metro-schedule.db SÍ son minutos: lo maneja merge-metro-hours.js.)
+        const minOfDay = Math.floor(r.hora / 100) * 60 + (r.hora % 100);
         const q = Math.floor(minOfDay / 15); // 0..95
         bits[Math.floor(q / 8)] |= 1 << (q % 8);
       }

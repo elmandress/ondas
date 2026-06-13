@@ -82,3 +82,34 @@ describe("trip-safety · alternativa más segura", () => {
     expect(saferAlternative([tripZoneNight, tripZoneNight], [1840, 2000], 0, at(14))).toBeNull();
   });
 });
+
+// R62: el chip "caminás N m de noche" del resumen depende de nightWalkM + level.
+// Congela el contrato que usa GtfsRouteCard (umbral 450 m; de día = none).
+describe("trip-safety · chip de exposición nocturna (resumen de ruta)", () => {
+  it("caminata larga de noche al destino → nightWalkM ≥ umbral y level accionable", () => {
+    const trip: SafetyTrip = {
+      numTransfers: 0,
+      legs: [
+        { type: "walk", distanceM: 120, durationS: 100, fromStopName: "origen", toStopName: "parada", polyline: [[-34.90, -56.18], [-34.901, -56.181]] },
+        { type: "bus", distanceM: 4000, durationS: 1000 },
+        { type: "walk", distanceM: 650, durationS: 520, fromStopName: "parada", toStopName: "destino", polyline: [[-34.86, -56.17], [-34.862, -56.172]] },
+      ],
+    };
+    const a = assessTripSafety(trip, at(23));
+    expect(a.nightWalkM).toBeGreaterThanOrEqual(450);
+    expect(["soft", "recommend"]).toContain(a.level);
+  });
+
+  it("de día el mismo viaje no dispara el chip (level none, nightWalkM 0)", () => {
+    const trip: SafetyTrip = {
+      numTransfers: 0,
+      legs: [
+        { type: "bus", distanceM: 4000, durationS: 1000 },
+        { type: "walk", distanceM: 650, durationS: 520, fromStopName: "parada", toStopName: "destino", polyline: [[-34.86, -56.17], [-34.862, -56.172]] },
+      ],
+    };
+    const a = assessTripSafety(trip, at(14));
+    expect(a.level).toBe("none");
+    expect(a.nightWalkM).toBe(0);
+  });
+});

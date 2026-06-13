@@ -26,6 +26,14 @@ const OUT_DIR = path.join(ROOT, "data", "sched");
 const SHARDS = 32;
 
 const canonLine = (s) => String(s).trim().replace(/\s+/g, " ").toUpperCase();
+
+// ⚠ ENCODING MIXTO (auditado R62, bug grande): schedule.db urbano guarda `hora` como
+// HHMM (607 = 6:07, 1320 = 13:20 — CERO filas con minutos>59), pero metro-schedule.db
+// la guarda como MINUTOS desde medianoche. Si no se normaliza, el runtime lee HHMM como
+// minutos y un viaje de 14:07 se muestra "23:27". Convertimos TODO a minutos de día
+// (0-1439) acá, en la fuente única.
+const hhmmToMin = (h) => Math.floor(h / 100) * 60 + (h % 100); // urbano
+const wrapMin = (m) => ((m % 1440) + 1440) % 1440;             // metro (post-medianoche → 0-1439)
 // Mismo hash que src/lib/schedule-db.ts (mantener sincronizados).
 const shardOf = (stopId) => {
   let h = 0;
@@ -54,7 +62,7 @@ function add(stopId, tipo, line, hora) {
   for (const r of db.prepare("SELECT tipo_dia, cod_variante, parada, hora FROM schedules").iterate()) {
     const line = v2lCanon[String(r.cod_variante)];
     if (!line) { unmapped++; continue; }
-    add(String(r.parada), String(r.tipo_dia), line, r.hora);
+    add(String(r.parada), String(r.tipo_dia), line, hhmmToMin(r.hora)); // HHMM → minutos
     rows++;
   }
   db.close();
@@ -66,7 +74,7 @@ function add(stopId, tipo, line, hora) {
   const db = new Database(path.join(ROOT, "data", "metro-schedule.db"), { readonly: true });
   let rows = 0;
   for (const r of db.prepare("SELECT stop_id, line, tipo_dia, hora FROM schedules").iterate()) {
-    add(String(r.stop_id), String(r.tipo_dia), canonLine(r.line), r.hora);
+    add(String(r.stop_id), String(r.tipo_dia), canonLine(r.line), wrapMin(r.hora)); // ya minutos
     rows++;
   }
   db.close();

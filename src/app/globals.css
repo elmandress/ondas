@@ -854,6 +854,19 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .leave-banner.u-soon .lb-icon { background: var(--accent-bg); }
 .leave-banner.u-soon .lb-text b { color: var(--accent); }
 .leave-banner.u-chill .lb-icon { background: var(--text-2); }
+
+/* R62: chip de exposición a pie de noche en el resumen de ruta. Sobrio (no asusta):
+   informa para comparar. "rec" (zona poco transitada) sube un punto el énfasis. */
+.night-walk {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 16px 12px; padding: 8px 11px; border-radius: var(--r-chip);
+  background: rgba(120,140,255,0.08);
+  font: 500 12px/1.35 var(--ff); color: var(--text-2);
+}
+.night-walk b { color: var(--text); font-weight: 700; }
+.night-walk .nw-ico { display: grid; place-items: center; color: var(--sched); flex-shrink: 0; }
+.night-walk.rec { background: var(--accent-soft); }
+.night-walk.rec .nw-ico { color: var(--accent); }
 .mixed-trip-toggle {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   padding: 11px 13px; color: var(--text);

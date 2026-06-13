@@ -84,12 +84,19 @@ function toArrival(line: string, hora: number, refMinutes: number): ScheduledArr
   };
 }
 
-/** Minutos de una línea dentro de [min, max], desde el string empaquetado. */
+/**
+ * Minutos de una línea dentro de [min, max], desde el string empaquetado.
+ * Los horarios son minutos de día (0-1439); `max` puede pasar de 1440 (ventana que
+ * cruza medianoche). Para que a las 23:55 aparezca el viaje de 00:15, probamos cada
+ * valor TAMBIÉN sumándole 1440 (el día siguiente). Devuelve minutos relativos al día
+ * de la consulta (00:15 del día siguiente → 1455), así minutesFromNow sale correcto.
+ */
 function minutesInWindow(packed: string, min: number, max: number): number[] {
   const out: number[] = [];
   for (const part of packed.split(",")) {
     const h = Number(part);
     if (h >= min && h <= max) out.push(h);
+    else if (max > 1440 && h + 1440 >= min && h + 1440 <= max) out.push(h + 1440);
   }
   return out;
 }
