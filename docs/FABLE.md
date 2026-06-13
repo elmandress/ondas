@@ -988,3 +988,51 @@ back3 sería salir (correcto); cerrar con ✕ no deja back fantasma; 195/195 · 
 lint 0 errores · build OK.
 **Regla nueva del proyecto**: NUNCA `replaceState(null, …)` — siempre preservar
 `window.history.state` (los internals del router viven ahí).
+
+---
+
+## 21. Sesión R60–R61 (2026-06-12) — horarios vivos en prod, trackeo, diferencial
+
+### R60 — los "próximos horarios" estaban MUERTOS en producción (causa raíz)
+schedule.db (84MB, no se subía) + metro-schedule.db (better-sqlite3, módulo nativo
+que no carga en Netlify Functions) → pager, schedule-completion, "último del día" y
+horarios metro daban vacío EN PROD (andaban en local, por eso no se veía).
+- `scripts/pipeline/export-schedules-json.mjs`: 3.0M horarios → `data/sched/shard-*.json`
+  (32 shards, 14.3MB vs 116MB SQLite, 0 perdidos). Línea CANÓNICA, urbano+metro juntos.
+- `schedule-db.ts` reescrito 100% JSON, lazy por shard (hash de stopId). Cero nativo.
+- netlify.toml: `data/sched/*.json` bundleado, fuera `external_node_modules`.
+- **Regla cerrada**: TODO dato en runtime = JSON. Era la última excepción (SQLite).
+
+### R60 — el bus seguido moría al pasar tu parada
+El filtro upstream descartaba el vehículo seguido como "passed" → la card del
+seguimiento quedaba congelada justo cuando importa (cuándo bajarte). Param `keep=`
+en /api/stm/vehicles exime al vehicleId seguido del descarte; cableado en MapScreen.
+
+### R61 — el diferencial, donde más importa
+- **Siguiente horario inline**: filas programadas muestran "· luego 23:36" (patrón
+  Transit: tras ver un horario, la pregunta es "¿y el de después?").
+- **"Salí en X" en el paso a paso**: la app se llama Cuándo y promete "te decimos
+  cuándo SALIR", pero el trip detail no lo decía. Banner prominente arriba del viaje
+  ("Salí en 6 min / Salí ahora", color de urgencia). Comparte cache con el timeline
+  → cero red extra. Solo modo "salí ahora".
+
+### Análisis competitivo (qué hace cada uno mejor, qué falta)
+- **Transit**: horario = ciudadano de 1ª (offline, instantáneo) + "GO" (navegación
+  paso a paso en vivo durante el viaje, avisa cuándo bajar). Cuándo ya tiene "seguir
+  bus" + alerta de bajada; falta el modo "GO" como pantalla dedicada de viaje activo.
+- **Citymapper**: "rain safe", múltiples modos (bici/scooter), diferenciación clara de
+  opciones. Cuándo gana en foco UY pero no tiene multimodal (no aplica acá aún).
+- **Moovit/Google**: confiabilidad y escala. Cuándo gana en SEO local + honestidad +
+  interior, pierde en volumen de crowdsourcing.
+
+### Próximas ideas priorizadas (impacto/esfuerzo)
+1. **Caminata al destino de noche** [alto/bajo]: el planner avisa de la caminata al
+   ORIGEN pero no de la del destino si es larga y de noche (seguridad = diferencial).
+   `trip-safety` ya tiene la lógica; falta cablearla al último walk leg.
+2. **Modo "GO" / viaje activo** [alto/medio]: pantalla dedicada durante el viaje con
+   el countdown de bajada — robar lo mejor de Transit. Ya existe seguir-bus, faltaría
+   elevarlo a una vista de viaje.
+3. **"Salí en X" también en el resumen colapsado** [medio/bajo]: hoy solo expandido;
+   en colapsado costaría 1 fetch por card (cacheado 25s). Evaluar si vale.
+4. **Pull-to-refresh en parada/rutas** [medio/bajo]: ya está en Home (R58d), faltan las
+   otras pantallas con datos en vivo.
