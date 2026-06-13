@@ -3,7 +3,7 @@
  * desincronizada (AppShell "v0.8 · build STM", SettingsSheet "0.8",
  * package.json "0.1.0"). Esta es la fuente de verdad para UI.
  */
-export const APP_VERSION = "0.9";
+export const APP_VERSION = "0.10";
 export const APP_UPDATED = "junio 2026";
 export const APP_CONTACT = "neptuno.rossello@gmail.com";
 
