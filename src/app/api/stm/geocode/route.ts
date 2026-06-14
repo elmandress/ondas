@@ -8,7 +8,9 @@ export async function GET(req: NextRequest) {
   }
   try {
     const results = await geocodeAddress(q);
-    return NextResponse.json({ results }, { headers: { "Cache-Control": "public, s-maxage=300" } });
+    // R67: `no-store` — la CDN Durable de Netlify no varía por `q` (Netlify-Vary la
+    // ignora) → colapsaba todas las búsquedas en una sola entrada cacheada.
+    return NextResponse.json({ results }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ results: [] });
   }

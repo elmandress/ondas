@@ -203,9 +203,14 @@ export async function GET(req: NextRequest) {
       const road = a.road || a.pedestrian || a.footway || a.neighbourhood;
       const num = a.house_number;
       const name = data.name || (road ? (num ? `${road} ${num}` : road) : null) || "Punto en el mapa";
+      // R67: NO usar `Cache-Control: public` acá — la CDN Durable de Netlify cachea
+      // estas respuestas pero su Netlify-Vary ignora los query params (q/lat/lon), así
+      // que TODAS las requests colapsan en una entrada y se sirve el mismo resultado
+      // para cualquier búsqueda (el buscador "no andaba" en prod). `no-store` lo evita;
+      // Nominatim igual queda protegido por el `next: { revalidate }` del fetch.
       return NextResponse.json(
         { name, fullName: data.display_name || name, lat, lon },
-        { headers: { "Cache-Control": "public, s-maxage=86400" } },
+        { headers: { "Cache-Control": "no-store" } },
       );
     } catch {
       return NextResponse.json({ name: "Punto en el mapa", fullName: null, lat, lon });
@@ -239,7 +244,7 @@ export async function GET(req: NextRequest) {
     const extras = searchPois(q, 3).map(poiToResult);
     return NextResponse.json(
       { results: [cityResult, ...extras].slice(0, 5) },
-      { headers: { "Cache-Control": "public, s-maxage=3600" } },
+      { headers: { "Cache-Control": "no-store" } }, // R67: ver nota arriba (cache-collapse)
     );
   }
 
@@ -264,7 +269,7 @@ export async function GET(req: NextRequest) {
     const curatedExtras = searchPois(q, 3).map(poiToResult);
     return NextResponse.json(
       { results: [result, ...curatedExtras].slice(0, 5) },
-      { headers: { "Cache-Control": "public, s-maxage=3600" } }
+      { headers: { "Cache-Control": "no-store" } } // R67: ver nota arriba (cache-collapse)
     );
   }
 
@@ -305,6 +310,6 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(
     { results: final },
-    { headers: { "Cache-Control": "public, s-maxage=300" } }
+    { headers: { "Cache-Control": "no-store" } } // R67: ver nota arriba (cache-collapse)
   );
 }

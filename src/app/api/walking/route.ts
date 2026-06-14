@@ -102,7 +102,10 @@ export async function GET(req: NextRequest) {
         steps,
         source: "osrm",
       } satisfies WalkResult,
-      { headers: { "Cache-Control": "public, s-maxage=86400" } }
+      // R67: `no-store` — la CDN Durable de Netlify cacheaba esto sin variar por
+      // from/to (Netlify-Vary ignora la query) → servía la MISMA ruta peatonal para
+      // coordenadas distintas (la "ruta rara" hacia Tres Cruces).
+      { headers: { "Cache-Control": "no-store" } }
     );
   } catch {
     return jsonFallback(from, to);

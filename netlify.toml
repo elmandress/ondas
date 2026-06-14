@@ -48,20 +48,6 @@
     # connect-src lista las APIs que el cliente llama; img permite tiles CARTO + data/blob.
     Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://*.basemaps.cartocdn.com https://routing.openstreetmap.de https://router.project-osrm.org https://nominatim.openstreetmap.org https://api.montevideo.gub.uy https://m.montevideo.gub.uy https://direcciones.ide.uy; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
-# P0 (R67): varias API routes (geocode, walking, stm/geocode, stm/stop-info) marcan
-# `Cache-Control: public` para cachear en la CDN Durable de Netlify. PERO por defecto
-# Netlify-Vary solo varía la clave de cache en internals de Next (__nextDataReq|_rsc),
-# NO en los query params reales. Resultado en prod: TODAS las requests a
-# `/api/geocode?q=X` colapsaban en UNA sola entrada → se servía el mismo resultado para
-# cualquier búsqueda (el buscador "no andaba"; la voz, que busca lo transcripto, tampoco).
-# Igual `/api/walking?from=A&to=B` servía la MISMA ruta peatonal para coordenadas
-# distintas (la "ruta rara" hacia Tres Cruces). Variar por la query string completa
-# arregla ambos sin perder el cacheo (cada query distinta = su propia entrada).
-[[headers]]
-  for = "/api/*"
-  [headers.values]
-    Netlify-Vary = "query"
-
 [[headers]]
   for = "/manifest.json"
   [headers.values]
