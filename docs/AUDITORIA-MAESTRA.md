@@ -29,7 +29,7 @@
 | 7 | Ingesta CSV MTOP interdept (ambos sentidos) — catalogodatos.gub.uy | P1 | alto (datos) | ⏳ siguiente (avisar) |
 | 13 | **Experiencia parada mágica: "A pasos también pasan" (líneas extra en parada vecina)** | P1 | bajo | ✅ hecho R43 |
 | 17 | **Backdrop sheet +contraste · empty hero útil · crowdsourcing no agradece si falla** | P2 | bajo | ✅ hecho R43 |
-| 15 | Anti-troll server-side ocupación (límite IP/sesión) | P2 | medio (datos) | ⏳ |
+| 15 | **Anti-troll server-side ocupación: dedup por (IP, línea, parada) + global por IP** | P1 | bajo | ✅ hecho R66 |
 | 12 | **Onboarding contextual (componente `Tip`, microayuda 1ª vez en hero)** | P2 | bajo | ✅ hecho R45 |
 | 18 | **Precio EFECTIVO primero + placeholder buscador acortado + SW v4** | P2 | bajo | ✅ hecho R44-45 |
 | 16 | **Densidad/jerarquía de la home: 3 secciones + bloque "Más" colapsable** | P2 | bajo | ✅ hecho R65 |
@@ -171,6 +171,12 @@
 - **Impacto:** **todo el SEO vale 0 sin esto.** **Prioridad P0.**
 
 ---
+
+## 🛡️ QA R66 (2026-06-13) — anti-troll server-side en ocupación
+- **Estado QA actual**: tsc 0 errores · **207/207 tests verdes (27 archivos)** · build OK · ESLint 57 warnings (legacy), 0 errores.
+- **Contexto**: el endpoint `/api/occupancy/report` ya tenía rate-limit global por IP (5/15 min, 429) — la premisa "solo cliente con localStorage" estaba desactualizada. El hueco real era otro: el global **no protege el agregado**, porque no impide que una IP mande 5 veces "lleno" de la MISMA línea+parada e infle el promedio.
+- **Fix (R66)**: segunda capa **dedup por (IP, línea, parada)**: 1 reporte por combinación / 15 min → un troll aislado aporta a lo sumo un reporte por línea. 429 rioplatense según motivo (duplicado vs flood) + header `Retry-After`. El budget se consume **tras el insert exitoso** (commit después del insert): un guardado fallido o 503 no bloquea el reintento legítimo. `rateLimitCheck`/`rateLimitCommit` puros con reloj inyectado → +8 tests. Sin dependencias nuevas, todo en el route handler.
+- **⚠️ Límite conocido y aceptado**: el estado vive **in-memory por instancia serverless** → no se comparte entre instancias ni sobrevive a un cold start. Es una traba real contra el troll casual (DevTools, repetir el POST) y el script ingenuo; un atacante que **rote IPs/instancias** necesitaría un **store compartido** (Redis/Supabase). Eso implicaría **persistir la IP = PII que el proyecto evita**, así que quedó **fuera de alcance** a propósito. Documentado también en el header de [route.ts](../src/app/api/occupancy/report/route.ts). Si en el futuro se requiere defensa cross-instancia, evaluar un hash con sal rotativa de la IP (no la IP cruda) con TTL corto.
 
 ## 🛡️ QA R65 (2026-06-13) — empty state útil + home a 3 secciones + backdrop
 - **Estado QA actual**: tsc 0 errores · **199/199 tests verdes (27 archivos)** · build OK · ESLint 57 warnings (legacy `set-state-in-effect`), 0 errores. *(El 151/151 de QA R51 y el 142/142 de QA R50 son snapshots de su ronda — el conteo vigente es 199.)*
