@@ -17,6 +17,10 @@
 /.next/
 /out/
 
+# Versión del Service Worker — generado por scripts/gen-sw-version.mjs (prebuild),
+# único por build. NO se commitea: se regenera en cada deploy (local + Netlify).
+/public/sw-version.js
+
 # production
 /build
 

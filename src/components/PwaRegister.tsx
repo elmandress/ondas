@@ -25,9 +25,19 @@ export default function PwaRegister() {
     let periodicInterval: ReturnType<typeof setInterval> | null = null;
 
     navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
+      // updateViaCache "none": el navegador re-descarga sw.js Y sus importScripts
+      // (sw-version.js) SIN pasar por el HTTP cache en cada chequeo → detecta el deploy
+      // nuevo de inmediato (clave junto con el header no-cache de netlify.toml).
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
       .then((r) => {
         reg = r;
+        // Si YA hay un SW en espera al cargar (el usuario ignoró un update anterior, o
+        // se instaló en otra pestaña), mostramos el prompt igual — `updatefound` no se
+        // vuelve a disparar para un waiting que ya existía.
+        if (r.waiting && navigator.serviceWorker.controller) {
+          setUpdateReady(true);
+          track("pwa_update_available");
+        }
         // Un SW nuevo empieza a instalarse → cuando termine, si YA había uno controlando
         // la página, es una ACTUALIZACIÓN (no la primera instalación) → avisamos.
         r.addEventListener("updatefound", () => {
@@ -64,7 +74,7 @@ export default function PwaRegister() {
 
   return (
     <div className="sw-update" role="status">
-      <span>Hay una nueva versión de Cuándo</span>
+      <span>Nueva versión disponible</span>
       <button onClick={() => {
         track("pwa_update_apply");
         // Patrón SKIP_WAITING: le decimos al SW en espera que tome el control ahora,

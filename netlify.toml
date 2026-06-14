@@ -48,6 +48,17 @@
     # connect-src lista las APIs que el cliente llama; img permite tiles CARTO + data/blob.
     Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://*.basemaps.cartocdn.com https://routing.openstreetmap.de https://router.project-osrm.org https://nominatim.openstreetmap.org https://api.montevideo.gub.uy https://m.montevideo.gub.uy https://direcciones.ide.uy; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
+# R67: el SW y su archivo de versión NUNCA se cachean → el navegador siempre revalida
+# y detecta el deploy nuevo al toque (si no, el prompt "Actualizar" tarda o no aparece).
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+[[headers]]
+  for = "/sw-version.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
 [[headers]]
   for = "/manifest.json"
   [headers.values]

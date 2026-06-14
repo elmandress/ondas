@@ -1331,10 +1331,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
   display: flex; align-items: center; gap: 12px;
   padding: 9px 9px 9px 16px; border-radius: var(--r-pill, 999px);
   background: var(--text, #eef0f5); color: #0a0e16;
-  font: 700 13px/1 var(--ff); box-shadow: var(--shadow-pop, 0 8px 28px rgba(0,0,0,0.45));
+  font: 700 13.5px/1.2 var(--ff); box-shadow: var(--shadow-pop, 0 8px 28px rgba(0,0,0,0.45));
   animation: sw-update-in 0.25s ease-out;
-  max-width: calc(100vw - 24px);
+  max-width: calc(100vw - 24px); white-space: nowrap;
 }
+.sw-update > span { overflow: hidden; text-overflow: ellipsis; }
 .sw-update button {
   flex-shrink: 0; padding: 8px 14px; border-radius: var(--r-pill, 999px);
   background: var(--accent-bg); color: #1a1206; font: 800 13px/1 var(--ff);

@@ -9,9 +9,18 @@
 //   - /api/*: solo red (nunca cache).
 //   - resto: network-first con fallback a cache.
 
-// Versión del cache: subir en cada cambio del SW o estrategia. `activate` borra las
-// viejas → garantiza que un deploy no arrastre HTML/assets obsoletos.
-const CACHE = "cuando-v4";
+// sw-version.js trae `self.__SW_BUILD` (único por build, generado por
+// scripts/gen-sw-version.mjs). Importarlo hace que los BYTES del SW cambien en cada
+// deploy → el navegador detecta la actualización y dispara `updatefound` aunque sw.js
+// no cambie. Sin esto, un deploy de solo-código NO disparaba el prompt "Actualizar"
+// y los usuarios instalados quedaban pegados a la versión vieja (P0, R67). try/catch:
+// si sw-version.js faltara (404), el SW igual instala (degrada, sin detección de update).
+try { importScripts("/sw-version.js"); } catch (e) { /* sin versión: degradar, no romper */ }
+
+// Versión del cache: subir cuando cambia la ESTRATEGIA del SW (no por deploy — eso lo
+// cubre __SW_BUILD). `activate` borra las viejas → un cambio de estrategia no arrastra
+// caches obsoletas.
+const CACHE = "cuando-v5";
 
 // Datasets que vale la pena tener offline (el catálogo del transporte).
 const DATASETS = ["/stops.json", "/routes.json", "/line-shapes.json", "/stop-dirs.json", "/operators.json", "/interior-stops.json"];
@@ -19,7 +28,12 @@ const SHELL = ["/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.pn
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
-  self.skipWaiting();
+  // R67: NO activar el SW nuevo de forma automática acá (nada de skip-waiting en install).
+  // Con un prompt manual de "Actualizar", el SW nuevo debe QUEDARSE EN ESPERA (waiting)
+  // hasta que el usuario toque el botón — que postea SKIP_WAITING (ver abajo) → activa →
+  // recarga. Activarlo solo acá lo prendía a mitad del uso y dejaba el patrón del botón
+  // incoherente. (En la PRIMERA instalación no hay SW activo, así que igual activa sin
+  // esperar — no afecta.)
 });
 
 self.addEventListener("activate", (event) => {

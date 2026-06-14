@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "gen:sw": "node scripts/gen-sw-version.mjs",
+    "prebuild": "node scripts/gen-sw-version.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
