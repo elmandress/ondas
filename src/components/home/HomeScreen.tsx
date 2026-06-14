@@ -18,6 +18,7 @@ import RoutesManager from "@/components/home/RoutesManager";
 import { track } from "@/lib/analytics";
 import { LogoLockup } from "@/components/brand/Logo";
 import { Icons } from "@/components/brand/Icons";
+import LineBadge from "@/components/ui/LineBadge";
 import PeakHint from "@/components/ui/PeakHint";
 import SettingsSheet from "@/components/home/SettingsSheet";
 import HowToSheet from "@/components/home/HowToSheet";
@@ -473,22 +474,25 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
               </button>
             )}
 
-            {/* Acciones STM */}
+            {/* Acciones STM — mismas filas-lista que favoritos/rutas (un solo sistema,
+                no un widget de cards aparte). El emoji vive en un badge neutro tipo chapa. */}
             <div className="section-head"><h2>Acciones STM</h2></div>
-            <div className="shortcut-grid">
-              <button onClick={() => { setShowSaldo(true); track("open_saldo_stm"); }} className="shortcut-card tap-card" style={{ textAlign: "left" }}>
-                <div className="top">
-                  <span className="emo" style={{ background: "var(--live-soft)", color: "var(--live)" }}>💳</span>
-                  <span className="alias">Saldo STM</span>
+            <div className="list-stack">
+              <button onClick={() => { setShowSaldo(true); track("open_saldo_stm"); }} className="fav-row" style={{ width: "100%", cursor: "pointer" }}>
+                <span className="act-badge live" aria-hidden>💳</span>
+                <div className="text">
+                  <div className="name">Saldo STM</div>
+                  <div className="meta" style={{ marginTop: 2 }}>Consultar y recargar</div>
                 </div>
-                <div className="nextline">Consultar y recargar</div>
+                <span style={{ color: "var(--text-3)", display: "inline-flex", flexShrink: 0 }}><Icons.Chevron size={18} /></span>
               </button>
-              <a href="https://montevideo.gub.uy/buzon-ciudadano" target="_blank" rel="noopener noreferrer" className="shortcut-card tap-card">
-                <div className="top">
-                  <span className="emo" style={{ background: "var(--sched-soft)", color: "var(--sched)" }}>📣</span>
-                  <span className="alias">Reportar</span>
+              <a href="https://montevideo.gub.uy/buzon-ciudadano" target="_blank" rel="noopener noreferrer" className="fav-row" style={{ width: "100%" }}>
+                <span className="act-badge sched" aria-hidden>📣</span>
+                <div className="text">
+                  <div className="name">Reportar</div>
+                  <div className="meta" style={{ marginTop: 2 }}>Buzón ciudadano IM</div>
                 </div>
-                <div className="nextline">Buzón ciudadano IM</div>
+                <span style={{ color: "var(--text-3)", display: "inline-flex", flexShrink: 0 }}><Icons.Chevron size={18} /></span>
               </a>
             </div>
           </div>
@@ -541,23 +545,31 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   );
 }
 
-// ── Mis rutas: fila con próxima llegada real ──────────────────────────
+// ── Mis rutas: BOLETO (origen → destino) con próxima llegada real ──────
 function FavoriteRouteRow({ route, onTap }: { route: FavoriteRoute; onTap: () => void }) {
   // Ruta por dirección (origen→destino) vs ruta vieja por parada de salida.
   const isAddressRoute = route.toLat != null && route.toLon != null;
   const { arrivals, loading } = useArrivals(isAddressRoute ? "" : route.fromStop, 35000);
   const next = arrivals[0];
-  const subtitle = isAddressRoute
-    ? `${route.fromIsCurrentLocation ? "Mi ubicación" : (route.fromAddress || route.fromName)} → ${route.toAddress || route.toName}`
-    : route.fromName;
+  const fromTxt = route.fromIsCurrentLocation ? "Mi ubicación" : (route.fromAddress || route.fromName);
+  const toTxt = route.toAddress || route.toName;
   return (
-    <button onClick={onTap} className="fav-row" style={{ width: "100%", cursor: "pointer" }}>
+    <button onClick={onTap} className="fav-row boleto-row" style={{ width: "100%", cursor: "pointer" }}>
       <span className="lead-icon" style={{ fontSize: 18 }}>{route.emoji}</span>
       <div className="text">
         <div className="name">{route.name}</div>
-        <div className="meta" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>
+        {isAddressRoute ? (
+          /* Boleto: origen →—→ destino. El conector es el "hilo de recorrido" en sodio. */
+          <div className="boleto-trip">
+            <span className="bt-pt">{fromTxt}</span>
+            <span className="bt-line" aria-hidden />
+            <span className="bt-pt">{toTxt}</span>
+          </div>
+        ) : (
+          <div className="meta" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{route.fromName}</div>
+        )}
       </div>
-      <div style={{ textAlign: "right", minWidth: 56 }}>
+      <div className="boleto-eta">
         {isAddressRoute ? (
           <span style={{ color: "var(--text-3)", display: "inline-flex" }}><Icons.Chevron size={18} /></span>
         ) : loading ? (
@@ -598,11 +610,13 @@ function FavoriteStopRow({ fav, onTap, onRemove, onEditAlias }: {
         <span className="lead-icon" style={{ color: "var(--accent)" }}><Icons.Star size={17} filled /></span>
         <div className="text">
           <div className="name">{fav.alias || fav.stopName}</div>
-          <div className="meta">
-            #{fav.stopCode}
-            {fav.lines.length > 0 && ` · ${fav.lines.slice(0, 6).join(" · ")}`}
-            {fav.lines.length > 6 && ` · +${fav.lines.length - 6}`}
-          </div>
+          <div className="meta">#{fav.stopCode}</div>
+          {fav.lines.length > 0 && (
+            <div className="fav-chapas">
+              {fav.lines.slice(0, 7).map((l) => <LineBadge key={l} num={l} size="xs" />)}
+              {fav.lines.length > 7 && <span className="fav-more">+{fav.lines.length - 7}</span>}
+            </div>
+          )}
         </div>
       </button>
       {onEditAlias && (

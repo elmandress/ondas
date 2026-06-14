@@ -239,6 +239,12 @@ Si `vitest run` falla ANTES de tu cambio → documentar el fallo previo en AUDIT
 
 ## 10. REGLAS DE EJECUCIÓN PARA CLAUDE CODE
 
+### Git / deploy — REGLA ABSOLUTA (no negociable)
+- **NUNCA `git push` sin que el usuario lo pida EXPLÍCITAMENTE** (que escriba literalmente "pusheá" / "dale push"). Cada push a `main` dispara un deploy en Netlify y **gasta créditos**.
+- **Commits locales: sí**, todo lo que haga falta — son gratis. Commiteá al terminar cada pasada.
+- Al terminar una pasada, dejá el commit local y avisá: **"listo, commiteado local en `<hash>`, no pusheado"**. El usuario decide cuándo gastar el deploy.
+- Esta regla aplica desde 2026-06-14 (pedido explícito del usuario). Ante la duda: NO pushear.
+
 ### Código — reglas absolutas
 - **NUNCA** escribir "el resto del código sigue igual", "...", "// continúa como antes", "// same as before"
 - **SIEMPRE** generar archivos completos, incluso si tienen 800+ líneas

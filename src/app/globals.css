@@ -514,8 +514,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
   cursor: pointer; list-style: none; color: var(--text);
 }
 .home-more > summary::-webkit-details-marker { display: none; }
-.home-more .hm-title { font: 700 15px/1 var(--ff); color: var(--text); flex-shrink: 0; }
-.home-more .hm-meta { flex: 1; min-width: 0; font: var(--font-small); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-more .hm-title { font: 800 14px/1 var(--ff-senal); font-stretch: 90%; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-2); flex-shrink: 0; }
+.home-more .hm-meta { flex: 1; min-width: 0; font: 600 12px/1 var(--ff-senal); font-stretch: 92%; letter-spacing: 0.03em; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-more > summary > svg:last-child { color: var(--text-3); flex-shrink: 0; transition: transform .18s; }
 .home-more[open] > summary > svg:last-child { transform: rotate(90deg); }
 .home-more .hm-body { padding: 0 14px 16px; }
@@ -602,7 +602,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* ============== Section heads ============== */
 .section-head { display: flex; align-items: center; justify-content: space-between; padding: var(--gap-section) 0 14px; }
-.section-head h2 { font: var(--font-card); color: var(--text-2); font-weight: 600; }
+/* Eyebrow de señalética: todos los headers de sección hablan el mismo idioma. */
+.section-head h2 { font: 700 13px/1 var(--ff-senal); font-stretch: 90%; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
 .section-head .link { min-height: 36px; font: var(--font-small); color: var(--text-2); display: flex; align-items: center; gap: 5px; }
 .section-head .link:hover { color: var(--text); }
 
@@ -643,8 +644,26 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .fav-row .text { flex: 1; min-width: 0; }
 .fav-row .name { font: 600 14px/1.3 var(--ff); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fav-row .meta { font: var(--font-small); color: var(--text-3); margin-top: 2px; }
-.fav-row .eta { font: 700 18px/1 var(--ff); color: var(--text); font-variant-numeric: tabular-nums; }
+.fav-row .eta { font: 800 18px/1 var(--ff-senal); font-stretch: 88%; color: var(--text); font-variant-numeric: tabular-nums; }
 .fav-row .eta-unit { font: 500 12px/1 var(--ff); color: var(--text-2); margin-left: 2px; }
+
+/* Chapas de las líneas en una parada favorita (en vez de "121 · 183 · …" en texto). */
+.fav-chapas { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.fav-chapas .fav-more { align-self: center; font: var(--font-small); color: var(--text-3); }
+
+/* Acciones STM: badge neutro tipo chapa (mismo sistema que las filas-lista). */
+.act-badge { width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: grid; place-items: center; font-size: 18px; background: var(--surface); }
+.act-badge.live { background: var(--live-soft); }
+.act-badge.sched { background: var(--sched-soft); }
+
+/* ── Boleto (R67): origen →—→ destino. Lenguaje compartido con Búsqueda/Ruteo.
+   El conector es el "hilo de recorrido" (firma) en sodio. ── */
+.boleto-row .boleto-eta { text-align: right; min-width: 56px; flex-shrink: 0; }
+.boleto-trip { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-width: 0; }
+.boleto-trip .bt-pt { font: var(--font-small); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 0; min-width: 0; }
+.boleto-trip .bt-pt:last-child { color: var(--text); font-weight: 600; }
+.boleto-trip .bt-line { flex: 0 0 22px; height: 2px; border-radius: 2px; position: relative; background: linear-gradient(90deg, var(--niebla-2), var(--sodio)); }
+.boleto-trip .bt-line::after { content: ''; position: absolute; right: -1px; top: 50%; transform: translateY(-50%); border-left: 5px solid var(--sodio); border-top: 3px solid transparent; border-bottom: 3px solid transparent; }
 
 /* ============== Bottom sheet ============== */
 /* R58 (UI-2) + R65: backdrop firme — el hero debajo distraía y bajaba el contraste de
