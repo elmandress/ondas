@@ -26,7 +26,16 @@ interface LeaveNowHeroProps {
 }
 
 export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName, stopAlias, atStop, inactiveLines, altStop, onTap, onAltTap }: LeaveNowHeroProps) {
-  const first = arrivals[0];
+  // Bug B (R67): anclar en el primer bus ALCANZABLE, no en el más próximo. El más
+  // próximo puede estar ya demasiado cerca para llegar caminando — anclar ahí mostraba
+  // "¡Ya!" para un bus imposible: el usuario corría, lo perdía y llegaba tarde
+  // sistemáticamente. Saltamos al siguiente que SÍ da tiempo (caminata − 1 min de gracia
+  // para "correr" uno marginal). Si estás EN la parada (atStop) no caminás → vale el más
+  // próximo. El contador y los chips arrancan en ese bus (coherencia número↔primer chip).
+  const effWalk = atStop ? 0 : walkMinutes;
+  let firstIdx = arrivals.findIndex((a) => a.eta >= effWalk - 1);
+  if (firstIdx < 0) firstIdx = Math.max(0, arrivals.length - 1);
+  const first = arrivals[firstIdx];
 
   // Tick de 1s para re-renderizar el countdown; el valor no se lee directamente.
   const [, setNowTick] = useState(0);
@@ -145,7 +154,7 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
       <div className="hero-right">
         {/* Solo badge + ETA: el destino completo NO entra en ~160px y truncado a
             "CURV…" no informa y parece roto. Va en title/aria; el detalle, al tocar. */}
-        {arrivals.slice(0, 3).map((a, i) => (
+        {arrivals.slice(firstIdx, firstIdx + 3).map((a, i) => (
           <div
             key={i}
             className={`hero-chip ${a.realtime ? "" : "sched"}`}
