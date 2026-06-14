@@ -1326,8 +1326,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* ── Aviso de nueva versión (blindaje de deploy) ──────────────────────── */
 .sw-update {
+  /* R67 (QA): antes top:10px → tapaba el header del Home (logo + GPS/ajustes). Lo
+     bajamos arriba de la bottom-nav: no obstruye nada y queda al alcance del pulgar. */
   position: fixed; left: 50%; transform: translateX(-50%);
-  top: calc(env(safe-area-inset-top) + 10px); z-index: 1300;
+  bottom: calc(env(safe-area-inset-bottom) + 78px); top: auto; z-index: 1300;
   display: flex; align-items: center; gap: 12px;
   padding: 9px 9px 9px 16px; border-radius: var(--r-pill, 999px);
   background: var(--text, #eef0f5); color: #0a0e16;
@@ -1340,7 +1342,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
   flex-shrink: 0; padding: 8px 14px; border-radius: var(--r-pill, 999px);
   background: var(--accent-bg); color: #1a1206; font: 800 13px/1 var(--ff);
 }
-@keyframes sw-update-in { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes sw-update-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: reduce) { .sw-update { animation: none; } }
 
 /* ── Microayuda contextual (Tip) ──────────────────────────────────────── */

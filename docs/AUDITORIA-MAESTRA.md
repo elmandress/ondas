@@ -172,6 +172,31 @@
 
 ---
 
+## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
+> Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión
+> (mapa/home/SW). Separación bug-verificado vs oportunidad. **0 errores de consola** en
+> Home/Mapa/sheets tras los rediseños (los cambios visuales no metieron runtime errors).
+
+### 🐞 Bugs verificados
+| # | Hallazgo | Prio | Evidencia | Estado |
+|---|----------|------|-----------|--------|
+| A1 | **Toast "Nueva versión" tapaba el header del Home** (logo + GPS/ayuda/ajustes). A 375px el toast (y:10–57) solapaba el header (y:8–60). | P2 | boundingBox overlap + screenshot | ✅ **FIXEADO** — movido arriba de la bottom-nav (no obstruye, al alcance del pulgar) |
+| A2 | **Map StopPanel + LineDetailSheet NO migrados a "señalética"**: colores hardcodeados (`#0a0f1c`, `text-amber-400`, `text-white`, `text-slate-*`) y eyebrow ("PARADA #X" / "RECORRIDO COMPLETO") en `font-black` Jakarta, no en Señal. Inconsistente con Home/ficha-de-bus (que sí migraron). | P2 | screenshots `qa-st1`, `qa-st2` + código | ⏳ **PENDIENTE** — pasada de migración (pega bien antes/junto con Búsqueda/Ruteo) |
+| A3 | **"Más" cerrado por defecto aunque haya favoritos/rutas** → el gancho de retención queda enterrado detrás de un tap cada sesión. | P2 | screenshot `qa-home-full` (open=false con 2 favs+2 rutas) | ✅ **FIXEADO** — open-if-content (abre si hay favoritos/rutas; respeta el toggle del usuario después) |
+
+### 💡 Oportunidades / UX (no son regresiones)
+- **A4 (P3) — Hero "¡SALÍ AHORA! · ¡Ya!" cuando estás EN la parada (`atStop`).** No "salís", esperás. El mensaje/urgencia debería diferir en atStop (ej. "Llega en 3 min"). Verificado en `qa-home-empty`. Tweak chico en `LeaveNowHero` — cuidado de no tocar la lógica de Bug B (anclar en bus alcanzable). ⏳ pendiente.
+- **A5 (P3/backlog) — Compartir ubicación EN VIVO.** VoyEnBondi/Mi Bondi dejan compartir tu posición en tiempo real ("vení a buscarme, estoy acá"). Cuándo comparte links de parada/ETA (`shareStop`), no la ubicación viva del usuario. **Gap real, no regresión.** Barato-medio de copiar bien (Web Share + un link efímero con coords).
+
+### ✅ Verificado OK (no se degradó con el rediseño)
+- **Sheet-manager bajo estrés:** parada → drill-down "ver recorrido" **apila bien** (LineDetailSheet arriba de la hoja), sin sheet fantasma; peer-replace (bus → ficha) confirmado en la pasada del mapa. La política diseñada se sostiene.
+- **"Más" en los 3 estados** (sin / 1 / varios favoritos): empty state **limpio** (CTA de rutas + Acciones STM en filas), no "vacío feo".
+- **Cobertura suburbana/interior:** `useInteriorArrivals`/`isInteriorStop`/buses Busmatick **sin tocar** por el rediseño → intacta. (Competencia: Moovit/VoyEnBondi fuertes en suburbano; Cuándo mantiene GPS interior Maldonado/Paysandú/Rivera/Rocha.)
+- **Carga:** next/font (self-host, swap) + Leaflet lazy (`dynamic ssr:false`) + datasets SWR. CWV sigue **sin medir** (pendiente histórico) — medir antes de prometer "carga veloz" vs VoyEnBondi.
+
+### ▶️ Decisión de cola tras la auditoría
+No hay P0/P1 nuevos → **se puede avanzar a Búsqueda/Ruteo**. Recomendado meter **A2 (migrar map StopPanel/LineDetailSheet a señalética)** en la MISMA pasada (tocan los mismos componentes de sheets) y resolver **A4** de paso. A5 al backlog de features.
+
 ## 🛡️ QA R67 (2026-06-13/14) — P0 deploy (cache + STM) + bugs de confianza + FASE 2
 - **P0 — "Los servidores del STM están durmiendo" PERMANENTE para llegadas vivas Y programadas (`0fe5ff1`).** ⚠️ El diagnóstico inicial ("blip transitorio del STM") era **equivocado** — lo descartó el usuario con una observación correcta: los horarios PROGRAMADOS salen de `line-hours.json`+GTFS (nuestros), no del STM, así que no deberían caer con el tiempo real. **Causa raíz real:** vivo y programado viajan en UNA sola respuesta de `/api/stm/arrivals`, y `getStopVariants` es un fetch LIVE al STM (6s) que corre PRIMERO y SERIAL antes de los `getBuses` (6s) + token (4s). En cold start con STM lento la cadena pasaba el límite de función de Netlify (~10s) → **504** → el `catch` que sirve los programados **nunca corría** → el cliente ve `!res.ok` → "durmiendo" para todo. **Verificado:** cache de arrivals/vehicles ya era `no-store`/`bypass` (NO era el bug de cache de FASE 0). **Fix:** timeouts acotados (variantes 6→4s, token 4→3s, buses 6→4.5s) para que el fallback sea alcanzable; `no-store` en los 3 returns vacíos/error que no lo tenían; `try/catch` en `supabase.auth.getUser()` del middleware (sin él, un fallo de Supabase en el edge tiraba TODA la request → 500). **Verificado en prod con Playwright** (todas las respuestas 200 + arrivals poblado; ficha-de-bus y hoja confirmadas con datos reales). **Test de regresión:** `tests/arrivals-degradation.test.ts` (getStopVariants timeout → 200 schedule-only). Ver anti-patrón en ARQUITECTURA §11.
 - **P0 — buscador y voz "no andaban" en prod (FASE 0).** Causa raíz: varias API routes que dependen de query params (`geocode`, `walking`, `stm/geocode`, `stm/stop-info`) marcan `Cache-Control: public`, y la CDN Durable de Netlify las cacheaba **sin variar por la query** (Netlify-Vary por defecto solo varía en `__nextDataReq|_rsc`). Resultado: **toda** request a `/api/geocode?q=X` colapsaba en UNA entrada → se servía el mismo resultado ("Río Grande 857") para cualquier búsqueda; la voz busca lo transcripto → tampoco andaba. **Verificado con curl a `cuando-bondi.netlify.app`** (3 queries distintas → objeto idéntico, `Cache-Status: Netlify Durable; hit`). Local (`next start`) no tiene la CDN Durable → andaba siempre (por eso parecía "anda local, no en prod"). **NO era env var** — geocode es keyless. Fix: `Netlify-Vary = "query"` en `/api/*` (netlify.toml). Requiere deploy para verificar.

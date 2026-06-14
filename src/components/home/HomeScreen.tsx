@@ -49,6 +49,10 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [showSaldo, setShowSaldo] = useState(false);
+  // "Más": abierto por defecto SI hay contenido guardado (favoritos/rutas) — son el
+  // gancho de retención, no tiene sentido enterrarlos detrás de un tap. null = todavía
+  // no lo tocó el usuario (sigue el default); una vez que toca, manda su elección.
+  const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
   const [favorites, setFavorites] = useState<FavoriteRoute[]>([]);
   const favoriteStops = useFavoriteStops();
   const alerts = useServiceAlerts();
@@ -423,7 +427,11 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
           NOTA: la vieja sección "Mis atajos" se eliminó — duplicaba los favoritos con
           alias (Casa/Trabajo) que ya aparecen arriba como source-tabs y botones. */}
       {mounted && (
-        <details className="home-more">
+        <details
+          className="home-more"
+          open={moreOpen === null ? (favoriteStops.length > 0 || favorites.length > 0) : moreOpen}
+          onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary>
             <span className="hm-title">Más</span>
             <span className="hm-meta">
