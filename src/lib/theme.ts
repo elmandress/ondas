@@ -21,12 +21,12 @@ export function getMode(): ThemeMode {
   return v === "light" || v === "dark" || v === "auto" ? v : "auto";
 }
 
-/** Resuelve el tema concreto (dark|light) a partir del modo. */
-export function resolveTheme(mode: ThemeMode = getMode()): Theme {
-  if (mode === "light") return "light";
-  if (mode === "dark") return "dark";
-  // auto = siempre dark (identidad de marca dark-first).
-  // El usuario que quiere light lo elige explícitamente.
+/** Resuelve el tema concreto. R67: decisión DARK-ONLY (identidad "señalética"
+ *  nocturna — farol de sodio sobre asfalto). El tema light queda deprecado: siempre
+ *  devolvemos "dark" y el selector de Apariencia se quitó de Ajustes. El CSS de
+ *  [data-theme="light"] es código muerto (se limpia en un commit aparte). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- dark-only: el modo se ignora a propósito (se mantiene la firma para callers/tests)
+export function resolveTheme(_mode: ThemeMode = getMode()): Theme {
   return "dark";
 }
 
@@ -38,7 +38,7 @@ export function applyTheme(t: Theme) {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-theme", t);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", t === "light" ? "#f4f6fa" : "#070b14");
+  if (meta) meta.setAttribute("content", "#0E1116"); // R67: dark-only — asfalto
 }
 
 export function setMode(mode: ThemeMode) {

@@ -6,12 +6,25 @@
    ======================================================================== */
 
 :root {
-  /* Base — R64 rediseño: near-black neutro con elevación clara y escalonada.
-     Antes el azul (#070b14) leía "utilitario serio"; el neutro hace que el ámbar
-     (la marca) resalte más y la app se sienta premium, no genérica. */
-  --bg: #0a0b0f;
-  --bg-elevated: #14151c;
-  --bg-float: #1d1f28;
+  /* ===== Paleta "Señalética" (R67) — Montevideo de noche esperando el bondi =====
+     El material es la calle: asfalto, granito de vereda, el farol de sodio ámbar, la
+     niebla del Río de la Plata. Dark-only. Estos 7 tokens nombrados son la fuente; los
+     tokens semánticos de abajo apuntan acá. */
+  --asfalto: #0E1116;   /* base — azul-noche del asfalto, NO negro puro */
+  --vereda: #171C24;    /* superficie elevada — granito de vereda */
+  --vereda-2: #212834;  /* superficie flotante (popovers, controles del mapa) */
+  --sodio: #F2A93B;     /* COLOR DE MARCA — farol de sodio ("tu bus / esperar de noche") */
+  --sodio-deep: #E2920F;
+  --vivo: #2DBF7B;      /* señal "en vivo" — verde medido, con cuentagotas (no es acento) */
+  --tiza: #E9EDF2;      /* texto primario — blanco-tiza FRÍO (a propósito, anti-cream) */
+  --niebla: #9AA3B5;    /* texto secundario — gris niebla (AA sobre asfalto/vereda) */
+  --niebla-2: #8A93A1;  /* texto terciario — metadata (AA medido) */
+  --alerta: #E5484D;    /* SOLO desvíos/errores — nunca decorativo */
+
+  /* Base — apunta a la paleta señalética. */
+  --bg: var(--asfalto);
+  --bg-elevated: var(--vereda);
+  --bg-float: var(--vereda-2);
 
   --surface: rgba(255,255,255,0.035);
   --surface-hover: rgba(255,255,255,0.07);
@@ -20,36 +33,36 @@
   --border: rgba(255,255,255,0.07);
   --border-strong: rgba(255,255,255,0.14);
 
-  /* Text — higher contrast, fewer layers */
-  --text: #eef0f5;
-  --text-2: #9aa3b5;   /* lightened from spec for WCAG AA on dark */
-  --text-3: #8a93a8;   /* #737c92 daba 4.0-4.4:1 sobre surface (axe) → fallaba AA en texto chico; #8a93a8 ≈ 4.9:1 */
+  /* Text — escala "tiza/niebla" (AA medido sobre asfalto/vereda). */
+  --text: var(--tiza);
+  --text-2: var(--niebla);
+  --text-3: var(--niebla-2);
 
   /* Accent — amber, used sparingly.
      --accent     = TEXTO/iconos ámbar sobre fondo (AA contra --bg).
      --accent-bg  = RELLENO de botones/pills con texto oscuro #1a1206 encima (AA inverso).
      En dark coinciden; en light divergen (un solo valor no puede cumplir ambos roles). */
-  --accent: #f5a623;          /* ámbar marca, un punto más cálido/vivo */
-  --accent-bg: #f5a623;
+  --accent: var(--sodio);     /* texto/iconos ámbar (farol de sodio) */
+  --accent-bg: var(--sodio);  /* relleno con texto oscuro #1a1206 encima */
   /* Gradiente de marca para superficies firma (hero, CTA): da profundidad sin ruido. */
-  --accent-grad: linear-gradient(135deg, #f7b94a 0%, #ec9512 100%);
-  --accent-deep: #e8940a;
-  --accent-soft: rgba(245,166,35,0.11);
-  --accent-border: rgba(245,166,35,0.24);
+  --accent-grad: linear-gradient(135deg, #F8BE5C 0%, var(--sodio-deep) 100%);
+  --accent-deep: var(--sodio-deep);
+  --accent-soft: rgba(242,169,59,0.11);
+  --accent-border: rgba(242,169,59,0.24);
 
-  /* Semantic */
-  --live: #16b886;
-  --live-soft: rgba(14,164,114,0.12);
+  /* Semantic — "en vivo" = verde señal medido (vivo). */
+  --live: var(--vivo);
+  --live-soft: rgba(45,191,123,0.12);
   --sched: #7d80e0;
   --sched-soft: rgba(91,95,207,0.14);
 
-  /* Urgency */
-  --urgency-now: #22b455;
-  --urgency-soon: #f0a020;
+  /* Urgency — now=vivo, soon=sodio, chill=azul calmo (contexto, no urgencia). */
+  --urgency-now: var(--vivo);
+  --urgency-soon: var(--sodio);
   --urgency-chill: #4f86f7;
 
-  --warn: #f0564b;
-  --warn-soft: rgba(220,38,38,0.14);
+  --warn: var(--alerta);
+  --warn-soft: rgba(229,72,77,0.14);
 
   /* ===== Design system: escala ÚNICA de radios, sombras y spacing =====
      Antes los componentes mezclaban tokens con Tailwind suelto (rounded-xl/2xl, shadow-2xl,
@@ -71,10 +84,12 @@
   /* Spacing — escala de 4px (consistencia de paddings entre componentes). */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;  --sp-5: 20px;  --sp-6: 24px;
 
-  /* Type — Plus Jakarta Sans via next/font (--font-jakarta) */
+  /* Type — Cuerpo: Plus Jakarta Sans. Señal: Archivo condensada (chapas, contador,
+     eyebrows) via next/font (--font-archivo). Datos: tabular-nums (feature, no 3ª fuente). */
   --ff: var(--font-jakarta), 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --ff-senal: var(--font-archivo), 'Archivo', 'Roboto Condensed', 'Arial Narrow', system-ui, sans-serif;
   --mono: var(--font-mono), 'JetBrains Mono', ui-monospace, monospace;
-  --font-display: 800 56px/1 var(--ff);
+  --font-display: 800 56px/1 var(--ff-senal);
   --font-title: 700 24px/1.15 var(--ff);
   --font-label: 600 13px/1.3 var(--ff);
   --font-card: 600 16px/1.3 var(--ff);
@@ -376,7 +391,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* ── Líneas que no corren ahora (R64) — honestidad: muteadas, con retorno ── */
 .inactive-lines { margin: 8px 22px 0; padding: 13px 14px; border-radius: var(--r-card); background: var(--surface); }
-.il-head { font: 700 12px/1 var(--ff); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 11px; }
+.il-head { font: 700 12px/1 var(--ff-senal); font-stretch: 90%; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 11px; }
 .il-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; opacity: 0.75; }
 .il-when { font: 500 13px/1.3 var(--ff); color: var(--text-3); }
 .il-when b { color: var(--text-2); font-weight: 700; }
@@ -489,8 +504,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .hero-card.state-chill { --urgency-bg: rgba(79,134,247,0.12); }
 
 .hero-left { grid-column: 1; grid-row: 1; padding-bottom: 16px; position: relative; z-index: 1; }
-.hero-label { font: var(--font-label); color: var(--text-3); margin-bottom: 10px; }
-.hero-count { display: flex; align-items: baseline; gap: 8px; font: var(--font-display); color: var(--accent); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+/* Eyebrow de señalética: Señal condensada, mayúsculas, tracking de cartel. */
+.hero-label { font: var(--font-label); font-family: var(--ff-senal); font-stretch: 90%; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-3); margin-bottom: 10px; }
+/* Contador-tablero (firma): el número ES el producto. Señal condensada + tabular. */
+.hero-count { display: flex; align-items: baseline; gap: 8px; font: var(--font-display); font-stretch: 84%; color: var(--accent); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .hero-count .unit { font: 500 16px/1 var(--ff); color: var(--text-2); letter-spacing: 0; }
 .hero-card.state-now .hero-count { color: var(--urgency-now); animation: gentle-pulse 1.6s ease-in-out infinite; }
 .hero-walk { margin-top: 14px; font: var(--font-small); color: var(--text-2); display: flex; align-items: center; gap: 7px; }
@@ -513,7 +530,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 /* ============== LINE BADGE ============== */
 /* Neutro por defecto: superficie elevada + número blanco + borde sutil.
    El color por línea (arcoíris) se eliminó a propósito — ver LineBadge.tsx. */
-.line-badge { display: inline-flex; align-items: center; justify-content: center; font-weight: 800; color: var(--text); font-family: var(--ff); flex-shrink: 0; letter-spacing: -0.01em; background: rgba(255,255,255,0.07); border: 1px solid var(--border-strong); }
+/* Chapa de línea (firma): Señal condensada, como una chapa de bondi real. */
+.line-badge { display: inline-flex; align-items: center; justify-content: center; font-weight: 800; color: var(--text); font-family: var(--ff-senal); font-stretch: 88%; flex-shrink: 0; letter-spacing: 0.01em; background: rgba(255,255,255,0.07); border: 1px solid var(--border-strong); }
 .line-badge.xs { width: 26px; height: 26px; border-radius: 7px; font-size: 10px; }
 .line-badge.sm { width: 30px; height: 30px; border-radius: 8px; font-size: 12px; }
 .line-badge.md { width: 42px; height: 42px; border-radius: 10px; font-size: 15px; }

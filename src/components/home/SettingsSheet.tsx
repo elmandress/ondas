@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useBackClose } from "@/hooks/useBackClose";
 import { Icons } from "@/components/brand/Icons";
 import { LogoMark } from "@/components/brand/Logo";
-import { useThemeMode, setMode, type ThemeMode } from "@/lib/theme";
 import { useTextSize, setTextSize, type TextSize } from "@/lib/text-size";
 import { isVoiceEnabled, setVoiceEnabled, voiceSupported, speak } from "@/lib/voice-alerts";
 import { FARE_VIGENCIA, URBAN_FARES, SUBURBAN_FARES } from "@/lib/fare";
@@ -86,8 +85,6 @@ function MainView({ go }: { go: (v: View) => void }) {
       <AccountSection />
 
       <Section title="Apariencia">
-        <ThemeChooser />
-        <div style={{ height: 14 }} />
         <TextSizeChooser />
       </Section>
 
@@ -378,39 +375,7 @@ function DataView() {
   );
 }
 
-// ─── Selector de tema (Auto / Claro / Oscuro) ─────────────────────────
-function ThemeChooser() {
-  const mode = useThemeMode();
-  const opts: { k: ThemeMode; label: string }[] = [
-    { k: "auto", label: "Auto" },
-    { k: "light", label: "Claro" },
-    { k: "dark", label: "Oscuro" },
-  ];
-  return (
-    <div style={{ padding: "4px 0 6px" }}>
-      <div style={{ display: "flex", gap: 7 }}>
-        {opts.map((o) => (
-          <button
-            key={o.k}
-            onClick={() => setMode(o.k)}
-            aria-pressed={mode === o.k}
-            style={{
-              flex: 1, padding: "10px 0", borderRadius: "var(--r-chip)", font: "600 13px/1 var(--ff)",
-              color: mode === o.k ? "var(--accent)" : "var(--text-2)",
-              background: mode === o.k ? "var(--accent-soft)" : "var(--surface)",
-              border: `1px solid ${mode === o.k ? "var(--accent-border)" : "var(--border)"}`,
-            }}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-      <div style={{ font: "var(--font-small)", color: "var(--text-3)", marginTop: 8 }}>
-        Auto: de noche se pone oscuro (descanso visual) y de día sigue a tu teléfono. El oscuro es el modo de la casa.
-      </div>
-    </div>
-  );
-}
+// R67: ThemeChooser eliminado — decisión dark-only (ver lib/theme.ts).
 
 function TextSizeChooser() {
   const size = useTextSize();

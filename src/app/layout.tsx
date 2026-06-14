@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { jsonLdHtml } from "@/lib/jsonld";
-import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, JetBrains_Mono, Archivo } from "next/font/google";
 import "./globals.css";
 import PwaRegister from "@/components/PwaRegister";
 
@@ -8,6 +8,17 @@ const jakarta = Plus_Jakarta_Sans({
   variable: "--font-jakarta",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+});
+
+// "Señal" (R67): grotesca de señalética para chapas de línea, el contador-tablero y
+// los eyebrows. Archivo es variable (eje wght + wdth), OFL, y next/font la auto-subsetea
+// a latin y la self-hostea (sin CDN, sin violar la CSP `font-src 'self'`). El eje wdth nos
+// da el condensado REAL (no sintético) vía font-stretch. Solo carga donde se usa.
+const archivo = Archivo({
+  variable: "--font-archivo",
+  subsets: ["latin"],
+  axes: ["wdth"],
   display: "swap",
 });
 
@@ -55,7 +66,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   // Permitir zoom (WCAG 2.1 AA · 1.4.4): bloquearlo con maximumScale/userScalable
   // excluye a quien necesita agrandar. Vale más la accesibilidad que el look "nativo".
-  themeColor: "#070b14",
+  themeColor: "#0E1116",
   viewportFit: "cover",
 };
 
@@ -65,16 +76,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${jakarta.variable} ${jetbrainsMono.variable} h-full`} suppressHydrationWarning>
+    <html lang="es" className={`${jakarta.variable} ${jetbrainsMono.variable} ${archivo.variable} h-full`} suppressHydrationWarning>
       <head>
-        {/* Fija el tema ANTES de pintar (sin parpadeo). Default oscuro (marca);
-            si no hay preferencia guardada, sigue al dispositivo. */}
+        {/* R67: dark-only — fija el tema antes de pintar (sin parpadeo). El selector
+            light se deprecó; siempre oscuro (identidad "señalética" nocturna). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var m=localStorage.getItem('cuando_theme');var t;if(m==='light'||m==='dark'){t=m;}else{var h=new Date().getHours();var night=h>=19||h<7;var lite=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches;t=night?'dark':(lite?'light':'dark');}document.documentElement.setAttribute('data-theme',t);document.documentElement.style.background=t==='light'?'#f4f6fa':'#070b14';if(localStorage.getItem('cuando_text_size')==='grande'){document.documentElement.classList.add('text-grande');}}catch(e){document.documentElement.setAttribute('data-theme','dark');document.documentElement.style.background='#070b14';}})();`,
+            __html: `(function(){try{document.documentElement.setAttribute('data-theme','dark');document.documentElement.style.background='#0E1116';if(localStorage.getItem('cuando_text_size')==='grande'){document.documentElement.classList.add('text-grande');}}catch(e){document.documentElement.setAttribute('data-theme','dark');document.documentElement.style.background='#0E1116';}})();`,
           }}
         />
-        <meta name="theme-color" content="#070b14" />
+        <meta name="theme-color" content="#0E1116" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
