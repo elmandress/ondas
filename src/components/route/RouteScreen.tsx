@@ -34,6 +34,7 @@ import { LogoLockup } from "@/components/brand/Logo";
 import { Icons } from "@/components/brand/Icons";
 import VoiceOverlay from "@/components/ui/VoiceOverlay";
 import { useMounted } from "@/hooks/useMounted";
+import { usePlaceSearch } from "@/hooks/usePlaceSearch";
 import type { Place } from "@/components/route/types";
 import { PlaceInput, DepartTimePicker } from "@/components/route/RouteInputs";
 import PlaceSearch from "@/components/route/PlaceSearch";
@@ -55,13 +56,36 @@ export default function RouteScreen() {
   const [waypoints, setWaypoints] = useState<Place[]>([]);
   const [activeInput, setActiveInput] = useState<"from" | "to" | `wp-${number}` | null>(null);
   const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<Place[]>([]);
-  const [searching, setSearching] = useState(false);
+
+  // R68: geocode de lugares vía el hook compartido (mismo fetch+debounce+abort que Buscar
+  // y Guardar ruta). Busca SOLO el input activo — origen/destino se editan de a uno, nunca
+  // hay dos búsquedas en simultáneo. Las paradas locales (instantáneas) se combinan acá.
+  const { results: placeHits, loading: searching } = usePlaceSearch(activeInput ? query : "", { debounceMs: 250 });
+  const stopMatches = useMemo<Place[]>(() => {
+    if (!activeInput || !query.trim() || !stopsReady) return [];
+    const q = query.trim().toLowerCase();
+    return STOPS_DATASET
+      .filter((s) => s.stopName.toLowerCase().includes(q) || s.stopCode.includes(q))
+      .slice(0, 5)
+      .map((s) => ({ name: s.stopName, subtitle: `Parada #${s.stopCode}`, lat: s.stopLat, lon: s.stopLon }));
+  }, [query, activeInput, stopsReady]);
+  const suggestions = useMemo<Place[]>(
+    () => [
+      ...stopMatches,
+      ...placeHits.slice(0, 5).map((r) => ({
+        name: r.name,
+        subtitle: r.fullName ? r.fullName.split(",").slice(1, 3).join(",").trim() : undefined,
+        lat: r.lat,
+        lon: r.lon,
+        icon: r.icon,
+      })),
+    ],
+    [stopMatches, placeHits],
+  );
   const [sheetStopId, setSheetStopId] = useState<string | null>(null);
   const [history, setHistory] = useState<Place[]>([]);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const mounted = useMounted();
-  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const voice = useVoiceInput({
     onResult: (transcript) => {
@@ -134,52 +158,6 @@ export default function RouteScreen() {
     setRouteInput(null);
   }, [routeInput, location]);
 
-  // Búsqueda de lugares + paradas
-  useEffect(() => {
-    if (!activeInput || !query.trim()) {
-      setSuggestions([]);
-      return;
-    }
-    if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(async () => {
-      setSearching(true);
-      const q = query.trim().toLowerCase();
-      // 1. Paradas locales que matcheen
-      const stopMatches: Place[] = stopsReady
-        ? STOPS_DATASET
-            .filter((s) => s.stopName.toLowerCase().includes(q) || s.stopCode.includes(q))
-            .slice(0, 5)
-            .map((s) => ({
-              name: s.stopName,
-              subtitle: `Parada #${s.stopCode}`,
-              lat: s.stopLat,
-              lon: s.stopLon,
-            }))
-        : [];
-
-      // 2. Lugares vía Nominatim
-      let placeMatches: Place[] = [];
-      try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
-        if (res.ok) {
-          const data = await res.json();
-          placeMatches = (data.results || []).slice(0, 5).map((r: { name: string; fullName?: string; lat: number; lon: number; icon?: string }) => ({
-            name: r.name,
-            subtitle: r.fullName ? r.fullName.split(",").slice(1, 3).join(",").trim() : undefined,
-            lat: r.lat,
-            lon: r.lon,
-            icon: r.icon,
-          }));
-        }
-      } catch {}
-
-      setSuggestions([...stopMatches, ...placeMatches]);
-      setSearching(false);
-    }, 250);
-
-    return () => { if (debRef.current) clearTimeout(debRef.current); };
-  }, [query, activeInput, stopsReady]);
-
   function pickPlace(place: Place) {
     if (activeInput === "from") setFrom(place);
     else if (activeInput === "to") setTo(place);
@@ -189,8 +167,7 @@ export default function RouteScreen() {
     }
     saveToHistory(place);
     setActiveInput(null);
-    setQuery("");
-    setSuggestions([]);
+    setQuery(""); // suggestions es derivado de activeInput+query → se vacía solo
   }
 
   function addWaypoint() {
