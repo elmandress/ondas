@@ -43,7 +43,7 @@ public/                  → datasets servidos al cliente + manifest + sw.js + i
 ## 4. Flujo de datos (de dónde sale cada cosa)
 | Dato | Fuente | Endpoint/lib | Notas |
 |------|--------|--------------|-------|
-| Llegadas en vivo MVD | API oficial STM (`api.montevideo.gub.uy`, OAuth2) | `/api/stm/arrivals` | filtro de dirección GTFS (no recomienda buses que ya pasaron) |
+| Llegadas en vivo MVD | API oficial STM (`api.montevideo.gub.uy`, OAuth2) | `/api/stm/arrivals` | filtro de dirección GTFS (no recomienda buses que ya pasaron). ⚠️ **Mezcla vivo + programado en UNA respuesta con fate compartido — ver §10 antes de tocarlo** |
 | Buses en vivo (posición) | STM | `/api/stm/vehicles` | filtra por línea/parada |
 | Recorridos/paradas de línea | GTFS pre-procesado | `gtfs-v2.json` vía `gtfs-db.ts` | índices precomputados |
 | Horarios de operación | GTFS `schedule.db`+`metro-schedule.db` | `line-hours.json` vía `line-hours.ts` | 233/230 líneas; ver §7 |
@@ -97,3 +97,32 @@ andaban en prod pero **las rutas no**. Solución: `scripts/export-gtfs-json.mjs`
 · `/barrio/[x]` · `/destinos` · `/barrios` · `/desvios`. Sitemap ~6.6k URLs, FAQ+Breadcrumb+
 BusStop+CollectionPage JSON-LD, OG dinámico por entidad, deep links (`/?linea`, `/?parada`, `/?q`,
 `/?ir`, `/?tab`). Detalle de estrategia en AUDITORIA-MAESTRA §SEO.
+
+## 10. Anti-patrón: `/api/stm/arrivals` mezcla vivo + programado con *fate compartido*
+**Leé esto antes de tocar `/api/stm/arrivals`.** El endpoint devuelve, en UNA sola respuesta,
+las llegadas EN VIVO (API STM, externa, puede caer/tardar) **y** los horarios PROGRAMADOS
+(line-hours/GTFS, datos NUESTROS, no dependen del STM). El problema: las dos partes comparten
+el **mismo fate** — si la parte viva falla de la forma equivocada, se lleva puesto al
+programado, aunque el programado no necesitaba al STM para nada.
+
+Esto ya causó **dos incidentes en prod**:
+- **R67 (cache, FASE 0):** otras routes por-query (`geocode`, `walking`, …) con `Cache-Control:
+  public` colapsaban en la CDN Durable de Netlify porque `Netlify-Vary` no variaba por la query
+  → se servía una respuesta congelada para toda query. Fix: `no-store` por-route. *(arrivals ya
+  estaba `no-store`, pero 3 returns vacíos/error no lo tenían → se les agregó.)*
+- **R67 (timeout):** `getStopVariants` es un fetch LIVE al STM que corre **primero y serial**
+  antes de los `getBuses` + token. En cold start con STM lento, la cadena (4s+3s+4.5s acotados;
+  antes 6s+4s+6s) pasaba el límite de función de Netlify (~10s) → 504 → el `catch` que sirve el
+  fallback de programados **nunca corría** → "Los servidores del STM están durmiendo" para vivo
+  **y** programado a la vez.
+
+**Reglas para no repetirlo:**
+1. **Ningún `NextResponse.json` sin `Cache-Control: no-store`** en este endpoint (ni en los empty/error).
+2. **La parte viva nunca debe poder colgar la función** por encima del budget de Netlify: timeouts
+   STM acotados (ver `lib/stm.ts` getStopVariants, `lib/mvd-api.ts` token+get) y, si se agregan
+   llamadas live, mantener la suma serial **bien por debajo de ~10s**.
+3. **El fallback a programados tiene que ser alcanzable aunque el live falle/tarde** — vive en el
+   `catch`; cualquier refactor debe preservar eso. Cubierto por `tests/arrivals-degradation.test.ts`
+   (simula timeout de getStopVariants → exige 200 con `source: schedule-only`).
+4. Si en el futuro conviene, **aislar de verdad**: servir programados desde un cómputo local que no
+   dependa de ninguna llamada live (idealmente sin pasar por el mismo fetch que el tiempo real).
