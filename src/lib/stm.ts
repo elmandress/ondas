@@ -143,7 +143,11 @@ export async function getStopVariants(stopId: string | number): Promise<StopInfo
     const res = await fetch(`${MVD_HOST}/transporteRest/variantes/${stopId}`, {
       headers: MVD_HEADERS,
       next: { revalidate: 60 },
-      signal: AbortSignal.timeout(6000),
+      // R67: 6s→4s. getStopVariants corre PRIMERO y SERIAL antes de los getBuses; con
+      // 6s acá + 6s buses + 4s token (cold) la función pasaba el límite de Netlify (~10s)
+      // y la mataba ANTES de llegar al fallback de horarios programados del catch →
+      // "servidores durmiendo" para vivo Y programado a la vez. La metadata tarda <1s normal.
+      signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) return null;
     const data = await res.json();

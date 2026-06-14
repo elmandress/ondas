@@ -185,12 +185,18 @@ export async function GET(req: NextRequest) {
           { headers: { "Cache-Control": "no-store, max-age=0" } }
         );
       }
-      return NextResponse.json({ arrivals: [], stopId, updatedAt: Date.now(), source: "no-info" });
+      return NextResponse.json(
+        { arrivals: [], stopId, updatedAt: Date.now(), source: "no-info" },
+        { headers: { "Cache-Control": "no-store, max-age=0" } } // R67: nunca cachear un vacío
+      );
     }
 
     const lineCodes = stopInfo.variants.map((v) => v.lineCode);
     if (lineCodes.length === 0) {
-      return NextResponse.json({ arrivals: [], stopId, updatedAt: Date.now(), source: "no-lines" });
+      return NextResponse.json(
+        { arrivals: [], stopId, updatedAt: Date.now(), source: "no-lines" },
+        { headers: { "Cache-Control": "no-store, max-age=0" } } // R67: nunca cachear un vacío
+      );
     }
 
     const stop = findStopServer(stopId);
@@ -382,7 +388,7 @@ export async function GET(req: NextRequest) {
     } catch {}
     return NextResponse.json(
       { arrivals: [], stopId, updatedAt: Date.now(), error: "API STM no disponible" },
-      { status: 200 }
+      { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } } // R67: nunca cachear el error
     );
   }
 }

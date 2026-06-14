@@ -49,7 +49,7 @@ async function getAccessToken(): Promise<string | null> {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
       cache: "no-store",
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(3000), // R67: 4s→3s — acota la cadena serial del arrivals
     });
 
     if (!res.ok) {
@@ -95,7 +95,7 @@ export async function mvdApiGet<T = unknown>(
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(4500), // R67: 6s→4.5s — acota la cadena serial del arrivals bajo el límite de Netlify
     });
 
     if (!res.ok) {

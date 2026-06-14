@@ -31,7 +31,16 @@ export async function middleware(request: NextRequest) {
   });
 
   // Tocar getUser() fuerza el refresh del token si hace falta y reescribe cookies.
-  await supabase.auth.getUser();
+  // R67: try/catch — si getUser() falla en el runtime de Netlify (Supabase Auth
+  // inalcanzable desde el edge, cookie de sesión corrupta, etc.), SIN esto la
+  // excepción tira TODA la request (incluida /api/stm/*) → 500 → el cliente muestra
+  // "servidores del STM durmiendo" para vivo y programado a la vez. Degradamos con
+  // gracia: seguimos sin sesión (la app anda en modo anónimo), nunca rompemos.
+  try {
+    await supabase.auth.getUser();
+  } catch {
+    /* sesión no refrescada este request — la app sigue andando sin cuenta */
+  }
   return response;
 }
 
