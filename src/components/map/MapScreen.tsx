@@ -29,6 +29,7 @@ import { useEnrichedRouteLegs } from "@/hooks/useEnrichedRouteLegs";
 import { speak } from "@/lib/voice-alerts";
 import { haptic } from "@/lib/haptics";
 import LineDetailSheet from "@/components/home/LineDetailSheet";
+import { Icons } from "@/components/brand/Icons";
 import StopPanel from "@/components/map/panels/StopPanel";
 import RoutePanel from "@/components/map/panels/RoutePanel";
 import PlacePanel from "@/components/map/panels/PlacePanel";
@@ -370,57 +371,38 @@ export default function MapScreen() {
 
   return (
     <div className="map-fullbleed flex flex-col h-full relative" style={{ background: "var(--bg)" }}>
-      {/* ── TOP BAR ── (oculto cuando hay parada: la hoja ya muestra todo) */}
+      {/* ── TIRA DE SEÑALÉTICA (R67) ── Oculta con parada abierta (la hoja muestra todo).
+          El conteo de paradas es METADATA, no la estrella: cuando no hay contexto, va como
+          un pill chico y discreto arriba al centro. Solo el contexto accionable (ruta/lugar
+          activos) ocupa una tira con su acción de cerrar. La acción real del mapa (centrar)
+          vive en su botón flotante prominente. */}
       {!selectedStop && (
-      <div className="map-top-bar absolute top-0 left-0 right-0 z-[1000] pt-[max(env(safe-area-inset-top),14px)] px-3 pb-2 pointer-events-none">
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <div className="flex-1 bg-[#101626]/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-lg">
-            <svg className="w-4 h-4 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <circle cx="12" cy="10" r="3" />
-              <path d="M12 2a8 8 0 00-8 8c0 6 8 12 8 12s8-6 8-12a8 8 0 00-8-8z" />
-            </svg>
-            <div className="flex-1 min-w-0">
-              {selectedRoute ? (
-                <>
-                  <p className="text-[11px] text-amber-400 font-bold leading-none">Ruta</p>
-                  <p className="text-xs text-white font-semibold truncate leading-tight mt-0.5">
-                    {selectedRoute.origin.name || "Origen"} → {selectedRoute.destination.name || "Destino"}
-                  </p>
-                </>
-              ) : selectedPlace ? (
-                <>
-                  <p className="text-[11px] text-red-400 font-bold leading-none">Lugar</p>
-                  <p className="text-xs text-white font-semibold truncate leading-tight mt-0.5">{selectedPlace.name}</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-[13px] text-white font-bold leading-tight">
-                    {!stopsReady
-                      ? "Cargando paradas…"
-                      : visibleStops.length > 0
-                      ? `${visibleStops.length} paradas a la vista`
-                      : bounds && bounds.zoom < 14
-                      ? "Acercá el mapa para ver paradas"
-                      : "Buscando paradas…"}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Tocá una parada para ver sus buses</p>
-                </>
-              )}
+        <div className="map-signal-top">
+          {selectedRoute ? (
+            <div className="map-ctx-strip">
+              <span className="mcs-eyebrow">Ruta</span>
+              <span className="mcs-text">{selectedRoute.origin.name || "Origen"} → {selectedRoute.destination.name || "Destino"}</span>
+              <button onClick={clearSelections} className="mcs-close" aria-label="Cerrar ruta"><Icons.Close size={15} /></button>
             </div>
-            {(selectedRoute || selectedPlace) && (
-              <button
-                onClick={clearSelections}
-                className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center"
-                aria-label="Cerrar"
-              >
-                <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            )}
-          </div>
+          ) : selectedPlace ? (
+            <div className="map-ctx-strip place">
+              <span className="mcs-eyebrow">Lugar</span>
+              <span className="mcs-text">{selectedPlace.name}</span>
+              <button onClick={clearSelections} className="mcs-close" aria-label="Cerrar lugar"><Icons.Close size={15} /></button>
+            </div>
+          ) : (
+            <div className="map-count-pill" role="status">
+              <span className="mcp-dot" aria-hidden />
+              {!stopsReady
+                ? "Cargando paradas…"
+                : visibleStops.length > 0
+                ? `${visibleStops.length} paradas`
+                : bounds && bounds.zoom < 14
+                ? "Acercá para ver paradas"
+                : "Buscando…"}
+            </div>
+          )}
         </div>
-      </div>
       )}
 
       {/* ── MAPA ── */}
@@ -528,26 +510,19 @@ export default function MapScreen() {
       {location && locationIsReal && (
         <button
           onClick={() => { haptic(8); mapApi?.flyTo(location.lat, location.lon, 16); }}
-          className="absolute right-4 z-[1000] w-12 h-12 rounded-full bg-[#101626]/95 backdrop-blur-xl border border-white/[0.08] flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+          className="map-fab"
           style={{ bottom: selectedStop ? "calc(48vh + 16px)" : "152px" }}
           aria-label="Centrar en mi ubicación"
         >
-          <svg className="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-          </svg>
+          <Icons.Crosshair size={22} />
         </button>
       )}
 
       {/* Hint zoom bajo */}
       {bounds && bounds.zoom < 14 && !selectedStop && stopsReady && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[999] pointer-events-none">
-          <div className="bg-[#0a0f1c]/90 backdrop-blur-xl rounded-full px-4 py-2 border border-white/[0.08] flex items-center gap-2 shadow-xl">
-            <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <circle cx="11" cy="11" r="8" /><path d="M11 8v6M8 11h6" />
-            </svg>
-            <p className="text-xs text-slate-300 font-medium">Acercá para ver paradas</p>
-          </div>
+        <div className="map-zoom-hint">
+          <Icons.Search size={15} />
+          <span>Acercá para ver paradas</span>
         </div>
       )}
 
