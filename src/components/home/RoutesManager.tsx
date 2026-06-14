@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useBackClose } from "@/hooks/useBackClose";
+import { usePlaceSearch } from "@/hooks/usePlaceSearch";
+import PlaceResults from "@/components/ui/PlaceResults";
 import { motion, AnimatePresence } from "framer-motion";
 import { getPrefs, addFavorite, removeFavorite, type FavoriteRoute } from "@/lib/store";
 import { STOPS_DATASET } from "@/lib/stm";
@@ -227,55 +229,40 @@ export default function RoutesManager({ onClose, onChange }: RoutesManagerProps)
   );
 }
 
-// ── Campo de búsqueda de lugar (dirección / esquina / POI) vía /api/geocode ──
+// ── Campo de búsqueda de lugar (dirección / esquina / POI) ──
+// R68: usa el hook compartido (usePlaceSearch) y la UI compartida (<PlaceResults>) —
+// antes tenía su propio fetch+debounce (sin abort) y renderizaba con emojis (inconsistente).
 function PlaceField({ placeholder, value, onPick }: { placeholder: string; value: PlaceVal | null; onPick: (p: PlaceVal) => void }) {
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<Array<{ name: string; fullName?: string; lat: number; lon: number; icon?: string }>>([]);
-  const [searching, setSearching] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const search = useCallback((text: string) => {
-    if (timer.current) clearTimeout(timer.current);
-    if (text.trim().length < 3) { setResults([]); setSearching(false); return; }
-    setSearching(true);
-    timer.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(text.trim())}`);
-        const data = await res.json();
-        setResults(Array.isArray(data.results) ? data.results.slice(0, 6) : []);
-      } catch { setResults([]); }
-      setSearching(false);
-    }, 350);
-  }, []);
+  // Mantiene el mínimo de 3 chars del campo original (direcciones; evita ruido).
+  const { results, loading: searching } = usePlaceSearch(q, { debounceMs: 350, enabled: q.trim().length >= 3 });
 
   if (value) {
     return (
       <div className="flex items-center gap-2 px-4 py-3 rounded-2xl" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-        <Icons.Pin size={15} className="text-amber-400 flex-shrink-0" />
+        <Icons.Pin size={15} className="text-[var(--accent)] flex-shrink-0" />
         <span className="flex-1 text-sm text-white truncate">{value.name}</span>
-        <button onClick={() => { onPick(null as unknown as PlaceVal); setQ(""); setResults([]); }} aria-label="Cambiar" className="icon-btn sm"><Icons.Close size={14} /></button>
+        <button onClick={() => { onPick(null as unknown as PlaceVal); setQ(""); }} aria-label="Cambiar" className="icon-btn sm"><Icons.Close size={14} /></button>
       </div>
     );
   }
 
   return (
     <div>
-      <input value={q} onChange={(e) => { setQ(e.target.value); search(e.target.value); }} placeholder={placeholder}
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder}
         className="w-full rounded-2xl px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none"
         style={{ background: "var(--surface)", border: "1px solid var(--border)" }} />
-      {searching && <p className="text-xs text-slate-500 mt-2 px-1">Buscando…</p>}
+      {searching && results.length === 0 && <p className="text-xs text-slate-500 mt-2 px-1">Buscando…</p>}
       {results.length > 0 && (
-        <div className="mt-2 flex flex-col gap-1">
-          {results.map((r, i) => (
-            <button key={i} onClick={() => { onPick({ name: r.name, lat: r.lat, lon: r.lon }); setQ(""); setResults([]); }}
-              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left" style={{ background: "var(--surface)" }}>
-              <span style={{ fontSize: 15 }}>{r.icon || "📍"}</span>
-              <span className="min-w-0">
-                <span className="block text-sm text-white truncate">{r.name}</span>
-                {r.fullName && <span className="block text-xs text-slate-500 truncate">{r.fullName}</span>}
-              </span>
-            </button>
-          ))}
+        <div className="mt-2">
+          <PlaceResults
+            items={results.slice(0, 6).map((r) => ({
+              key: r.id,
+              name: r.name,
+              meta: r.fullName ? r.fullName.split(",").slice(0, 3).join(",") : undefined,
+            }))}
+            onSelect={(i) => { const r = results[i]; onPick({ name: r.name, lat: r.lat, lon: r.lon }); setQ(""); }}
+          />
         </div>
       )}
     </div>
