@@ -65,6 +65,17 @@ export function leaveNowUrgency(leaveInMinutes: number): "now" | "soon" | "chill
   return "chill";
 }
 
+/**
+ * A4 (R68): urgencia cuando estás EN la parada (atStop). Acá NO "salís" — esperás el
+ * bus — así que la referencia es la LLEGADA del bus, no el tiempo de salida (ese es
+ * Bug B / walkToLeaveTime, que NO se toca acá). Mismo escalón now/soon/chill.
+ */
+export function atStopUrgency(busEtaMinutes: number): "now" | "soon" | "chill" {
+  if (busEtaMinutes <= 1) return "now";
+  if (busEtaMinutes <= 5) return "soon";
+  return "chill";
+}
+
 export function formatTime(date: Date): string {
   return date.toLocaleTimeString("es-UY", { hour: "2-digit", minute: "2-digit" });
 }

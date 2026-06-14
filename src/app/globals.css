@@ -604,6 +604,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .section-head { display: flex; align-items: center; justify-content: space-between; padding: var(--gap-section) 0 14px; }
 /* Eyebrow de señalética: todos los headers de sección hablan el mismo idioma. */
 .section-head h2 { font: 700 13px/1 var(--ff-senal); font-stretch: 90%; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+/* Utilidad reusable de eyebrow (paneles del mapa, etc.) — Señal condensada. Gris por
+   defecto (como los headers de sección); `.accent` para el sodio de énfasis/identidad. */
+.eyebrow { font: 700 11px/1 var(--ff-senal); font-stretch: 90%; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-3); }
+.eyebrow.accent { color: var(--accent); }
 .section-head .link { min-height: 36px; font: var(--font-small); color: var(--text-2); display: flex; align-items: center; gap: 5px; }
 .section-head .link:hover { color: var(--text); }
 

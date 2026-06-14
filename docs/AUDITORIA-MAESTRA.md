@@ -181,11 +181,11 @@
 | # | Hallazgo | Prio | Evidencia | Estado |
 |---|----------|------|-----------|--------|
 | A1 | **Toast "Nueva versión" tapaba el header del Home** (logo + GPS/ayuda/ajustes). A 375px el toast (y:10–57) solapaba el header (y:8–60). | P2 | boundingBox overlap + screenshot | ✅ **FIXEADO** — movido arriba de la bottom-nav (no obstruye, al alcance del pulgar) |
-| A2 | **Map StopPanel + LineDetailSheet NO migrados a "señalética"**: colores hardcodeados (`#0a0f1c`, `text-amber-400`, `text-white`, `text-slate-*`) y eyebrow ("PARADA #X" / "RECORRIDO COMPLETO") en `font-black` Jakarta, no en Señal. Inconsistente con Home/ficha-de-bus (que sí migraron). | P2 | screenshots `qa-st1`, `qa-st2` + código | ⏳ **PENDIENTE** — pasada de migración (pega bien antes/junto con Búsqueda/Ruteo) |
+| A2 | **Map StopPanel + LineDetailSheet NO migrados a "señalética"**: colores hardcodeados (`#0a0f1c`, `text-amber-400`) y eyebrow ("PARADA #X" / "RECORRIDO COMPLETO") en `font-black` Jakarta, no en Señal. | P2 | screenshots + código | ✅ **FIXEADO (R68)** — utilidad `.eyebrow`/`.eyebrow.accent` (Señal), `Parada #X` en sodio, bg→asfalto, chapa del recorrido en Señal, "Aquí" a tokens sodio. Stacking **sin tocar** (sólo visual). text-slate/white se dejan (≈ niebla/tiza). |
 | A3 | **"Más" cerrado por defecto aunque haya favoritos/rutas** → el gancho de retención queda enterrado detrás de un tap cada sesión. | P2 | screenshot `qa-home-full` (open=false con 2 favs+2 rutas) | ✅ **FIXEADO** — open-if-content (abre si hay favoritos/rutas; respeta el toggle del usuario después) |
 
 ### 💡 Oportunidades / UX (no son regresiones)
-- **A4 (P3) — Hero "¡SALÍ AHORA! · ¡Ya!" cuando estás EN la parada (`atStop`).** No "salís", esperás. El mensaje/urgencia debería diferir en atStop (ej. "Llega en 3 min"). Verificado en `qa-home-empty`. Tweak chico en `LeaveNowHero` — cuidado de no tocar la lógica de Bug B (anclar en bus alcanzable). ⏳ pendiente.
+- **A4 (P3) — Hero "¡SALÍ AHORA! · ¡Ya!" cuando estás EN la parada (`atStop`).** ✅ **FIXEADO (R68)**: en atStop el hero habla de la LLEGADA del bus ("TU BUS · ¡Ahí viene!" / "tu bus en · N min"), no de salir. Helper puro nuevo `atStopUrgency` (urgencia por ETA del bus) + test explícito atStop=true; el cálculo de salida de Bug B (`walkToLeaveTime`) **NO se tocó** (su test sigue verde). Verificado en prod-local.
 - **A5 (P3/backlog) — Compartir ubicación EN VIVO.** VoyEnBondi/Mi Bondi dejan compartir tu posición en tiempo real ("vení a buscarme, estoy acá"). Cuándo comparte links de parada/ETA (`shareStop`), no la ubicación viva del usuario. **Gap real, no regresión.** Barato-medio de copiar bien (Web Share + un link efímero con coords).
 
 ### ✅ Verificado OK (no se degradó con el rediseño)

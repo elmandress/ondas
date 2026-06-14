@@ -95,15 +95,13 @@ export default function LineDetailSheet({
           <div className="px-5 pt-2 pb-4 flex-shrink-0">
             <div className="flex items-center gap-3">
               <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg text-white flex-shrink-0"
-                style={{ background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.12)" }}
+                className="w-14 h-14 rounded-2xl flex items-center justify-center text-lg text-white flex-shrink-0"
+                style={{ background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.12)", fontFamily: "var(--ff-senal)", fontStretch: "88%", fontWeight: 800 }}
               >
                 {line}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  Recorrido completo
-                </p>
+                <p className="eyebrow">Recorrido completo</p>
                 <h2 className="text-[16px] font-bold text-white leading-tight mt-0.5 truncate">
                   {titleCaseDestination(headsign || destination || `Línea ${line}`)}
                 </h2>
@@ -247,7 +245,7 @@ export default function LineDetailSheet({
                         </div>
                         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                           {isHighlight && (
-                            <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
+                            <span className="eyebrow accent px-1.5 py-0.5 rounded-md" style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-border)" }}>
                               Aquí
                             </span>
                           )}

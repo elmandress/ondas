@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { formatRelativeTime, formatEta, titleCaseDestination } from "@/lib/utils";
+import { formatRelativeTime, formatEta, titleCaseDestination, leaveNowUrgency, atStopUrgency } from "@/lib/utils";
 
 describe("titleCaseDestination (R58 — destinos STM en mayúsculas → legibles)", () => {
   it("convierte destinos del STM a Title Case con conectores en minúscula", () => {
@@ -75,6 +75,26 @@ describe("formatEta", () => {
     expect(formatEta(114, false, true)).toBe("1h+");    // 1h 54m → 1h+
     expect(formatEta(125, false, true)).toBe("2h+");
     expect(formatEta(90, true, true)).toBe("~1h+");     // approx + compacto
+  });
+});
+
+describe("urgencia del hero (A4 atStop + Bug B leave)", () => {
+  // A4: en la parada (atStop=true) la urgencia sale de la LLEGADA del bus.
+  it("atStopUrgency: la urgencia es por ETA del bus (atStop)", () => {
+    expect(atStopUrgency(0)).toBe("now");
+    expect(atStopUrgency(1)).toBe("now");
+    expect(atStopUrgency(2)).toBe("soon");
+    expect(atStopUrgency(5)).toBe("soon");
+    expect(atStopUrgency(6)).toBe("chill");
+    expect(atStopUrgency(20)).toBe("chill");
+  });
+
+  // Bug B: el cálculo de SALIR (no-atStop) queda intacto — mismo escalón pero sobre
+  // el tiempo de salida (leaveInMin), no el ETA del bus. Que no se reabra.
+  it("leaveNowUrgency: sin tocar (Bug B) — urgencia por tiempo de salida", () => {
+    expect(leaveNowUrgency(1)).toBe("now");
+    expect(leaveNowUrgency(5)).toBe("soon");
+    expect(leaveNowUrgency(6)).toBe("chill");
   });
 });
 

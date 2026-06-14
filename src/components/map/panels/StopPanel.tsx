@@ -54,14 +54,14 @@ export default function StopPanel({
 
   return (
     <div className="map-stop-panel absolute bottom-0 left-0 right-0 z-[1001]">
-      <div className="map-stop-panel-inner bg-[#0a0f1c]/97 backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
+      <div className="map-stop-panel-inner bg-[#0E1116]/[0.97] backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
         <div className="map-panel-handle flex justify-center pt-2.5 pb-1.5">
           <div className="w-9 h-[3px] rounded-full bg-white/15" />
         </div>
 
         <div className="px-4 pb-2 flex items-start gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-400">Parada #{stop.stopCode}</p>
+            <p className="eyebrow accent">Parada #{stop.stopCode}</p>
             <p className="text-[16px] font-bold text-white leading-tight mt-1 truncate">{stop.stopName}</p>
             <p className="text-xs text-slate-500 mt-1">
               {userDistanceM != null && <>{userDistanceM}m · </>}
