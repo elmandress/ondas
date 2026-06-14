@@ -17,18 +17,8 @@ import { useMounted } from "@/hooks/useMounted";
 import { takePendingSearch } from "@/lib/search-query";
 import { loadStopDirs } from "@/lib/stop-dirs";
 import { titleCaseDestination } from "@/lib/utils";
-
-interface GeoResult {
-  id: string | number;
-  name: string;
-  fullName: string;
-  lat: number;
-  lon: number;
-  type: string;
-  class?: string;
-  icon?: string;
-  source?: "curated" | "nominatim";
-}
+import { usePlaceSearch, type GeoResult } from "@/hooks/usePlaceSearch";
+import PlaceResults from "@/components/ui/PlaceResults";
 
 const TRENDING_IDS = ["4521", "3301", "3302", "2201", "5501", "1101", "9001", "3003", "7703", "1900"];
 
@@ -36,8 +26,9 @@ export default function SearchScreen() {
   const { ready: stopsReady } = useStopsDataset();
   const { location } = useLocation();
   const [query, setQuery] = useState("");
-  const [placeResults, setPlaceResults] = useState<GeoResult[]>([]);
-  const [geoLoading, setGeoLoading] = useState(false);
+  // R68: la búsqueda de lugares vive en el hook compartido (mismo fetch+debounce+abort
+  // que Ruteo y Guardar ruta). Acá sólo queda lo propio de Buscar (paradas + buses-al-destino).
+  const { results: placeResults, loading: geoLoading } = usePlaceSearch(query);
   // Buses EN VIVO que van al destino buscado ("a Pocitos") — lo que la gente ama.
   const [liveToDest, setLiveToDest] = useState<{ count: number; lines: string[] }>({ count: 0, lines: [] });
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
@@ -103,39 +94,17 @@ export default function SearchScreen() {
     return searchStops(q, near);
   }, [debouncedQuery, location, stopsReady]);
 
-  // REMOTO — con debounce: lugares (geocode) y buses al destino. No bloquean a las paradas.
+  // Buses EN VIVO que van al destino buscado ("a Pocitos") — feature propia de Buscar
+  // (los lugares ya los trae usePlaceSearch). Debounce + abort propios.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
     const q = query.trim();
-    if (!q) {
-      setPlaceResults([]);
-      setGeoLoading(false);
-      setLiveToDest({ count: 0, lines: [] });
-      return;
-    }
-
-    setGeoLoading(true);
-
-    debounceRef.current = setTimeout(async () => {
+    if (!q) { setLiveToDest({ count: 0, lines: [] }); return; }
+    debounceRef.current = setTimeout(() => {
       geocodeAbortRef.current?.abort();
-      const geocodeCtrl = new AbortController();
-      geocodeAbortRef.current = geocodeCtrl;
-
-      let places: GeoResult[] = [];
-      try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, { signal: geocodeCtrl.signal });
-        const data = await res.json();
-        places = data.results || [];
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
-      }
-
-      setPlaceResults(places);
-      setGeoLoading(false);
-
-      // Buses EN VIVO que van a este destino (F2.3). En paralelo, sin bloquear.
-      fetch(`/api/stm/vehicles?dest=${encodeURIComponent(q)}`, { signal: geocodeCtrl.signal })
+      const ctrl = new AbortController();
+      geocodeAbortRef.current = ctrl;
+      fetch(`/api/stm/vehicles?dest=${encodeURIComponent(q)}`, { signal: ctrl.signal })
         .then((r) => r.json())
         .then((d) => {
           const v = (d.vehicles || []) as { lineName: string }[];
@@ -147,10 +116,7 @@ export default function SearchScreen() {
           setLiveToDest({ count: 0, lines: [] });
         });
     }, 320);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
 
   function handleSelectStop(stopId: string) {
@@ -258,9 +224,19 @@ export default function SearchScreen() {
           {placeResults.length > 0 && (
             <>
               <div className="search-section-title">Lugares</div>
-              {placeResults.map((place) => (
-                <PlaceRow key={place.id} place={place} onTap={() => handleSelectPlace(place)} />
-              ))}
+              <PlaceResults
+                items={placeResults.map((place) => ({
+                  key: place.id,
+                  name: place.name,
+                  meta: place.fullName.split(",").slice(0, 3).join(","),
+                  trailing: (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent)", font: "var(--font-small)" }}>
+                      Paradas <Icons.Chevron size={12} />
+                    </span>
+                  ),
+                }))}
+                onSelect={(i) => handleSelectPlace(placeResults[i])}
+              />
             </>
           )}
           {stopResults.length > 0 && (
@@ -353,25 +329,6 @@ function StopRow({ stop, onTap, isHistory, query, dir }: { stop: BusStop; onTap:
         </div>
       </div>
       <Icons.Chevron size={16} />
-    </button>
-  );
-}
-
-function PlaceRow({ place, onTap }: { place: GeoResult; onTap: () => void }) {
-  return (
-    <button className="search-result place" onClick={onTap}>
-      {/* Ícono VECTORIAL de marca (Pin ámbar), no emoji en caja morada. Un solo sistema
-          de íconos = coherencia visual. Antes: place.icon era un emoji (🛍️📍) = look de IA. */}
-      <div className="icon" style={{ background: "var(--accent-soft)", color: "var(--accent)", display: "grid", placeItems: "center" }}>
-        <Icons.Pin size={18} />
-      </div>
-      <div className="body">
-        <div className="name">{place.name}</div>
-        <div className="meta">{place.fullName.split(",").slice(0, 3).join(",")}</div>
-      </div>
-      <span className="distance" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent)" }}>
-        Paradas <Icons.Chevron size={12} />
-      </span>
     </button>
   );
 }
