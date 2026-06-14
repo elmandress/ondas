@@ -172,6 +172,91 @@
 
 ---
 
+## 🔬 INVESTIGACIÓN — Honestidad de llegadas: buses fantasma / dirección (2026-06-14)
+> Research-first (sin fix todavía). El "killer reason #1 de abandono": recomendar un bus
+> que no va a llegar. Síntomas reportados: (1) buses que ya pasaron (media cuadra) siguen
+> como "llega en X"; (2) buses de sentido opuesto / calle paralela aparecen como llegando.
+
+### Cómo funciona hoy — `lib/bus-direction-gtfs.ts` (filtro principal de arrivals)
+Algoritmo (auditado línea por línea): variantes de la línea → filtra por **HEADSIGN TEXT**
+(`destinoDesc` vs headsign GTFS) → proyecta el GPS sobre la **polilínea de paradas** de la
+variante (proyección de segmento, no "parada más cercana") → "ya pasó" si la proyección
+quedó **>75 m** después del target por el recorrido → elige la variante con **mejor snap**.
+Es bastante bueno (no es proximidad euclídea genérica). **PERO no usa**: el `lineVariantId`
+exacto que da la API; el `directionId` del GTFS; el bearing (no existe — la API no lo da,
+está hardcodeado a 0).
+
+### Causa raíz (no síntoma)
+1. **Matchea por texto de destino, no por la variante exacta.** La API del STM da
+   `lineVariantId` (cod_variante numérico = el recorrido exacto, con su sentido). El filtro
+   GTFS lo **IGNORA** y matchea por headsign-text (fuzzy). Cuando el texto no matchea
+   (destinos acortados de noche, o ambiguos) **cae a "probar TODAS las variantes de la
+   línea"** → la discriminación de dirección colapsa a geometría pura (mejor snap), que **no
+   distingue ida de vuelta**. ⟵ raíz del "sentido opuesto".
+2. **Tolerancia de snap de 900 m** (`MAX_GPS_SNAP_M`). Una calle paralela (~80–100 m) entra
+   holgada → un bus en la paralela proyecta sobre la polilínea del target. ⟵ "calle paralela".
+3. **Sin bearing/rumbo.** La API no lo da (bearing=0). Sin variante exacta ni rumbo, el único
+   discriminador que queda es la geometría — ambigua justo en avenidas/paralelas.
+4. **Márgenes de "ya pasó" generosos** (75 m snapped / 120 m en el backstop
+   `busLikelyPassedStop`). Un bus a **media cuadra pasado (≤75–120 m)** se muestra como
+   "llegando" — por diseño (no ocultar uno que está EN la parada), pero el usuario lo lee
+   como fantasma. ⟵ "ya pasó pero aparece".
+5. **`trustUpstream` sin verificación dura.** En `arrivals/route.ts`, los buses del filtro
+   oficial del STM (`busstopId`) que el GTFS **no puede snapear** (reason `no-position`) se
+   **muestran igual** (ETA aproximada, `etaApprox`) confiando en el STM — pero ese filtro
+   `busstopId` no es perfectamente direccional.
+
+### ✅ El descubrimiento clave (el check exacto que NO se hace)
+La API del STM **`/variantes/{stopId}`** (`getStopVariants`) devuelve EXACTAMENTE qué
+`cod_variante`s sirven una parada (con su sentido). El bus reporta su `lineVariantId` (mismo
+numerado: "480","448"…). **Hoy NO se compara `bus.lineVariantId` contra los `variantCode`s que
+sirven la parada.** Si se hiciera: un bus cuyo cod_variante NO está en la lista de la parada =
+no sirve esa parada en ese sentido → descartar. Check **exacto, por ID, sin geometría**.
+*(`lib/bus-direction.ts` —el heurístico viejo— SÍ usa `routes[variantCode]`; el filtro GTFS de
+arrivals no.)*
+
+### Espacios de ID (por qué no es trivial mapear)
+- API STM: `lineVariantId` = **cod_variante numérico** ("480").
+- `public/routes.json`: keyado por **cod_variante** ("2","8","17") → shape del recorrido.
+- `data/gtfs-v2.json`: variantId **sintético** `{línea}-{dir}-{n}` (ej. `505-0-2`) — **encoda
+  el directionId** pero NO es el cod_variante. **No hay puente directo cod_variante ↔ GTFS
+  variantId.** Para usar la variante exacta en el filtro GTFS hace falta: (a) el check contra
+  `getStopVariants` (arriba, no necesita puente), y/o (b) construir el puente cod_variante→GTFS.
+
+### Reproducción (prod `cuando-bondi`, datos reales)
+Parada **2201** (Colonia y Barrios Amorín): 15 buses en vivo, incl. **línea 505 en AMBOS
+sentidos** (→ADUANA *y* →CIUDADELA) en la misma parada (bandera roja de wrong-direction — a
+confirmar si Colonia es two-way para 505), y buses hasta **70 min / 27 km** (ETA correcta pero
+ruido). En el snapshot no apareció ningún `etaApprox` ni "cerca-pero-N-paradas" flagrante → el
+bug es **intermitente / por geometría puntual** (paralelas, destinos acortados), no constante.
+
+### El ruteo NO propaga el bug ✅
+`route-planner-gtfs.ts` usa `getDownstreamStops(variantId, sequence)` → el destino debe estar
+**downstream** del origen en la secuencia de la variante (dirección correcta por sequence).
+Haversine sólo para encontrar paradas candidatas cercanas, no para juzgar dirección del bus.
+
+### Estándar de industria (GTFS-realtime) vs lo nuestro
+GTFS-RT: matchear vehículo→trip (`trip_id`) + `current_stop_sequence`, filtrar por
+`direction_id`. La API del STM **no es GTFS-RT** (no da trip_id/direction_id/bearing), pero
+`lineVariantId` **es el equivalente** (identifica el recorrido exacto). Lo tenemos; no lo
+usamos en el filtro de arrivals — ese es el gap respecto al estándar.
+
+### Hallazgo secundario (ruido, P2)
+arrivals devuelve hasta 25 buses sin tope de ETA/distancia → muestra buses a 70 min/27 km.
+Erosiona confianza ("¿por qué me muestra uno a una hora?"). Falta cap.
+
+### Alcance del fix propuesto (a decidir juntos — NO ejecutado)
+- **Core (alto impacto, bajo riesgo):** en `arrivals/route.ts`, descartar todo bus cuyo
+  `lineVariantId` NO esté entre los `variantCode`s que `getStopVariants` dice que sirven la
+  parada. Check exacto por ID — corta sentido-opuesto/paralelas sin tocar geometría.
+- Bajar `MAX_GPS_SNAP_M` (900→~250 m) para cortar paralelas en el path GTFS.
+- Tope de ETA/distancia (ej. ≤45 min o ≤N paradas) contra el ruido.
+- Revisar los márgenes de "ya pasó" (75/120 m) — quizá endurecer a ~40 m.
+- Verificar si la API trae un campo `sentido`/dirección que hoy descartamos en el mapeo `MvdBus`.
+
+Fuentes: [STM API docs](https://api.montevideo.gub.uy/apidocs/publictransport) ·
+[GTFS-RT vehicle positions](https://gtfs.org/documentation/realtime/feed-entities/vehicle-positions/)
+
 ## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
 > Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión
 > (mapa/home/SW). Separación bug-verificado vs oportunidad. **0 errores de consola** en
