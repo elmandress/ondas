@@ -110,7 +110,7 @@ D:\comoire\ondas\
           VehicleCard.tsx
           PinDropPopup.tsx
       route/
-        RouteScreen.tsx         → orquestador (~1200 líneas, candidato a partir)
+        RouteScreen.tsx         → orquestador (~469 líneas; partido en sub-componentes R51)
         RouteInputs.tsx
         PlaceSearch.tsx
         GtfsRouteCard.tsx
@@ -313,9 +313,8 @@ Si `vitest run` falla ANTES de tu cambio → documentar el fallo previo en AUDIT
 - **Pull-to-refresh**: ya existía desde R58d (gesto + indicador + spin).
 
 ### ⏳ P2 — Media prioridad
-- **Dark-first definitivo**: decidir entre tema dark como default o resolver contraste AA en light
 - **Experiencia parada**: paradas equivalentes a pasos + agrupar destinos
-- **Monolito RouteScreen** (~1200 líneas): candidato a partir en sub-componentes
+- (Resuelto) ~~Dark-first definitivo~~ → **dark-only** (R67). ~~Monolito RouteScreen/MapScreen~~ → **partidos R51** (RouteScreen ~469, MapScreen ~490). Limpieza de CSS `[data-theme=light]` muerto: pendiente (commit aparte).
 
 ### 📊 Métricas actuales de código
 - ESLint: 57 warnings (legacy `setState in effect`), 0 errores

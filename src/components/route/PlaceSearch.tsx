@@ -71,7 +71,7 @@ export default function PlaceSearch({
             )}
           </button>
         )}
-        <button onClick={onCancel} className="text-xs text-amber-400 font-semibold flex-shrink-0">Cancelar</button>
+        <button onClick={onCancel} className="text-xs text-[var(--accent)] font-semibold flex-shrink-0">Cancelar</button>
       </div>
       {/* Toast de error de voz */}
       <AnimatePresence>
@@ -94,7 +94,7 @@ export default function PlaceSearch({
           className="w-full card-soft px-3 py-3 flex items-center gap-3 text-left"
         >
           <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "var(--accent-soft)" }}>
-            <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-4 h-4 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
             </svg>
           </div>

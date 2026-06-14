@@ -10,6 +10,7 @@ import { STOPS_DATASET } from "@/lib/stm";
 import { distanceTo } from "@/lib/utils";
 import type { AreaCheck } from "@/lib/route-area";
 import { Icons, type IconName } from "@/components/brand/Icons";
+import LineBadge from "@/components/ui/LineBadge";
 import type { Place } from "@/components/route/types";
 
 export function PlannerEmptyState() {
@@ -70,7 +71,7 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
     <div className="flex flex-col py-8 px-4">
       <div className="flex items-center gap-3 mb-4 px-2">
         <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--surface)" }}>
-          <svg className="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-5 h-5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </div>
@@ -95,8 +96,7 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
-                     <span key={l} className="text-[11px] font-black px-1.5 py-0.5 rounded text-white"
-                     style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
+                     <LineBadge key={l} num={l} size="xs" />
                   ))}
                   {s.lines.length > 3 && <span className="text-[11px] text-slate-400">+{s.lines.length - 3}</span>}
                 </div>
@@ -118,8 +118,7 @@ export function NoRoutesState({ from, to }: { from: Place; to: Place }) {
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
                   {s.lines.slice(0, 3).map(l => (
-                     <span key={l} className="text-[11px] font-black px-1.5 py-0.5 rounded text-white"
-                     style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{l}</span>
+                     <LineBadge key={l} num={l} size="xs" />
                   ))}
                   {s.lines.length > 3 && <span className="text-[11px] text-slate-400">+{s.lines.length - 3}</span>}
                 </div>
@@ -172,7 +171,7 @@ export function OutOfAreaState({ info, destName, onPlanToTerminal }: { info: Are
             <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><circle cx="9" cy="15" r="1.5"/><circle cx="15" cy="15" r="1.5"/>
           </svg>
         ) : (
-          <svg className="w-7 h-7 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+          <svg className="w-7 h-7 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         )}

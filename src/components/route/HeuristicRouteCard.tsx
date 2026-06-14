@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import type { RouteCandidate } from "@/lib/route-planner";
 import { walkingMinutes } from "@/lib/utils";
 import { useWalkingSteps } from "@/hooks/useWalkingSteps";
+import LineBadge from "@/components/ui/LineBadge";
 import type { Place } from "@/components/route/types";
 
 export default function HeuristicRouteCard({
@@ -61,10 +62,7 @@ export default function HeuristicRouteCard({
           {!isWalk && !isTransfer && (
             <div className="flex gap-1 flex-wrap justify-end max-w-[60%]">
               {route.sharedLines.slice(0, 4).map((l) => (
-                <span key={l} className="text-[11px] font-black px-2 py-1 rounded-md text-white"
-                  style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)", letterSpacing: "-0.02em" }}>
-                  {l}
-                </span>
+                <LineBadge key={l} num={l} size="xs" />
               ))}
               {route.sharedLines.length > 4 && (
                 <span className="text-[11px] text-slate-500 font-semibold self-center">+{route.sharedLines.length - 4}</span>
@@ -73,9 +71,9 @@ export default function HeuristicRouteCard({
           )}
           {isTransfer && (
             <div className="flex items-center gap-1.5 justify-end">
-              <span className="text-[11px] font-black px-2 py-1 rounded-md text-white" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{route.transferLine1}</span>
+              {route.transferLine1 && <LineBadge num={route.transferLine1} size="xs" />}
               <svg className="w-3 h-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="9 18 15 12 9 6" /></svg>
-              <span className="text-[11px] font-black px-2 py-1 rounded-md text-white" style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border-strong)" }}>{route.transferLine2}</span>
+              {route.transferLine2 && <LineBadge num={route.transferLine2} size="xs" />}
             </div>
           )}
         </div>
@@ -120,7 +118,7 @@ export default function HeuristicRouteCard({
         {!expanded && !isWalk && (
           <button
             onClick={() => setExpanded(true)}
-            className="text-xs text-amber-400 font-semibold pt-1 hover:underline"
+            className="text-xs text-[var(--accent)] font-semibold pt-1 hover:underline"
           >
             Ver caminata paso a paso ↓
           </button>
@@ -165,7 +163,7 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
       <circle cx="12" cy="5" r="1" /><path d="M9 20l3-9" /><path d="M13 13l2 4" /><path d="M7 20h3" /><path d="M16 20h-2" /><path d="M15 10l2-2-2-1" />
     </svg>
   ) : icon === "bus" ? (
-    <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg className="w-4 h-4 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="4" width="20" height="14" rx="2"/><path d="M22 9H2"/><circle cx="7" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>
     </svg>
   ) : (
@@ -184,7 +182,7 @@ function Step({ icon, main, sub, action }: { icon: "walk" | "bus" | "stop"; main
         <p className="text-xs text-slate-500 truncate mt-0.5">{sub}</p>
       </div>
       {action && (
-        <span className="text-[11px] text-amber-400 font-semibold flex items-center gap-0.5 flex-shrink-0">
+        <span className="text-[11px] text-[var(--accent)] font-semibold flex items-center gap-0.5 flex-shrink-0">
           {action}
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
             <polyline points="9 18 15 12 9 6" />

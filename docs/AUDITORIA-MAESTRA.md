@@ -149,9 +149,9 @@
 - **Impacto:** percepción. **Prioridad media.**
 
 ## 18. Código
-- **Problemas:** monolitos RouteScreen (~1200) / MapScreen (~900); 54 warnings set-state-in-effect.
-- **Implementado:** ✅ TS strict, 75 tests, geo unificado, sin dead code mayor, lint 0 errores.
-- **Pendiente:** ⏳ partir monolitos (P3), limpiar warnings (P3).
+- **Problemas:** ~~monolitos RouteScreen/MapScreen~~ **partidos (R51)**: RouteScreen ~469, MapScreen ~490, con sub-componentes presentacionales separados. Quedan 57 warnings legacy set-state-in-effect.
+- **Implementado:** ✅ TS strict, 218 tests, geo unificado, sin dead code mayor, lint 0 errores.
+- **Pendiente:** ⏳ limpiar warnings legacy (P3).
 - **Impacto:** mantenibilidad. **Prioridad baja-media.**
 
 ## 19. Arquitectura
@@ -269,7 +269,7 @@ No hay P0/P1 nuevos → **se puede avanzar a Búsqueda/Ruteo**. Recomendado mete
 - **localStorage sin límite/expiración** (favoritos, history, tips, caché) → puede llenar la cuota (~5MB) y tirar `QuotaExceededError`. P3.
 - **`analytics_events`/`occupancy_reports` crecen sin retención** → tablas gigantes, queries lentas. P2: agregar TTL/limpieza.
 - **GTFS/datos se actualizan a mano** (no hay pipeline) → quedan viejos sin aviso. P1 arquitectura.
-- **Monolitos** RouteScreen(~1200)/MapScreen(~900) → bugs al modificar, difícil testear. P3.
+- ~~**Monolitos** RouteScreen/MapScreen~~ → **partidos (R51)**: RouteScreen ~469, MapScreen ~490 + sub-componentes. ✅
 
 ## 🔬 Auditoría crítica 2026-06-03 (R42) — no asumir que "compila = bien"
 
