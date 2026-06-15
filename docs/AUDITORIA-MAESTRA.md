@@ -460,11 +460,11 @@ en la superficie exacta (interior / pager / cache stale) antes de tocar.
 | **P1** | **Focus management de sheets** (no entra / no atrapa / no restaura) | bug a11y | focus-trap + restore en el contenedor de bottom-sheet (una vez, transversal) |
 | **P2** | **CLS 0.189 Home** (shift por fuente/hero/mapa) | bug perf | reservar espacio del hero/preview, `font-display` + size-adjust |
 | ~~P2~~ **P0✅** | **TTFB ~2.1–2.6s todas las rutas** (middleware en cada request) | bug perf | **RESUELTO R70** — ver abajo |
-| **P2** | **Supabase ~120 KB en bundle inicial Home** (SettingsSheet estático) | oportunidad | `dynamic(ssr:false)` SettingsSheet |
+| ~~P2~~ ✅ | **Supabase ~120 KB en bundle inicial Home** (SettingsSheet estático) | oportunidad | **RESUELTO R70** — `dynamic(ssr:false)` SettingsSheet (único consumidor de useAuth → Supabase se baja al abrir Ajustes) |
 | **P2** | **stops.json 209 KB en Home** | oportunidad | ¿cargar diferido tras el hero? ¿subset para paradas-cerca? |
 | **P3** | getStopVariants 60s→TTL largo/precompute + prewarm token paralelo | oportunidad | cachear variantes (cuasi-estático) + paralelizar token |
 | **P3** | Archivo 88→35 KB (soltar wdth) | oportunidad | instancia condensada fija |
-| **P3** | framer-motion en bundle inicial | oportunidad | difícil; sólo si CWV lo exige |
+| ~~P3~~ ⚠️ | framer-motion en bundle inicial | NO conviene splitear | está en `LeaveNowHero` (elemento LCP) + AnimatePresence del shell → splitearlo difiere el hero (empeora LCP) o exige reescribir el hero a CSS (refactor riesgoso). NO es win gratis; queda como costo fijo salvo refactor dedicado del hero. |
 | ✅ | **Contraste AA dark-only OK · aria-labels OK · Leaflet/tabs bien split · /linea perf 96** | verificado positivo | — |
 | legacy | 56 warnings ESLint (39 setState mount/seed) — cosméticos | deuda | dejar |
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { AnimatePresence } from "framer-motion";
 import { useLocation } from "@/hooks/useLocation";
 import { useArrivals } from "@/hooks/useArrivals";
@@ -20,12 +21,16 @@ import { LogoLockup } from "@/components/brand/Logo";
 import { Icons } from "@/components/brand/Icons";
 import LineBadge from "@/components/ui/LineBadge";
 import PeakHint from "@/components/ui/PeakHint";
-import SettingsSheet from "@/components/home/SettingsSheet";
 import HowToSheet from "@/components/home/HowToSheet";
 import SaldoSheet from "@/components/home/SaldoSheet";
 import { setRouteInput } from "@/lib/route-input";
 import { useServiceAlerts } from "@/hooks/useServiceAlerts";
 import Tip from "@/components/ui/Tip";
+
+// SettingsSheet: lazy (R70). Es el único consumidor de useAuth → arrastra @supabase/ssr
+// (~120 KB) al bundle. Se renderiza condicional ({showSettings && …}) y no es SEO/SSR, así
+// que con dynamic(ssr:false) el chunk + Supabase se bajan recién al abrir Ajustes.
+const SettingsSheet = dynamic(() => import("@/components/home/SettingsSheet"), { ssr: false });
 
 type Tab = "home" | "route" | "map" | "search";
 
