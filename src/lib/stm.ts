@@ -555,5 +555,23 @@ export function arrivalHasAc(a: Pick<Arrival, "thermalConfort">): boolean {
   return a.thermalConfort === "Aire Acondicionado";
 }
 
+/**
+ * Orden canónico de la lista de llegadas: ascendente por ETA en minutos. ÚNICO punto de
+ * verdad del orden — el endpoint concatena vivo + programado y SIEMPRE ordena con esto
+ * antes de devolver, para que el primero de la lista sea de verdad el que antes llega.
+ *
+ * Guard de finitud (R69): un `eta` NaN/Infinity rompía el comparador `a.eta - b.eta`
+ * (devuelve NaN → orden indefinido del set entero, no solo del elemento malo). Los no
+ * finitos van al final sin desordenar los válidos. Estable: empates conservan el orden
+ * de entrada (vivo antes que programado a igual minuto).
+ */
+export function sortArrivalsByEta<T extends Pick<Arrival, "eta">>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const ea = Number.isFinite(a.eta) ? a.eta : Infinity;
+    const eb = Number.isFinite(b.eta) ? b.eta : Infinity;
+    return ea - eb;
+  });
+}
+
 // Mocks eliminados — la app NUNCA inventa datos. Si la API no responde,
 // se muestra estado vacío real al usuario.

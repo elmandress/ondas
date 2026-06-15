@@ -16,6 +16,7 @@ import {
   getArrivalsForStop,
   getStopVariants,
   lineColorFromCode,
+  sortArrivalsByEta,
   type StopInfo,
   type Arrival,
 } from "@/lib/stm";
@@ -184,7 +185,9 @@ function dedupeLive(arrivals: Arrival[]): Arrival[] {
 /** Mapea horarios programados (schedule.db / metro-schedule.db) a Arrival. Sin GPS:
  *  realtime=false, isScheduled=true (la UI los marca como "horario", no inventa posición). */
 function scheduledToArrivals(sched: ReturnType<typeof getScheduledArrivalsForStop>): Arrival[] {
-  return sched.slice(0, 20).map((s) => ({
+  // sortArrivalsByEta: garantía de orden también en los returns degradados (metro /
+  // schedule-only del catch), no solo en el path principal.
+  return sortArrivalsByEta(sched.slice(0, 20).map((s) => ({
     lineId: s.lineCode,
     lineName: s.lineCode,
     lineColor: lineColorFromCode(s.lineCode),
@@ -194,7 +197,7 @@ function scheduledToArrivals(sched: ReturnType<typeof getScheduledArrivalsForSto
     etaSeconds: Math.max(0, s.minutesFromNow) * 60,
     realtime: false,
     isScheduled: true,
-  }));
+  })));
 }
 
 export async function GET(req: NextRequest) {
@@ -349,9 +352,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Ordenar por ETA y limitar
-    combined.sort((a, b) => a.eta - b.eta);
-    combined = combined.slice(0, 25);
+    // Ordenar por ETA (orden canónico, único punto de verdad) y limitar. El conjunto es
+    // vivo + programado concatenados → SIEMPRE se reordena el set completo acá.
+    combined = sortArrivalsByEta(combined).slice(0, 25);
 
     // ─── F1.4: confianza honesta (último bus + atraso observado) ───
     // Por cada línea distinta, su última corrida programada del día (dato duro).
