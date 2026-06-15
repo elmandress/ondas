@@ -510,6 +510,20 @@ rutas, incluido `/` → baja el TTFB del Home también (el lever que el paso 1 h
 conservador). Saca peso de las 6,600 SEO (ventaja competitiva #1), de `/api/*` (latencia de arrivals +
 elimina el modo de falla 500 de R67) y del Home. Mejora de TTFB en prod se confirma post-deploy.
 Era el de mayor palanca de la ronda.
+**Verificado antes del `git rm` (no asumido):** `git show HEAD:src/middleware.ts` confirma que el archivo
+era **100% auth** — sin headers, redirects, rewrites, geo ni locale (solo `NextResponse.next` + cookies de
+sesión). Los headers de seguridad (**CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy,
+Permissions-Policy**) viven todos en `netlify.toml` (`[[headers]]`), **independientes del middleware** →
+eliminarlo no perdió ningún header.
+
+### 📌 Follow-up CLS residual (~0.08) — P3, NO en esta tanda
+El fix del hero bajó CLS 0.20→~0.10. El residual (`home-map-preview`+section-head ~0.04, `home-more`
+~0.03) son **secciones condicionales que aparecen async** (map gated en `location`, "Más" en `mounted`,
+paradas en `nearbyStops.length`). Reservar su espacio NO es como el fix de hoy ("el contenido final mide
+X"): hay que pensar los **N estados** de cada sección (con/sin favoritos, con/sin rutas, mapa cargado o no,
+GPS granted/denied) — reservar mal cambia un shift por otro (p.ej. reservar el map y colapsarlo en denied).
+Hecho apurado introduce su propio CLS. **Queda como P3 con este contexto; tratarlo como pasada con cuidado,
+no quick-win.**
 
 ### 🔶 CLS + decisión de fuente R70 (medido con PerformanceObserver, Playwright 375px)
 **Fuente — DEJARLA (decisión cerrada):** Archivo ya está en `font-display: swap` → NO es
