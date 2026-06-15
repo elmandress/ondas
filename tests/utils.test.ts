@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { formatRelativeTime, formatEta, titleCaseDestination, leaveNowUrgency, atStopUrgency } from "@/lib/utils";
+import { formatRelativeTime, formatEta, titleCaseDestination, leaveNowUrgency, atStopUrgency, selectHeroBus } from "@/lib/utils";
 
 describe("titleCaseDestination (R58 — destinos STM en mayúsculas → legibles)", () => {
   it("convierte destinos del STM a Title Case con conectores en minúscula", () => {
@@ -95,6 +95,40 @@ describe("urgencia del hero (A4 atStop + Bug B leave)", () => {
     expect(leaveNowUrgency(1)).toBe("now");
     expect(leaveNowUrgency(5)).toBe("soon");
     expect(leaveNowUrgency(6)).toBe("chill");
+  });
+});
+
+describe("selectHeroBus — anclaje del hero 'cuándo salir' (Bug B + Escenario 2 R71)", () => {
+  const a = (...etas: number[]) => etas.map((eta) => ({ eta }));
+
+  // ESCENARIO 2 (el bug): estás a 15 min y TODOS salen antes → ninguno alcanzable.
+  // NO debe anclar en el último como si llegaras (eso daba "¡Salí ahora!" imposible).
+  it("ESCENARIO 2: ningún bus alcanzable → noneReachable, no ancla optimista", () => {
+    const r = selectHeroBus(a(3, 6, 9, 12), 15, false);
+    expect(r.noneReachable).toBe(true);
+    expect(r.firstIdx).toBe(0); // arranca en 0 solo para listar; el hero muestra estado honesto
+  });
+
+  // ESCENARIO 1: el más próximo (5) no se alcanza (walk 15) → salta al alcanzable (20).
+  it("ESCENARIO 1: salta el bus inalcanzable más próximo, ancla en el siguiente alcanzable", () => {
+    const r = selectHeroBus(a(5, 20), 15, false);
+    expect(r).toEqual({ firstIdx: 1, noneReachable: false });
+  });
+
+  it("normal: el primero ya es alcanzable (eta ≥ walk−1) → ancla en él", () => {
+    expect(selectHeroBus(a(8, 15), 5, false)).toEqual({ firstIdx: 0, noneReachable: false });
+  });
+
+  it("gracia de 1 min: eta = walk−1 cuenta como alcanzable (correr el marginal)", () => {
+    expect(selectHeroBus(a(9, 14), 10, false)).toEqual({ firstIdx: 0, noneReachable: false });
+  });
+
+  it("atStop: no caminás → el más próximo siempre vale (nunca noneReachable)", () => {
+    expect(selectHeroBus(a(3, 6), 15, true)).toEqual({ firstIdx: 0, noneReachable: false });
+  });
+
+  it("sin arrivals: firstIdx −1, no noneReachable (eso es el empty state, no 'no llegás')", () => {
+    expect(selectHeroBus([], 10, false)).toEqual({ firstIdx: -1, noneReachable: false });
   });
 });
 

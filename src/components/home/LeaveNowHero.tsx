@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import type { Arrival } from "@/lib/stm";
 import CountUp from "@/components/ui/CountUp";
-import { walkToLeaveTime, leaveNowUrgency, atStopUrgency, formatEta, dynamicBuffer } from "@/lib/utils";
+import { walkToLeaveTime, leaveNowUrgency, atStopUrgency, formatEta, dynamicBuffer, selectHeroBus } from "@/lib/utils";
 import { Icons } from "@/components/brand/Icons";
 import LineBadge from "@/components/ui/LineBadge";
 
@@ -26,15 +26,11 @@ interface LeaveNowHeroProps {
 }
 
 export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName, stopAlias, atStop, inactiveLines, altStop, onTap, onAltTap }: LeaveNowHeroProps) {
-  // Bug B (R67): anclar en el primer bus ALCANZABLE, no en el más próximo. El más
-  // próximo puede estar ya demasiado cerca para llegar caminando — anclar ahí mostraba
-  // "¡Ya!" para un bus imposible: el usuario corría, lo perdía y llegaba tarde
-  // sistemáticamente. Saltamos al siguiente que SÍ da tiempo (caminata − 1 min de gracia
-  // para "correr" uno marginal). Si estás EN la parada (atStop) no caminás → vale el más
-  // próximo. El contador y los chips arrancan en ese bus (coherencia número↔primer chip).
-  const effWalk = atStop ? 0 : walkMinutes;
-  let firstIdx = arrivals.findIndex((a) => a.eta >= effWalk - 1);
-  if (firstIdx < 0) firstIdx = Math.max(0, arrivals.length - 1);
+  // Bug B (R67) + Escenario 2 (R71): anclar en el primer bus ALCANZABLE, no en el más
+  // próximo (que puede estar demasiado cerca para llegar caminando → "¡Ya!" para un bus
+  // imposible). Si NINGUNO es alcanzable, `noneReachable` dispara un estado honesto abajo
+  // en vez de mentir con un countdown a un bus que no tomás. atStop → no caminás → el más próximo.
+  const { firstIdx, noneReachable } = selectHeroBus(arrivals, walkMinutes, !!atStop);
   const first = arrivals[firstIdx];
 
   // Tick de 1s para re-renderizar el countdown; el valor no se lee directamente.
@@ -100,6 +96,41 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
           <button className="he-alt" onClick={onAltTap}>
             <Icons.Walk size={15} />
             <span className="he-alt-txt">A <b>{altStop.dist} m</b> tenés otra parada · {altStop.name}</span>
+            <Icons.Chevron size={15} />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Escenario 2 (R71): NINGÚN bus es alcanzable a pie (estás lejos, todos salen antes de
+  // que llegues). Honestidad: NO mostramos "¡Salí ahora!" para un bus imposible. Decimos
+  // que no llegás, mostramos los que vienen (para que sepas) y ofrecemos —si hay— una
+  // parada más cerca (mejor margen), reusando el mismo gancho que el empty state.
+  if (noneReachable) {
+    const lastEta = arrivals[arrivals.length - 1].eta;
+    const lines = [...new Set(arrivals.map((a) => a.lineName))];
+    const nm = stopAlias || stopName?.split(" – ")[0] || stopName;
+    return (
+      <div className="hero-card hero-empty">
+        <button onClick={onTap} className="he-main" aria-label={`No llegás a pie a los buses de ${nm || "esta parada"}: estás a ${walkMinutes} minutos y todos salen antes. Ver la parada.`}>
+          <span className="he-icon"><Icons.Walk size={22} /></span>
+          <span className="he-text">
+            <span className="he-title">No llegás a estos a pie</span>
+            <span className="he-sub">Estás a <b>{walkMinutes} min</b>{nm ? ` de ${nm}` : ""} · el último sale en {lastEta} min</span>
+          </span>
+          <Icons.Chevron size={18} />
+        </button>
+
+        <div className="he-lines" aria-label="Buses que salen antes de que llegues">
+          {lines.slice(0, 6).map((l) => <LineBadge key={l} num={l} size="xs" />)}
+          {lines.length > 6 && <span className="he-more">+{lines.length - 6}</span>}
+        </div>
+
+        {altStop && onAltTap && (
+          <button className="he-alt" onClick={onAltTap}>
+            <Icons.Walk size={15} />
+            <span className="he-alt-txt">A <b>{altStop.dist} m</b> tenés otra parada más cerca · {altStop.name}</span>
             <Icons.Chevron size={15} />
           </button>
         )}
@@ -174,20 +205,33 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
 
       <div className="hero-right">
         {/* Solo badge + ETA: el destino completo NO entra en ~160px y truncado a
-            "CURV…" no informa y parece roto. Va en title/aria; el detalle, al tocar. */}
-        {arrivals.slice(firstIdx, firstIdx + 3).map((a, i) => (
-          <div
-            key={i}
-            className={`hero-chip ${a.realtime ? "" : "sched"}`}
-            title={a.destination ? `${a.lineName} → ${a.destination}` : a.lineName}
-            aria-label={`Línea ${a.lineName}${a.destination ? ` hacia ${a.destination}` : ""}, ${formatEta(a.eta)}`}
-          >
-            {/* R59: badge NEUTRO también acá — era el único lugar que pasaba el color
-                hash por línea (violaba la decisión v2 documentada en LineBadge). */}
-            <LineBadge num={a.lineName} size="sm" />
-            <span className="hc-eta">{formatEta(a.eta, false, true)}<span className="live-dot" /></span>
-          </div>
-        ))}
+            "CURV…" no informa y parece roto. Va en title/aria; el detalle, al tocar.
+            Escenario 1 (R71): si el ancla saltó un bus más próximo pero inalcanzable a pie,
+            lo mostramos DIMMED (.missed) en vez de borrarlo — "no llegás", pero no lo ocultamos. */}
+        {(() => {
+          const start = Math.max(0, firstIdx - 1);
+          return arrivals.slice(start, start + 3).map((a, i) => {
+            const absIdx = start + i;
+            const missed = absIdx < firstIdx;
+            return (
+              <div
+                key={absIdx}
+                className={`hero-chip ${a.realtime ? "" : "sched"}${missed ? " missed" : ""}`}
+                title={missed
+                  ? `${a.lineName}${a.destination ? ` → ${a.destination}` : ""} · sale antes de que llegues`
+                  : (a.destination ? `${a.lineName} → ${a.destination}` : a.lineName)}
+                aria-label={missed
+                  ? `Línea ${a.lineName}, ${formatEta(a.eta)}, no llegás a pie`
+                  : `Línea ${a.lineName}${a.destination ? ` hacia ${a.destination}` : ""}, ${formatEta(a.eta)}`}
+              >
+                {/* R59: badge NEUTRO también acá — era el único lugar que pasaba el color
+                    hash por línea (violaba la decisión v2 documentada en LineBadge). */}
+                <LineBadge num={a.lineName} size="sm" />
+                <span className="hc-eta">{formatEta(a.eta, false, true)}<span className="live-dot" /></span>
+              </div>
+            );
+          });
+        })()}
       </div>
 
       <span className="hero-seeall">Ver todos <Icons.Chevron size={13} /></span>

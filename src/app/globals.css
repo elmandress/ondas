@@ -585,6 +585,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .hero-chip .live-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--live); animation: live-ping 1.9s infinite; }
 .hero-chip.sched .live-dot { background: transparent; border: 1.5px solid var(--text-3); }
 .hero-chip.sched .live-dot::after { display: none; }
+/* Escenario 1 (R71): bus que sale antes de que llegues caminando — visible pero atenuado
+   (no lo ocultamos, pero no es "tu" bus). La línea sobre el ETA marca "no llegás". */
+.hero-chip.missed { opacity: 0.4; }
+.hero-chip.missed .hc-eta { text-decoration: line-through; text-decoration-thickness: 1px; }
+.hero-chip.missed .live-dot, .hero-chip.missed .live-dot::after { background: var(--text-3); animation: none; }
 .hero-seeall { grid-column: 2; align-self: end; justify-self: end; font: 500 12px/1 var(--ff); color: var(--text-3); display: flex; align-items: center; gap: 4px; padding-bottom: 14px; position: relative; z-index: 1; }
 
 .hero-progress { grid-column: 1 / -1; grid-row: 2; margin: 0 -22px; height: 3px; background: rgba(255,255,255,0.05); position: relative; overflow: hidden; }

@@ -65,6 +65,36 @@ export function leaveNowUrgency(leaveInMinutes: number): "now" | "soon" | "chill
   return "chill";
 }
 
+export interface HeroBusSelection {
+  /** Índice del bus en el que ancla el hero (-1 si no hay arrivals). */
+  firstIdx: number;
+  /** true si NINGÚN bus es alcanzable a pie (todos salen antes de que llegues). */
+  noneReachable: boolean;
+}
+
+/**
+ * Elige el bus "ancla" del hero "cuándo salir" (Bug B + Escenario 2, R71).
+ *
+ * Ancla en el PRIMER bus alcanzable: `eta >= caminata - 1` (1 min de gracia para correr
+ * uno marginal). Si estás EN la parada (atStop) no caminás → vale el más próximo.
+ *
+ * CLAVE (Escenario 2): si NINGUNO es alcanzable (estás a 15 min y todos salen en ≤12),
+ * NO mentimos anclando en el último como si llegaras ("¡Salí ahora!" para un bus imposible
+ * = recomendar un bus que ya pasó). Devolvemos `noneReachable: true` para que el hero
+ * muestre un estado HONESTO ("no llegás a estos") en vez del countdown optimista.
+ */
+export function selectHeroBus(
+  arrivals: { eta: number }[],
+  walkMinutes: number,
+  atStop: boolean,
+): HeroBusSelection {
+  if (arrivals.length === 0) return { firstIdx: -1, noneReachable: false };
+  const effWalk = atStop ? 0 : walkMinutes;
+  const reachableIdx = arrivals.findIndex((a) => a.eta >= effWalk - 1);
+  if (reachableIdx < 0) return { firstIdx: 0, noneReachable: true };
+  return { firstIdx: reachableIdx, noneReachable: false };
+}
+
 /**
  * A4 (R68): urgencia cuando estás EN la parada (atStop). Acá NO "salís" — esperás el
  * bus — así que la referencia es la LLEGADA del bus, no el tiempo de salida (ese es
