@@ -481,12 +481,35 @@ los sitemaps. Por eso `/linea/183` (SSG, debería servirse del edge en ms) medí
 component ni API route lee la sesión server-side; todo el auth/favoritos es CLIENTE (`getSupabaseBrowser`
 en `useAuth` + `sync-favorites`, con auto-refresh del token). El refresh server-side era peso muerto
 (y el try/catch de R67 lo confirma: tiraba 500 en `/api/stm/*`).
-**Fix (1 línea, `matcher: ["/"]`):** el middleware corre SOLO en el SPA `/` (donde aterriza un usuario
-logueado por recarga dura). **Verificado local** (dev logs): `/` muestra `proxy.ts` en el timing;
-`/linea/183`, `/parada/2201` y `/api/stm/arrivals` ya **NO**. Impacto: saca el getUser() de las 6,600
-páginas SEO (ventaja competitiva #1 — TTFB en cada resultado de Google → rankings + abandono) y de
-`/api/*` (baja la latencia de arrivals del #2 + elimina el modo de falla 500 de R67). La mejora de TTFB
-en prod se confirma post-deploy. Esto reordena la ronda: era el de mayor palanca, no una página lenta.
+**Fix paso 1 (`matcher: ["/"]`, commit 10c941f):** sacó el middleware de las 6,600 SEO + `/api/*`,
+dejándolo sólo en `/`. **Verificado local** (dev logs): `/` mostraba `proxy.ts`; `/linea/183`,
+`/parada/2201`, `/api/stm/arrivals` ya **NO**.
+
+**Fix paso 2 — ELIMINADO del todo (`git rm src/middleware.ts`):** research del patrón oficial
+`@supabase/ssr` (doc oficial, vía Supabase MCP) confirmó que es **vestigial** en esta app:
+- La doc dice textual: *"Since Next.js Server Components **can't write cookies**, you need a Proxy to
+  refresh expired Auth tokens and store them."* → el middleware existe **sólo** para que lecturas de
+  sesión **server-side** (Server Components / Route Handlers) tengan cookie fresca. Esta app **no tiene
+  ninguna** (`getSupabaseServer()` definido, **nunca llamado**).
+- El refresh lo cubre **100% el browser client** (`createBrowserClient`, `autoRefreshToken` +
+  `onAuthStateChange`): mientras la PWA está abierta y al reabrir (refresca desde el refresh-token en
+  init). El middleware **sólo corre en requests** → no protege una PWA cerrada. En "reabrir con
+  refresh-token cerca de expirar" el resultado es idéntico con o sin middleware (refresh-token válido →
+  login; expirado → logout). **No agrega protección.**
+- La propia doc, sobre "invalid refresh token errors", recomienda *"defer rendering to the browser where
+  the client library can access an **up-to-date refresh token**"* — confirma que el cliente es la fuente
+  de verdad y que el token server-side puede estar stale (problema conocido del patrón; sacarlo incluso
+  evita la posible race de doble-refresh).
+- **Por qué es SEGURO sacarlo (para que no se reintroduzca por error):** esta app es auth 100% cliente
+  (favoritos sync opcional). **Reintroducir el middleware `@supabase/ssr` SÓLO si algún día se agrega
+  lectura de sesión server-side** (un Server Component o Route Handler que llame `getSupabaseServer()` /
+  `auth.getUser()` en el server). Mientras el auth siga client-only, el archivo no debe volver.
+
+**Impacto total:** el `getUser()` (round-trip a Supabase Auth, ~2s TTFB en el edge) sale de **todas** las
+rutas, incluido `/` → baja el TTFB del Home también (el lever que el paso 1 había dejado afuera por
+conservador). Saca peso de las 6,600 SEO (ventaja competitiva #1), de `/api/*` (latencia de arrivals +
+elimina el modo de falla 500 de R67) y del Home. Mejora de TTFB en prod se confirma post-deploy.
+Era el de mayor palanca de la ronda.
 
 ### 🔶 CLS + decisión de fuente R70 (medido con PerformanceObserver, Playwright 375px)
 **Fuente — DEJARLA (decisión cerrada):** Archivo ya está en `font-display: swap` → NO es

@@ -22,6 +22,14 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 /**
  * Cliente ligado a la sesión del request (cookies). En Next 16 `cookies()` es
  * async → esta función también lo es. Respeta RLS.
+ *
+ * ⚠️ R70 — HOY NADIE LLAMA ESTA FUNCIÓN (auth es 100% cliente). Por eso se ELIMINÓ
+ * `src/middleware.ts` (el Proxy de @supabase/ssr): existía sólo para refrescar la cookie
+ * de sesión para lecturas server-side, y al correr en cada request metía ~2s de TTFB en
+ * las 6,600 páginas SEO + /api/* sin que nada lo consumiera. **Si empezás a usar
+ * `getSupabaseServer()` en un Server Component / Route Handler, REINTRODUCÍ el middleware
+ * de @supabase/ssr** (refresca el token y reescribe la cookie; sin él la sesión server-side
+ * queda stale). Ver "RESUELTO R70 — TTFB del middleware" en docs/AUDITORIA-MAESTRA.md.
  */
 export async function getSupabaseServer(): Promise<SupabaseClient | null> {
   if (!url || !anonKey) return null;
