@@ -458,7 +458,7 @@ en la superficie exacta (interior / pager / cache stale) antes de tocar.
 |------|----------|------|------------------|
 | **P1** | **LCP 6.1s Home** (hero `ct-text` bloqueado por fuente+hidratación) | bug perf | preload/optimizar Archivo + priorizar el render del contador; medir LCP element |
 | **P1** | **Focus management de sheets** (no entra / no atrapa / no restaura) | bug a11y | focus-trap + restore en el contenedor de bottom-sheet (una vez, transversal) |
-| **P2** | **CLS 0.189 Home** (shift por fuente/hero/mapa) | bug perf | reservar espacio del hero/preview, `font-display` + size-adjust |
+| ~~P2~~ 🔶 | **CLS 0.189 Home** | bug perf | **PARCIAL R70** — hero skeleton 168→264 (igualar hero poblado) bajó CLS **0.20→~0.10**. Residual: map section + "Más" async. Ver abajo |
 | ~~P2~~ **P0✅** | **TTFB ~2.1–2.6s todas las rutas** (middleware en cada request) | bug perf | **RESUELTO R70** — ver abajo |
 | ~~P2~~ ✅ | **Supabase ~120 KB en bundle inicial Home** (SettingsSheet estático) | oportunidad | **RESUELTO R70** — `dynamic(ssr:false)` SettingsSheet (único consumidor de useAuth → Supabase se baja al abrir Ajustes) |
 | **P2** | **stops.json 209 KB en Home** | oportunidad | ¿cargar diferido tras el hero? ¿subset para paradas-cerca? |
@@ -487,6 +487,23 @@ logueado por recarga dura). **Verificado local** (dev logs): `/` muestra `proxy.
 páginas SEO (ventaja competitiva #1 — TTFB en cada resultado de Google → rankings + abandono) y de
 `/api/*` (baja la latencia de arrivals del #2 + elimina el modo de falla 500 de R67). La mejora de TTFB
 en prod se confirma post-deploy. Esto reordena la ronda: era el de mayor palanca, no una página lenta.
+
+### 🔶 CLS + decisión de fuente R70 (medido con PerformanceObserver, Playwright 375px)
+**Fuente — DEJARLA (decisión cerrada):** Archivo ya está en `font-display: swap` → NO es
+render-blocking; el hero pinta con la fallback al instante y swapea. Soltar el eje `wdth`
+(88→35 KB) ahorra ancho de banda pero **casi no mueve el LCP** (el texto ya aparece). No vale
+arriesgar la identidad señalética. El contexto post-middleware confirmó que la fuente no era el lever.
+**CLS — fix parcial:** causa raíz medida = el **hero skeleton tenía `minHeight: 168` pero el hero
+poblado mide ~221–277** (varía por estado) → saltaba +50 a +109 px al cargar y cascadeaba sobre
+paradas+mapa+"Más". Fix: skeleton 168→**264** + el CTA sin-GPS también a 264 (que el swap no shiftee
+en ninguno de los dos paths). **Resultado: CLS 0.20 → ~0.08–0.14** (varía porque el hero mismo varía;
+un skeleton fijo no matchea un hero variable). **Honestidad:** en una iteración reporté "CLS 0" que era
+FALSO — eran páginas en blanco (el dev server por `Start-Job` moría entre llamadas de PowerShell; con
+`next start`/OpenNext la home tampoco se sirve medible). Corregido midiendo con dev persistente que SÍ
+renderiza. **Residual (~0.08):** `home-map-preview`+section-head (0.04, el map section gated en
+`location` aparece async) y `home-more` (0.03, gated en `mounted`). Bajarlo a <0.1 garantizado pide
+reservar esas secciones async — pero reservar contenido condicional cambia un shift por otro según el
+resultado (granted vs denied), así que es **más-touch, no "sin riesgo"** → follow-up.
 
 ## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
 > Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión

@@ -358,15 +358,20 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
           />
         ) : (!mounted || !stopsReady || locationStatus === "pending") ? (
           /* CARGANDO: skeleton del hero en vez de un empty state seco. Da sensación de
-             velocidad — el usuario ve que "ya viene" en vez de un cartel de tarea. */
-          <div className="hero-card skel" style={{ minHeight: 168 }} aria-label="Buscando tu parada más cercana" />
+             velocidad — el usuario ve que "ya viene" en vez de un cartel de tarea.
+             R70 (CLS): minHeight 168→264 para igualar el alto real del hero poblado (~277px
+             medido). Antes el skeleton corto saltaba +109px al cargar y empujaba en cascada
+             paradas+mapa (la mitad del CLS 0.20 del Home). */
+          <div className="hero-card skel" style={{ minHeight: 264 }} aria-label="Buscando tu parada más cercana" />
         ) : (
           /* SIN GPS / sin parada: CTA cálido y deseable (no "activá el contador" como to-do).
              Primera impresión = invitar, no mandar tarea. Un toque activa la ubicación. */
+          // R70 (CLS): minHeight 264 = misma altura reservada que el skeleton → en el path
+          // sin-GPS el swap skeleton→CTA tampoco shiftea (el CTA centrado solo gana aire).
           <button
             onClick={() => retryLocation()}
             className="hero-card"
-            style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, cursor: "pointer", background: "radial-gradient(120% 100% at 50% 0%, rgba(240,160,32,0.10), transparent 70%)" }}
+            style={{ minHeight: 264, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, cursor: "pointer", background: "radial-gradient(120% 100% at 50% 0%, rgba(240,160,32,0.10), transparent 70%)" }}
           >
             <div style={{ width: 52, height: 52, borderRadius: "var(--r-card)", background: "var(--accent-bg)", display: "grid", placeItems: "center", color: "#1a1206" }}>
               <Icons.Crosshair size={26} />
