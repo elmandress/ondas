@@ -34,10 +34,25 @@ import {
 } from "@/lib/mvd-api";
 import { findStopServer } from "@/lib/stops-server";
 import { busTowardsStopGtfs, busLikelyPassedStop } from "@/lib/bus-direction-gtfs";
+import { busVariantTowardsStop } from "@/lib/bus-direction";
+import { getRoutesServer } from "@/lib/routes-server";
 import { haversineMeters as distM } from "@/lib/geo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// R69 (#3) — cap de honestidad para buses EN VIVO. Un bus a >45 min o >12 km se lee como
+// ruido ("¿por qué me muestra uno a una hora?") y erosiona la confianza igual que el
+// sentido-opuesto. Solo aplica a realtime: un PROGRAMADO lejano (próximo a las 22:30) es
+// información legítima, no ruido. 12 km ≈ 45 min a velocidad urbana (respaldo por distancia).
+const MAX_REALTIME_ETA_MIN = 45;
+const MAX_REALTIME_DIST_M = 12000;
+function withinHonestRange(a: Arrival): boolean {
+  if (!a.realtime) return true;
+  if (a.eta > MAX_REALTIME_ETA_MIN) return false;
+  if ((a.distance ?? 0) > MAX_REALTIME_DIST_M) return false;
+  return true;
+}
 
 /**
  * Convierte un bus crudo en Arrival.
@@ -54,6 +69,23 @@ export const dynamic = "force-dynamic";
 function mapBusToArrivalWithGtfs(b: MvdBus, targetStopId: string, trustUpstream = false): Arrival | null {
   const lat = b.location.coordinates[1];
   const lon = b.location.coordinates[0];
+
+  // R69 — GATE por VARIANTE EXACTA (honestidad de dirección, por ID no por texto).
+  // El bus reporta `lineVariantId` = cod_variante = clave de `routes.json` → su shape exacto
+  // (con su sentido). Si ese shape NO pasa por la parada (otra ruta / sentido opuesto) o el
+  // bus ya la dejó atrás, descartamos con CERTEZA, sin importar trustUpstream. Esto corta de
+  // raíz "sentido opuesto" y "ya pasó" que el filtro GTFS por headsign-text dejaba pasar
+  // cuando el destino no matcheaba y colapsaba a "probar todas las variantes". Verificado en
+  // la 2201: shape del sentido servido snapea ~4 m, el opuesto ~101 m. Si no tenemos el shape
+  // ("no-shape"), no vetamos: cae a la lógica GTFS de abajo (degradación honesta).
+  const gateStop = findStopServer(targetStopId);
+  if (gateStop) {
+    const verdict = busVariantTowardsStop(
+      b.lineVariantId, lat, lon, gateStop.stopLat, gateStop.stopLon, getRoutesServer()
+    );
+    if (verdict === "passed" || verdict === "not-on-route") return null;
+  }
+
   const vehicle = {
     vehicleId: String(b.busId),
     lineId: b.line,
@@ -249,8 +281,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Deduplicar por vehicleId
-    const liveDedup = dedupeLive(liveArrivals);
+    // Deduplicar por vehicleId + cap de honestidad #3 (descarta vivos a >45 min / >12 km).
+    // Se aplica ANTES de calcular las líneas sin live → una línea cuyo único bus en vivo está
+    // lejísimo recibe su próximo PROGRAMADO en vez de mostrar el ruido (o nada).
+    const liveDedup = dedupeLive(liveArrivals).filter(withinHonestRange);
 
     // ─── COMPLETAR LÍNEAS SIN LIVE CON SCHEDULE ───
     // SRS FR-1.5: cada línea de la parada debe tener al menos un "próximo"

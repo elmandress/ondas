@@ -219,6 +219,51 @@ export function filterUpstreamBuses(
 }
 
 /**
+ * R69 — gate de honestidad por VARIANTE EXACTA del bus.
+ *
+ * La API de buses reporta `lineVariantId` (cod_variante), que es la clave de
+ * `routes.json` → el shape EXACTO del recorrido del bus (con su sentido). Esto
+ * permite decidir dirección por ID, sin matchear texto de headsign (que es ambiguo
+ * de noche y, cuando no matchea, colapsa a "probar todas las variantes" perdiendo el
+ * sentido — la raíz del bug de buses de sentido opuesto / calle paralela).
+ *
+ * Verificado en vivo (parada 2201, línea 505): el shape del sentido que SÍ sirve la
+ * parada snapea a ~4 m; el shape del sentido OPUESTO (Andaluz) snapea a ~101 m. Un
+ * umbral de ~75 m los separa limpio. Devuelve:
+ *   - "no-shape":     no tenemos el shape de esa variante → no podemos juzgar (no vetar).
+ *   - "not-on-route": el shape exacto del bus NO pasa por la parada (otra ruta/sentido).
+ *   - "passed":       el bus ya dejó la parada atrás por el recorrido.
+ *   - "serves-going": el shape pasa por la parada y el bus aún no llegó → viene.
+ */
+export type VariantDirectionVerdict = "no-shape" | "not-on-route" | "passed" | "serves-going";
+
+/** ¿El shape de la variante pasa lo bastante cerca de la parada para considerarla servida? */
+const SHAPE_ON_ROUTE_M = 75;
+/** Margen "ya pasó" sobre el recorrido (ruido de esquina / bus arrancando de la parada). */
+const SHAPE_PASSED_MARGIN_M = 80;
+
+export function busVariantTowardsStop(
+  variantCode: string | number | null | undefined,
+  busLat: number,
+  busLon: number,
+  stopLat: number,
+  stopLon: number,
+  routes: RoutesIndex | null
+): VariantDirectionVerdict {
+  if (!routes || variantCode == null) return "no-shape";
+  const shape = routes[String(variantCode)];
+  if (!shape || shape.length < 2) return "no-shape";
+
+  const stopProj = projectOnPolyline(stopLat, stopLon, shape);
+  // El shape EXACTO del bus no roza la parada → va por otra ruta / sentido opuesto.
+  if (stopProj.distToLine > SHAPE_ON_ROUTE_M) return "not-on-route";
+
+  const busProj = projectOnPolyline(busLat, busLon, shape);
+  if (busProj.distAlong > stopProj.distAlong + SHAPE_PASSED_MARGIN_M) return "passed";
+  return "serves-going";
+}
+
+/**
  * Para un bus específico, calcula su ETA estimada hasta la parada
  * basándose en la distancia restante por la polyline (más realista que haversine).
  */

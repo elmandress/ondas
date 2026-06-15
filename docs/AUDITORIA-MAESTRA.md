@@ -245,10 +245,11 @@ usamos en el filtro de arrivals — ese es el gap respecto al estándar.
 arrivals devuelve hasta 25 buses sin tope de ETA/distancia → muestra buses a 70 min/27 km.
 Erosiona confianza ("¿por qué me muestra uno a una hora?"). Falta cap.
 
-### Alcance del fix propuesto (a decidir juntos — NO ejecutado)
-- **Core (alto impacto, bajo riesgo):** en `arrivals/route.ts`, descartar todo bus cuyo
+### Alcance del fix propuesto (a decidir juntos — NO ejecutado) — ⚠️ SUPERADO, ver verificación abajo
+- ~~**Core (alto impacto, bajo riesgo):** en `arrivals/route.ts`, descartar todo bus cuyo
   `lineVariantId` NO esté entre los `variantCode`s que `getStopVariants` dice que sirven la
-  parada. Check exacto por ID — corta sentido-opuesto/paralelas sin tocar geometría.
+  parada. Check exacto por ID — corta sentido-opuesto/paralelas sin tocar geometría.~~ **← premisa
+  FALSA (probada en vivo). Ver "Verificación empírica".**
 - Bajar `MAX_GPS_SNAP_M` (900→~250 m) para cortar paralelas en el path GTFS.
 - Tope de ETA/distancia (ej. ≤45 min o ≤N paradas) contra el ruido.
 - Revisar los márgenes de "ya pasó" (75/120 m) — quizá endurecer a ~40 m.
@@ -256,6 +257,77 @@ Erosiona confianza ("¿por qué me muestra uno a una hora?"). Falta cap.
 
 Fuentes: [STM API docs](https://api.montevideo.gub.uy/apidocs/publictransport) ·
 [GTFS-RT vehicle positions](https://gtfs.org/documentation/realtime/feed-entities/vehicle-positions/)
+
+### ⚠️ Verificación empírica (2026-06-14) — la premisa del fix #1 era FALSA, y el mecanismo corregido
+> Antes de escribir una línea de producción se reprodujo la 2201 en vivo cruzando las dos APIs
+> (`d:\tmp\probe-2201.mjs` y `probe-2201b.mjs`). Resultado: el check literal #1 era **imposible**,
+> pero hay un mecanismo corregido **validado con datos reales**.
+
+**HALLAZGO 1 — `bus.lineVariantId` y `variantCode` de la parada son ESPACIOS DE ID DISTINTOS.**
+La parada 2201 vía `transporteRest/variantes` declara variantCodes **chicos**: `10→494, 11→495,
+15→505, 21→582, 56→140, 59→142, 61→143, 83→175, 446→151`. Los buses vía `api.montevideo/buses`
+reportan `lineVariantId` de **4 dígitos**: `505→{4005,4006,4649}, 151→9007, 494→{4414,4458}…`.
+**Cruce en vivo: 0 de 62 buses matchean.** Un check `lineVariantId ∈ variantCodes` naïve
+**ocultaría el 100 % de los buses** (catástrofe de falsos negativos). Prueba de que son espacios
+distintos: el código `11` = línea **495** en la parada, pero = línea **402** en `variant_to_line.json`
+(misma key, líneas distintas). El `variantCode` de `getStopVariants` **NO sirve** como puente.
+
+**HALLAZGO 2 — el puente real es `public/routes.json`, keyado por el `lineVariantId` del bus.**
+`routes.json[4005]`, `[4649]`, `[9007]`… **existen todos** y devuelven el **shape exacto**
+(polilínea `[lat,lon]`) de la variante del bus. `variant_to_line.json` confirma el mapeo
+(`4005→505, 4006→505, 4649→505`). O sea: el shape del recorrido EXACTO del bus se obtiene por su
+propio `lineVariantId`, sin texto de headsign ni el `variantCode` de la parada. `data/gtfs-v2.json`
+**no** trae el cod_variante (sólo IDs sintéticos `505-0-2` + `directionId`), así que no hay puente
+cod_variante→GTFS; **`routes.json` es el único puente exacto disponible**.
+
+**HALLAZGO 3 — el fix #1 corregido (proyección sobre el shape exacto) FUNCIONA (validado 2201).**
+Mecanismo: para cada bus, `shape = routes.json[lineVariantId]` → proyectar la PARADA y el BUS
+sobre el shape → "sirve" si el shape pasa a ≤~70 m de la parada; "va hacia" si el `along` del bus
+≤ `along` de la parada + margen. Resultado en vivo (18 buses upstream): **9 mostrar / 9 ocultar**,
+y la **505 se separa por sentido**: `4005`→ADUANA `faltan −1107 m` (ya pasó → OCULTAR), `4649`→
+CIUDADELA `faltan +6164/+9911 m` (viene → MOSTRAR). Los fantasmas de **27 km** (494 `−24377 m`,
+582 `−14402 m`) caen como "ya pasó". Sentido resuelto por ID exacto + geometría del shape propio,
+**sin matchear texto**. (Diferencia de scope vs lo aprobado: NO es un set-membership de una línea;
+es proyección geométrica sobre `routes.json` — toca geometría, justo lo que #2/#4 difería.)
+
+**HALLAZGO 4 (#5) — la API NO trae campo `sentido`/`direction`/`bearing`.** Claves crudas de un bus:
+`eType, company, timestamp, busId, line, lineVariantId, location, origin, destination, subline,
+special, speed, access, thermalConfort, emissions`. Sin rumbo ni sentido explícito. PERO
+`lineVariantId` ES la clave de sentido de facto (4005≠4006 = sentidos opuestos), y `origin`+`subline`
+("ANDALUZ - ADUANA" vs "ADUANA - ANDALUZ") lo dan textualmente. No hace falta un campo nuevo.
+
+**HALLAZGO 5 — #3 sigue necesario.** Aun con #1 corregido, quedan buses "yendo hacia" a **16–17 km**
+(175 `+17797 m`, 142 `+16139 m`). El cap de distancia/ETA es independiente y sigue haciendo falta.
+
+### Fix corregido — propuesto (a confirmar antes de producción)
+- **#1 corregido — gate exacto por `routes.json[lineVariantId]`:** descartar el bus si su shape no
+  pasa cerca de la parada (otra ruta) o si su `along` ya superó el de la parada (ya pasó). Reemplaza
+  el "fall-back a todas las variantes por texto" que es la raíz del sentido-opuesto. Módulo nuevo
+  acotado (lee `routes.json` server-side); `bus-direction-gtfs.ts` queda como está (ETA por GTFS).
+- **#3 — cap de ETA/distancia** (≤~45 min o ≤N paradas): independiente, bajo riesgo, listo.
+- **#2/#4 diferidos** (snap 900→250, márgenes 75/120→40): medir #1+#3 primero.
+
+### ✅ IMPLEMENTADO (R69) — gate por variante exacta + cap, con reproducción antes/después
+- **Refinamiento clave del diagnóstico:** la fuente autoritativa (gtfs-db por `stopId`) muestra que
+  2201 está servida por **505 solo en dirección 1** (`505-1-1`→Aduana, `505-1-2`→Ciudadela — ambas
+  dir 1, mismo sentido físico). O sea Aduana+Ciudadela **NO eran sentidos opuestos**: el wrong-direction
+  real es **505→Andaluz (dir 0)**. Snap del shape a la parada: dir-1 servidas **~4 m**, dir-0 opuesta
+  **~101 m** → un umbral de 75 m los separa limpio.
+- **Código:** `lib/routes-server.ts` (loader fs de `public/routes.json`, server-only) +
+  `busVariantTowardsStop()` en `lib/bus-direction.ts` (pura: `no-shape|not-on-route|passed|serves-going`,
+  reusa `projectOnPolyline`) + gate duro en `arrivals/route.ts` (veta `passed`/`not-on-route` por el
+  `lineVariantId` del bus, antes de toda lógica de texto) + cap #3 (`withinHonestRange`: realtime a
+  >45 min o >12 km → fuera; programados intactos). `bus-direction-gtfs.ts` **sin tocar**.
+- **Reproducción en vivo (2201):** ANTES 34 buses → DESPUÉS **9**. La 505 **→Andaluz (dir 0): 2 buses
+  ocultados por `not-on-route`** (sentido opuesto, por ID). Los →Ciudadela (dir 1, servido) que vienen
+  dentro de rango se muestran; uno a 15 km lo corta #3; uno ya pasado → `passed`. **Sin falsos-negativos
+  direccionales** (el único dir-1 ocultado fue por distancia, no por el gate).
+- **Tests:** `tests/bus-direction-shape.test.ts` — puros (sintéticos, siempre corren) + data-backed con
+  `routes.json` real que **pinea** 4006→not-on-route, 4005 antes→serves-going / después→passed. 230/230.
+- **#2/#4 siguen diferidos:** con #1+#3 el grueso del ruido cae sin tocar las tolerancias del path GTFS.
+- **Hallazgo de borde para vigilar:** los buses sin shape en `routes.json` (`no-shape`) NO se vetan
+  (caen a la lógica GTFS) — correcto (degradación honesta), pero si una variante viva común no tuviera
+  shape, el gate no la protege. No observado en 2201; revisar si aparece en otras paradas.
 
 ## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
 > Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión
