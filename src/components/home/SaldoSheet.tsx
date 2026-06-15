@@ -10,8 +10,9 @@
  * cédula"), esta pantalla es un HUB honesto: enruta a los canales oficiales y le da
  * CONTEXTO al saldo (cuántos boletos rinde), que es lo que la app sí puede aportar.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useBackClose } from "@/hooks/useBackClose";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { Icons } from "@/components/brand/Icons";
 import { URBAN_FARES, FARE_VIGENCIA, boletosFromSaldo } from "@/lib/fare";
 import { track } from "@/lib/analytics";
@@ -24,6 +25,8 @@ const OFICIAL_STM = "https://montevideo.gub.uy/stm-en-linea";
 export default function SaldoSheet({ onClose }: { onClose: () => void }) {
   // Atrás del sistema cierra el sheet, no la app (R58c).
   useBackClose(onClose);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef); // R70
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setOpen(true));
@@ -47,7 +50,7 @@ export default function SaldoSheet({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className={`sheet-backdrop mobile-only ${open ? "open" : ""}`} onClick={handleClose} />
-      <div className={`bottom-sheet ${open ? "open" : ""}`}>
+      <div ref={sheetRef} className={`bottom-sheet ${open ? "open" : ""}`} role="dialog" aria-modal="true" aria-label="Saldo STM">
         <div className="sheet-handle" />
 
         <div className="sheet-header">

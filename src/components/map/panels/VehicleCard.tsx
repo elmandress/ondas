@@ -6,9 +6,11 @@
  * cuando es DRILL-DOWN (lo seguís desde la hoja de parada, abovePanel) flota compacta
  * por encima. La lógica de seguimiento (followAlert/ETA/paradas) vive en MapScreen.
  */
+import { useRef } from "react";
 import { motion } from "framer-motion";
 import type { VehiclePosition } from "@/lib/stm";
 import { titleCaseDestination } from "@/lib/utils";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import LineBadge from "@/components/ui/LineBadge";
 import { Icons } from "@/components/brand/Icons";
 
@@ -27,8 +29,14 @@ export default function VehicleCard({
   vehicle, followAlert, followedStops, followedEta, abovePanel, onOpenLineDetail, onClose,
 }: Props) {
   const hasRich = vehicle.nextStop || vehicle.delayMin != null || vehicle.occupancy != null;
+  const cardRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(cardRef); // R70: ficha-bus (par o drill-down sobre la parada) atrapa el foco arriba
   return (
     <motion.div
+      ref={cardRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Bus línea ${vehicle.lineName}`}
       initial={{ y: 80, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 80, opacity: 0 }}

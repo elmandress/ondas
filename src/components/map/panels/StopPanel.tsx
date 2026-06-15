@@ -6,7 +6,9 @@
  * "Seguir bus". El estado (arrivals, vehículos, filtro) vive en MapScreen
  * porque también alimenta los markers del mapa; acá solo se presenta.
  */
+import { useRef } from "react";
 import type { Arrival, BusStop, VehiclePosition } from "@/lib/stm";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import ArrivalRow from "@/components/ui/ArrivalRow";
 import EmptyState from "@/components/ui/EmptyState";
 import ColdModeSuggestion from "@/components/home/ColdModeSuggestion";
@@ -52,8 +54,11 @@ export default function StopPanel({
     coldActive,
   );
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef); // R70: la hoja de parada del mapa atrapa el foco (peer/drill con la ficha-bus)
+
   return (
-    <div className="map-stop-panel absolute bottom-0 left-0 right-0 z-[1001]">
+    <div ref={panelRef} role="dialog" aria-modal="true" aria-label={`Parada ${stop.stopName}`} className="map-stop-panel absolute bottom-0 left-0 right-0 z-[1001]">
       <div className="map-stop-panel-inner bg-[#0E1116]/[0.97] backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
         <div className="map-panel-handle flex justify-center pt-2.5 pb-1.5">
           <div className="w-9 h-[3px] rounded-full bg-white/15" />

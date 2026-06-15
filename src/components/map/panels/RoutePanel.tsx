@@ -5,9 +5,11 @@
  * en vivo por tramo de bus. Se abre cuando RouteScreen setea selectedRoute
  * (store global) y el usuario pasa a la pestaña Mapa.
  */
+import { useRef } from "react";
 import { motion } from "framer-motion";
 import type { SelectedRouteState } from "@/lib/selected-route";
 import { useNextArrivalForLine } from "@/hooks/useNextArrivalForLine";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import LineBadge from "@/components/ui/LineBadge";
 import { Icons } from "@/components/brand/Icons";
 
@@ -19,8 +21,14 @@ interface Props {
 }
 
 export default function RoutePanel({ selectedRoute, onClose, onTapStop }: Props) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef); // R70
   return (
     <motion.div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Ruta planificada"
       initial={{ y: "100%" }}
       animate={{ y: 0 }}
       exit={{ y: "100%" }}

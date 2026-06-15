@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useBackClose } from "@/hooks/useBackClose";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { Icons } from "@/components/brand/Icons";
 import { LogoMark } from "@/components/brand/Logo";
 import { useTextSize, setTextSize, type TextSize } from "@/lib/text-size";
@@ -23,6 +24,8 @@ type View = "main" | "comofunciona" | "privacidad" | "terminos" | "datos" | "der
 export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   // Atrás del sistema cierra el sheet, no la app (R58c).
   useBackClose(onClose);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef); // R70: foco entra al abrir, atrapado, vuelve al disparador al cerrar
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("main");
   useEffect(() => {
@@ -46,7 +49,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className={`sheet-backdrop mobile-only ${open ? "open" : ""}`} onClick={handleClose} />
-      <div className={`bottom-sheet ${open ? "open" : ""}`}>
+      <div ref={sheetRef} className={`bottom-sheet ${open ? "open" : ""}`} role="dialog" aria-modal="true" aria-label="Ajustes e info">
         <div className="sheet-handle" />
 
         <div className="sheet-header">

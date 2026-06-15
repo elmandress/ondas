@@ -7,6 +7,7 @@ import { useInteriorArrivals, isInteriorStop } from "@/hooks/useInteriorArrivals
 import { useStopInfo } from "@/hooks/useStopInfo";
 import { useColdAlternatives } from "@/hooks/useColdAlternatives";
 import { useBackClose } from "@/hooks/useBackClose";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { canonLine } from "@/lib/line-name";
 import { STOPS_DATASET, isAccessibleArrival, arrivalHasAc, type BusStop } from "@/lib/stm";
 import { formatRelativeTime, getNearbyStopsClient, distanceTo } from "@/lib/utils";
@@ -64,6 +65,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
   // falsa). Zona de drag = handle + header (no la lista, que necesita su scroll).
   // Soltar con >90px de arrastre cierra; menos, vuelve con la transición del sheet.
   const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef); // R70: foco atrapado en la parada; el drill-down a recorrido apila el trap
   const dragStartY = useRef<number | null>(null);
   const dragDy = useRef(0);
   const onDragStart = (e: React.TouchEvent) => {
@@ -137,7 +139,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
     <>
       <div className={`sheet-backdrop mobile-only ${open ? "open" : ""}`} onClick={handleClose} />
 
-      <div ref={sheetRef} className={`bottom-sheet ${open ? "open" : ""}`}>
+      <div ref={sheetRef} className={`bottom-sheet ${open ? "open" : ""}`} role="dialog" aria-modal="true" aria-label={`Parada ${stop?.stopName || stopId}`}>
         <div onTouchStart={onDragStart} onTouchMove={onDragMove} onTouchEnd={onDragEnd}>
         <div className="sheet-handle" />
 

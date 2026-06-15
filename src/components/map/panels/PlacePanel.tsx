@@ -4,10 +4,11 @@
  * Panel bottom-sheet del lugar buscado (FR-3.8): el lugar pineado en el mapa
  * + paradas a ≤400m con sus líneas. Tocar una parada abre su panel.
  */
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { STOPS_DATASET, type BusStop } from "@/lib/stm";
 import { distanceTo } from "@/lib/utils";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { Icons } from "@/components/brand/Icons";
 import type { SelectedPlace } from "@/lib/selected-place";
 
@@ -31,8 +32,14 @@ export default function PlacePanel({ place, stopsReady, onClose, onSelectStop }:
       .slice(0, 8);
   }, [place, stopsReady]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef); // R70
   return (
     <motion.div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Lugar: ${place.name || "ubicación"}`}
       initial={{ y: "100%" }}
       animate={{ y: 0 }}
       exit={{ y: "100%" }}

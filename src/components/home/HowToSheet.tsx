@@ -5,8 +5,10 @@
  * Honesta sobre los límites (horario vs GPS en vivo, cobertura). Se abre desde el
  * botón "?" del header. Mobile-first bottom sheet.
  */
+import { useRef } from "react";
 import { motion } from "framer-motion";
 import { useBackClose } from "@/hooks/useBackClose";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { Icons } from "@/components/brand/Icons";
 import { APP_VERSION, APP_UPDATED, WE_DO, WE_DONT } from "@/lib/app-meta";
 
@@ -27,6 +29,8 @@ function Section({ icon, title, children }: { icon: React.ReactNode; title: stri
 export default function HowToSheet({ onClose }: HowToSheetProps) {
   // Atrás del sistema cierra el sheet, no la app (R58c).
   useBackClose(onClose);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef); // R70
   return (
     <>
       <motion.div
@@ -35,6 +39,7 @@ export default function HowToSheet({ onClose }: HowToSheetProps) {
         className="fixed inset-0 bg-black/60 backdrop-blur-[6px] z-40"
       />
       <motion.div
+        ref={panelRef} role="dialog" aria-modal="true" aria-label="Cómo usar Cuándo"
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 32, stiffness: 320 }}
         className="howto-sheet"

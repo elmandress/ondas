@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useBackClose } from "@/hooks/useBackClose";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { motion } from "framer-motion";
 import { useLineStops } from "@/hooks/useLineStops";
 import { titleCaseDestination } from "@/lib/utils";
@@ -28,6 +29,8 @@ export default function LineDetailSheet({
 }: LineDetailSheetProps) {
   // Atrás del sistema cierra el sheet, no la app (R58c).
   useBackClose(onClose);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef); // R70: drill-down sobre la parada → el trap se apila; back vuelve el foco al padre
   const { stops, headsign, loading, notFound } = useLineStops(line, destination);
   const highlightRef = useRef<HTMLDivElement | null>(null);
 
@@ -70,6 +73,10 @@ export default function LineDetailSheet({
       />
 
       <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Recorrido línea ${line}`}
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         exit={{ y: "100%" }}

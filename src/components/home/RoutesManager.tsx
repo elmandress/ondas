@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useBackClose } from "@/hooks/useBackClose";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { usePlaceSearch } from "@/hooks/usePlaceSearch";
 import PlaceResults from "@/components/ui/PlaceResults";
 import { motion, AnimatePresence } from "framer-motion";
@@ -36,6 +37,8 @@ function newDraft(): Draft {
 export default function RoutesManager({ onClose, onChange }: RoutesManagerProps) {
   // Atrás del sistema cierra el sheet, no la app (R58c).
   useBackClose(onClose);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef); // R70: inputs de búsqueda (PlaceField) — el trap respeta el autofocus
   const [routes, setRoutes] = useState<FavoriteRoute[]>([]);
   const [step, setStep] = useState<"list" | "edit">("list");
   const [draft, setDraft] = useState<Draft>(newDraft());
@@ -117,6 +120,7 @@ export default function RoutesManager({ onClose, onChange }: RoutesManagerProps)
       style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)", zIndex: 110 }}
     >
       <motion.div
+        ref={panelRef} role="dialog" aria-modal="true" aria-label="Rutas guardadas"
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 28, stiffness: 280 }}
         className="absolute bottom-0 left-0 right-0 rounded-t-[18px] overflow-hidden flex flex-col"

@@ -457,7 +457,7 @@ en la superficie exacta (interior / pager / cache stale) antes de tocar.
 | Prio | Hallazgo | Tipo | Entrada sugerida |
 |------|----------|------|------------------|
 | **P1** | **LCP 6.1s Home** (hero `ct-text` bloqueado por fuente+hidratación) | bug perf | preload/optimizar Archivo + priorizar el render del contador; medir LCP element |
-| **P1** | **Focus management de sheets** (no entra / no atrapa / no restaura) | bug a11y | focus-trap + restore en el contenedor de bottom-sheet (una vez, transversal) |
+| ~~P1~~ ✅🔶 | **Focus management de sheets** (no entra / no atrapa / no restaura) | bug a11y | **RESUELTO R70** — `useFocusTrap` en los 10 sheets. TRAP verificado; restore env-limitado. Ver abajo |
 | ~~P2~~ 🔶 | **CLS 0.189 Home** | bug perf | **PARCIAL R70** — hero skeleton 168→264 (igualar hero poblado) bajó CLS **0.20→~0.10**. Residual: map section + "Más" async. Ver abajo |
 | ~~P2~~ **P0✅** | **TTFB ~2.1–2.6s todas las rutas** (middleware en cada request) | bug perf | **RESUELTO R70** — ver abajo |
 | ~~P2~~ ✅ | **Supabase ~120 KB en bundle inicial Home** (SettingsSheet estático) | oportunidad | **RESUELTO R70** — `dynamic(ssr:false)` SettingsSheet (único consumidor de useAuth → Supabase se baja al abrir Ajustes) |
@@ -524,6 +524,31 @@ X"): hay que pensar los **N estados** de cada sección (con/sin favoritos, con/s
 GPS granted/denied) — reservar mal cambia un shift por otro (p.ej. reservar el map y colapsarlo en denied).
 Hecho apurado introduce su propio CLS. **Queda como P3 con este contexto; tratarlo como pasada con cuidado,
 no quick-win.**
+
+### ✅🔶 RESUELTO R70 — Focus-management de sheets (`useFocusTrap`)
+**Arquitectura (verificada, no asumida):** NO existe un "SheetHost" único — cada sheet renderiza su
+propio contenedor. La unidad compartida es un HOOK: `src/hooks/useFocusTrap.ts`, una sola implementación,
+aplicada en la raíz de **los 10 sheets** (SettingsSheet, StopArrivalSheet, LineDetailSheet, SaldoSheet,
+HowToSheet, RoutesManager, StopPanel, VehicleCard, RoutePanel, PlacePanel) + `role="dialog"`/`aria-modal`/
+`aria-label` en cada uno (nombre accesible → sin regresión de axe).
+**Diseño:** pila global de traps (espeja `useBackClose`) → sólo el del tope atrapa, así los sheets
+APILADOS (drill-down) atrapan en el hijo, no en el padre. Captura `activeElement` al montar y restaura al
+desmontar → la semántica de stack (drill-down: back vuelve al padre; sólo el último vuelve al disparador
+original) **sale gratis** del patrón captura/restaura. Respeta el autofocus de inputs (buscadores) → no
+abre el teclado virtual de más.
+**TRAP verificado** (`scripts/focuscheck.mjs`, Playwright Tab/Shift+Tab reales, 375px): el foco ENTRA al
+abrir, queda ATRAPADO (0 fugas en 18 Tab → ya no se escapa detrás del backdrop, que era el bug del audit),
+Shift+Tab hace wrap, y en drill-down el foco entra al hijo y queda atrapado ahí. 6/6 checks de trap PASS.
+**RESTORE — implementado, verificación env-limitada (honesto):** el hook restaura el foco al disparador;
+si el nodo capturado se desconectó (el header del Home RE-RENDERIZA el botón al cerrar), re-busca por
+`aria-label` y enfoca el nuevo. PERO en el dev local **el Home se vacía intermitentemente al cerrar un
+sheet** (mismo artefacto de página-en-blanco que en la medición de CLS; el SSR sirve bien pero Playwright
+lo renderiza vacío) → el disparador desaparece y el restore no es auto-verificable acá (el test lo marca
+**SKIP**, no FAIL). En prod (browser real) el disparador persiste/recrea → el restore aplica. **A confirmar
+en prod post-deploy.**
+**Teclado virtual 375px:** el trap respeta el autofocus (no roba el foco de un input auto-focuseado) → el
+teclado aparece donde corresponde y no de más; los sheets sin input enfocan el contenedor (sin teclado).
+**DoD:** tsc 0 · eslint 0 errores (3 warnings legacy) · vitest 235/235 · build OK.
 
 ### 🔶 CLS + decisión de fuente R70 (medido con PerformanceObserver, Playwright 375px)
 **Fuente — DEJARLA (decisión cerrada):** Archivo ya está en `font-display: swap` → NO es
