@@ -372,6 +372,106 @@ min se lee como desorden aunque el array esté sorteado). **A confirmar:** si el
 tras este fix combinado (gate + cap + sort endurecido), eran la misma causa. Si vuelve, reproducir
 en la superficie exacta (interior / pager / cache stale) antes de tocar.
 
+## ⚡ AUDITORÍA PERFORMANCE + ACCESIBILIDAD R70 (2026-06-15) — números reales con deploy en prod
+> Research-first, sin fixes. Ahora que hay deploy (`cuando-bondi.netlify.app`) y la app es
+> dark-only, varias cosas "pendientes, requieren HTTPS" son medibles. Herramientas: Lighthouse
+> mobile (npx), axe-core 4.10 vía Playwright 375px, curl/Invoke-WebRequest con timing, análisis
+> del grafo de imports. **Prod corre el commit DESPLEGADO (anterior a R69)** — para CWV/latencia es
+> el baseline real que ve el usuario; para a11y de contraste/aria/focus es válido (paleta y
+> sheet-manager son de R67, sin cambios en R69).
+
+### 1. Core Web Vitals (Lighthouse mobile, prod)
+| Pantalla | Perf | FCP | LCP | TBT | CLS | Speed Index | TTFB | Bytes |
+|----------|------|-----|-----|-----|-----|-------------|------|-------|
+| **Home `/`** | **59** | 1.3s | **6.1s** | 170ms | **0.189** | 8.1s | 2.11s | 858 KiB |
+| **`/linea/183` (SSG)** | **96** | 1.2s | 1.9s | 40ms | 0 | 5.1s | 2.61s | 399 KiB |
+
+- **Las landings SEO vuelan (96)** — SSG puro, sin mapa. El problema de performance es **el Home**.
+- **LCP 6.1s (Home) = el headline.** El elemento LCP es `<span class="ct-text">` (el contador/hero
+  "¿cuándo salir?") → pinta tarde, bloqueado por la fuente Archivo (88 KB woff2) + hidratación del SPA.
+- **CLS 0.189 (Home, pobre, >0.1)** — layout shift durante la carga (swap de fuente + montaje del
+  hero/contador + preview de mapa que se inserta). axe no lo detalló pero el patrón es claro.
+- **TTFB ~2.1–2.6s en TODAS las rutas** (incluida la SSG estática) → no es cold-start puntual: el
+  `proxy.ts`/middleware (auth Supabase) corre en cada request + spin de función Netlify. Afecta todo.
+- **Recursos pesados en Home:** `stops.json` **209 KB** (gzip; 1.5 MB raw) cargado en el Home para
+  paradas-cerca/mapa · fuente Archivo **88 KB** (variable wght+wdth) · **tiles CARTO + Leaflet
+  cargan en el Home** (preview de mapa) — Leaflet está bien code-split (no es SSR) pero igual se
+  baja en el Home. Unused JS estimado 112 KB.
+
+### 2. Latencia `/api/stm/arrivals` (prod, warm)
+| Parada | Cold | Warm | Fuente |
+|--------|------|------|--------|
+| 2201 | 3.7s | 1.3s | upstream+schedule |
+| 3790 | 1.0s | 0.8s | far-tracking |
+| 4040 (27 líneas) | 2.9s | **2.6s** | upstream+far+schedule |
+| 880 | 1.8s | 1.1s | schedule |
+
+- **Warm 0.8–2.6s; el peor caso son las paradas con muchas líneas** (4040, 27 líneas → `getBuses({lines})`
+  trae decenas de buses + el gate GTFS los procesa todos). El fix de timeouts de R67 aguanta (sin 504).
+- **Token OAuth: SÍ se cachea** (`mvd-api.ts`: `cached` en memoria del proceso, se reusa si vence en
+  >30s; token dura 300s). Bien. PERO en serverless cada instancia FRÍA re-autentica (cache no cruza
+  instancias). Y la cadena es serial: `getStopVariants` (4s) → `getBuses` (que adentro pide token 3s + buses 4.5s).
+- **`getStopVariants` es cuasi-ESTÁTICO** (qué líneas/variantes sirven una parada cambia sólo cuando
+  el STM reorganiza recorridos, cadencia GTFS) pero hoy se cachea sólo **60s** (`revalidate: 60`).
+  **Oportunidad:** TTL largo (horas/días) o precomputar a JSON como el GTFS → saca el fetch de variantes
+  del camino crítico en casi todos los requests.
+- **Paralelización:** el token NO depende de las variantes → se puede prewarmear `getAccessToken()` en
+  paralelo con `getStopVariants` (hoy el token se pide recién dentro de `getBuses`, después de variantes).
+  En cold ahorra ~1–3s del camino crítico. (Diagnóstico — no ejecutado.)
+
+### 3. Accesibilidad (axe-core 4.10 wcag2a+aa, Playwright 375px, prod)
+- **axe: 0 violaciones** en Home, Ajustes, Ruteo, Mapa. **El contraste señalética dark PASA AA** (tokens
+  medidos AA en globals.css — confirmado, no a ojo) y **0 botones icon-only sin aria-label/title** (FAB,
+  cerrar, ajustes, etc. todos rotulados). Cierra positivamente la pregunta "¿AA en dark-only?".
+- **🐞 Focus management de los sheets — ROTO (axe no lo detecta, es de comportamiento):**
+  - Al **ABRIR** un bottom-sheet el foco **NO entra** al sheet (queda en `<body>`).
+  - **Sin focus-trap**: tras 20 Tab, **15 se escapan** detrás del backdrop a contenido oculto.
+  - Al **CERRAR**, el foco **NO vuelve** al disparador (se pierde en `<body>`).
+  - Es el patrón modal/diálogo incompleto (WCAG 2.4.3 Focus Order + WAI-ARIA dialog). Afecta a teclado y
+    lectores de pantalla en TODOS los sheets (parada, ajustes, ficha de bus, ruteo). Bug verificado.
+
+### 4. Bundle / code-splitting
+- **Bien code-split ✓:** `LeafletMap` es `dynamic(ssr:false)` (HomeMapPreview + MapScreen) → Leaflet NO
+  entra en las SSG (confirmado: `/linea` perf 96, 399 KB). `MapScreen`/`RouteScreen`/`SearchScreen` son
+  `dynamic(ssr:false)` por tab en AppShell → se cargan al cambiar de pestaña, no en el Home inicial.
+- **🐞 `SettingsSheet` import ESTÁTICO en HomeScreen** → arrastra `useAuth` → `@supabase/ssr` +
+  `@supabase/supabase-js` (~120 KB) **al bundle inicial del Home**, aunque el usuario nunca abra Ajustes
+  ni se loguee. **Oportunidad clara:** `dynamic(ssr:false)` para SettingsSheet (ya se renderiza condicional
+  `{showSettings && …}`) → difiere Supabase hasta que se abre Ajustes.
+- **framer-motion entra estático en el shell** (AppShell `AnimatePresence` + HomeScreen + LeaveNowHero +
+  StopArrivalSheet) → en el bundle inicial del Home. Difícil de splitear (es transversal a las animaciones
+  del shell); se nota como costo fijo. Documentado, no trivial.
+- **Archivo 88 KB** (variable wght+wdth) → reducible a ~35 KB soltando el eje `wdth` (instancia condensada
+  fija). Ya estaba como optimización diferida (R67) — sigue válida, pesa en el LCP del Home.
+
+### 5. ESLint `set-state-in-effect` (39 de 56 warnings; 0 errores)
+- Muestra del camino caliente (`useArrivals:89` seed de cache, `HomeScreen:127/142` mount+deep-link,
+  `MapScreen:89/138`, `AppShell:51`): **son patrones de mount/seed one-shot** — gate de `mounted`, seed
+  desde cache/localStorage, handler de deep-link, clock de 30s. Corren **una vez por mount/dep**, no en
+  loop ni por frame. Generan **1 render extra en mount**, no cascadas medibles. No están en el camino de
+  los problemas de CWV (LCP=fuente+hidratación, CLS=layout). **Veredicto: ruido cosmético, queda como
+  deuda legacy** (se silencian moviendo los seeds a inicializadores lazy de `useState` si algún día molesta).
+  (Los otros 17: 7 exhaustive-deps, 6 refs-en-render en LeafletMap, 3 `Date.now()` en render, 1 unused — todos cosméticos.)
+
+### 🎯 Prioridades (a decidir el punto de entrada juntos — NADA ejecutado)
+| Prio | Hallazgo | Tipo | Entrada sugerida |
+|------|----------|------|------------------|
+| **P1** | **LCP 6.1s Home** (hero `ct-text` bloqueado por fuente+hidratación) | bug perf | preload/optimizar Archivo + priorizar el render del contador; medir LCP element |
+| **P1** | **Focus management de sheets** (no entra / no atrapa / no restaura) | bug a11y | focus-trap + restore en el contenedor de bottom-sheet (una vez, transversal) |
+| **P2** | **CLS 0.189 Home** (shift por fuente/hero/mapa) | bug perf | reservar espacio del hero/preview, `font-display` + size-adjust |
+| **P2** | **TTFB ~2.1–2.6s todas las rutas** (middleware en cada request) | bug perf | revisar `proxy.ts`/middleware: ¿corre en estáticas?, ¿se puede acotar a rutas con auth? |
+| **P2** | **Supabase ~120 KB en bundle inicial Home** (SettingsSheet estático) | oportunidad | `dynamic(ssr:false)` SettingsSheet |
+| **P2** | **stops.json 209 KB en Home** | oportunidad | ¿cargar diferido tras el hero? ¿subset para paradas-cerca? |
+| **P3** | getStopVariants 60s→TTL largo/precompute + prewarm token paralelo | oportunidad | cachear variantes (cuasi-estático) + paralelizar token |
+| **P3** | Archivo 88→35 KB (soltar wdth) | oportunidad | instancia condensada fija |
+| **P3** | framer-motion en bundle inicial | oportunidad | difícil; sólo si CWV lo exige |
+| ✅ | **Contraste AA dark-only OK · aria-labels OK · Leaflet/tabs bien split · /linea perf 96** | verificado positivo | — |
+| legacy | 56 warnings ESLint (39 setState mount/seed) — cosméticos | deuda | dejar |
+
+**Lectura:** no hay P0 (nada roto en prod). Los dos P1 son el LCP del Home (perf) y el focus-management
+de sheets (a11y) — entradas independientes. Varias P2/P3 son baratas y autocontenidas (lazy SettingsSheet,
+TTL de variantes). El contraste AA y los aria-labels salieron limpios — buena noticia del dark-only.
+
 ## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
 > Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión
 > (mapa/home/SW). Separación bug-verificado vs oportunidad. **0 errores de consola** en
