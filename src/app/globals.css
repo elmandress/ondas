@@ -49,6 +49,8 @@
   --accent-deep: var(--sodio-deep);
   --accent-soft: rgba(242,169,59,0.11);
   --accent-border: rgba(242,169,59,0.24);
+  --on-accent: #1a1206;       /* texto/icono SOBRE relleno sodio (--accent-bg) — marrón casi negro, AA inverso */
+  --knob: #ffffff;            /* perilla de toggles — blanco físico, contrasta en track on/off */
 
   /* Semantic — "en vivo" = verde señal medido (vivo). */
   --live: var(--vivo);
@@ -1089,6 +1091,17 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
    farol de sodio sobre asfalto). La base de marca vive en :root. Si algún día vuelve
    un tema claro, se reintroduce acá overrideando los tokens del :root bajo
    [data-theme="light"] (el pre-paint de layout.tsx ya fija data-theme="dark"). */
+
+/* Filas TAPPABLES de Ajustes (nav/links) — afordancia táctil que las distingue de las
+   filas informativas estáticas (que no responden al toque). R69. */
+.settings-tap {
+  margin: 0 -10px; padding-left: 10px; padding-right: 10px;
+  border-radius: var(--r-chip);
+  transition: background .12s;
+  min-height: 48px; /* touch target ≥44px holgado */
+}
+.settings-tap:active { background: var(--surface-active); }
+@media (hover: hover) { .settings-tap:hover { background: var(--surface); } }
 
 /* "Optimizar para" — selector de criterio de ruteo */
 .opt-row { display: flex; gap: 7px; margin: 10px 0 4px; overflow-x: auto; scrollbar-width: none; }

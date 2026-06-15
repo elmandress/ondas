@@ -82,14 +82,22 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
 function MainView({ go }: { go: (v: View) => void }) {
   return (
     <>
+      {/* Jerarquía (R69): primero los CONTROLES que el usuario abre Ajustes para tocar
+          (cuenta, accesibilidad, privacidad), después navegación a info, y el about/
+          marketing + legal al fondo — el que entra a agrandar el texto no scrollea copy. */}
       <AccountSection />
 
-      <Section title="Apariencia">
+      {/* Apariencia + Accesibilidad fusionadas (R69): con el tema fuera (dark-only),
+          "Apariencia" quedaba con solo el tamaño de texto, que ES accesibilidad. */}
+      <Section title="Accesibilidad">
         <TextSizeChooser />
+        <VoiceAlertChooser />
       </Section>
 
-      <Section title="Accesibilidad">
-        <VoiceAlertChooser />
+      <Section title="Privacidad">
+        <AnalyticsToggle />
+        <Row icon={<Icons.Crosshair size={18} />} title="Tu ubicación es tuya" sub="El GPS solo se usa si lo permitís. No la guardamos ni te seguimos." />
+        <Row icon={<Icons.Star size={18} />} title="Sin cuenta, sin login" sub="Tus favoritos y recientes viven solo en tu teléfono." />
       </Section>
 
       <Section title="Entender la app">
@@ -97,35 +105,26 @@ function MainView({ go }: { go: (v: View) => void }) {
         <NavRow icon={<Icons.Wheelchair size={18} />} title="Tarifas y tus derechos" sub="Precios del boleto, pases libres, asientos y convivencia" onClick={() => go("derechos")} />
       </Section>
 
-      <Section title="Privacidad">
-        <Row icon={<Icons.Crosshair size={18} />} title="Tu ubicación es tuya" sub="El GPS solo se usa si lo permitís. No la guardamos ni te seguimos." />
-        <Row icon={<Icons.Star size={18} />} title="Sin cuenta, sin login" sub="Tus favoritos y recientes viven solo en tu teléfono." />
-        <AnalyticsToggle />
-      </Section>
-
-      <Section title="Funciones activas">
+      <Section title="Qué hace Cuándo">
         <Row icon={<Icons.Bus size={18} />} title="Tiempo real (cuando hay GPS)" sub="Llegadas en vivo del STM; si la API se cae, mostramos el horario." />
         <Row icon={<Icons.Walk size={18} />} title="Caminatas reales por la vereda" sub="Seguimos las calles ignorando el sentido (un peatón no tiene mano única)." />
         <Row icon={<Icons.Clock size={18} />} title="Aviso de hora pico" sub="Te avisamos en la franja 7–9 / 17–20 hábiles. Orientativo, con base real." />
         <Row icon={<Icons.Wheelchair size={18} />} title="Accesibilidad y aire acondicionado" sub="Dato oficial por ómnibus (piso bajo / AC) cuando la API lo informa." />
         <Row icon={<Icons.Wifi size={18} />} title="WiFi en líneas eléctricas" sub="Solo en líneas confirmadas 100% eléctricas (CA1·CE1, D1·DE1, 14·E14)." />
         <Row icon={<Icons.Route size={18} />} title="Taxi/Uber sugerido de noche" sub="Opción secundaria: si el último tramo a pie es de noche y poco transitado, te lo ofrecemos." />
-      </Section>
-
-      <Section title="En camino">
         <Row icon={<Icons.Pin size={18} />} title="Rutas guardadas por dirección" sub="Guardar 'casa → trabajo' por direcciones, con origen editable." dim />
-      </Section>
-
-      <Section title="Legal">
-        <NavRow icon={<Icons.Star size={18} />} title="Política de Privacidad" onClick={() => go("privacidad")} />
-        <NavRow icon={<Icons.Warn size={18} />} title="Términos y responsabilidad" onClick={() => go("terminos")} />
-        <NavRow icon={<Icons.Bus size={18} />} title="Qué datos usamos" onClick={() => go("datos")} />
       </Section>
 
       <Section title="Datos del transporte">
         <Row icon={<Icons.Bus size={18} />} title="Datos oficiales del STM" sub="Intendencia de Montevideo · en tiempo real cuando está disponible." />
         <LinkRow href="https://www.montevideo.gub.uy/transporte-y-stm" title="Sitio del STM Montevideo" />
         <LinkRow href="https://montevideo.gub.uy/buzon-ciudadano" title="Reportar al Buzón Ciudadano IM" />
+      </Section>
+
+      <Section title="Legal">
+        <NavRow icon={<Icons.Star size={18} />} title="Política de Privacidad" onClick={() => go("privacidad")} />
+        <NavRow icon={<Icons.Warn size={18} />} title="Términos y responsabilidad" onClick={() => go("terminos")} />
+        <NavRow icon={<Icons.Bus size={18} />} title="Qué datos usamos" onClick={() => go("datos")} />
       </Section>
 
       <div style={{ padding: "8px 22px 2px", font: "var(--font-small)", color: "var(--text-3)", textAlign: "center" }}>
@@ -435,7 +434,7 @@ function AnalyticsToggle() {
         </div>
       </div>
       <span style={{ width: 44, height: 26, borderRadius: 999, background: off ? "var(--surface)" : "var(--accent)", position: "relative", flexShrink: 0, border: `1px solid ${off ? "var(--border)" : "var(--accent)"}`, transition: "background .2s" }}>
-        <span style={{ position: "absolute", top: 2, left: off ? 2 : 20, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+        <span style={{ position: "absolute", top: 2, left: off ? 2 : 20, width: 20, height: 20, borderRadius: 999, background: "var(--knob)", transition: "left .2s" }} />
       </span>
     </button>
   );
@@ -501,12 +500,12 @@ function AccountSection() {
             />
             <button
               onClick={send} disabled={busy}
-              style={{ padding: "10px 16px", borderRadius: "var(--r-chip)", background: "var(--accent-bg)", color: "#1a1206", font: "700 13px/1 var(--ff)", border: "none", opacity: busy ? 0.6 : 1 }}
+              style={{ padding: "10px 16px", borderRadius: "var(--r-chip)", background: "var(--accent-bg)", color: "var(--on-accent)", font: "700 13px/1 var(--ff)", border: "none", opacity: busy ? 0.6 : 1 }}
             >
               {busy ? "…" : "Entrar"}
             </button>
           </div>
-          {err && <div style={{ font: "var(--font-small)", color: "#f87171", marginTop: 6 }}>{err}</div>}
+          {err && <div style={{ font: "var(--font-small)", color: "var(--alerta)", marginTop: 6 }}>{err}</div>}
         </>
       )}
     </Section>
@@ -582,22 +581,24 @@ function Row({ icon, title, sub, dim }: { icon: React.ReactNode; title: string; 
   );
 }
 
+// NavRow/LinkRow son TAPPABLES (chevron + clase .settings-tap con feedback al toque).
+// Row (abajo) es informativa estática y NO la lleva → el usuario distingue qué responde.
 function NavRow({ icon, title, sub, onClick }: { icon: React.ReactNode; title: string; sub?: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 13, padding: "11px 0", width: "100%", textAlign: "left", color: "var(--text)" }}>
+    <button className="settings-tap" onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 13, padding: "11px 0", width: "100%", textAlign: "left", color: "var(--text)" }}>
       <span style={{ color: "var(--text-2)", flexShrink: 0 }}>{icon}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", font: "600 14px/1.3 var(--ff)" }}>{title}</span>
         {sub && <span style={{ display: "block", font: "var(--font-small)", color: "var(--text-3)", marginTop: 2 }}>{sub}</span>}
       </span>
-      <Icons.Chevron size={16} />
+      <span style={{ color: "var(--text-3)", flexShrink: 0 }}><Icons.Chevron size={16} /></span>
     </button>
   );
 }
 
 function LinkRow({ href, title }: { href: string; title: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer"
+    <a className="settings-tap" href={href} target="_blank" rel="noopener noreferrer"
        style={{ display: "flex", alignItems: "center", gap: 13, padding: "11px 0", color: "var(--text)" }}>
       <span style={{ color: "var(--accent)", flexShrink: 0 }}><Icons.Chevron size={16} /></span>
       <span style={{ font: "600 14px/1.3 var(--ff)", flex: 1 }}>{title}</span>
