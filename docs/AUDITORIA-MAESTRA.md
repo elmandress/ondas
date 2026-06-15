@@ -329,6 +329,38 @@ special, speed, access, thermalConfort, emissions`. Sin rumbo ni sentido explíc
   (caen a la lógica GTFS) — correcto (degradación honesta), pero si una variante viva común no tuviera
   shape, el gate no la protege. No observado en 2201; revisar si aparece en otras paradas.
 
+### ✅ SEGUNDA PARADA — patrón "calle paralela" confirmado (2026-06-14)
+> La 2201 validó sentido-opuesto de la MISMA línea. Faltaba confirmar el síntoma original de
+> "calles paralelas": variantes corriendo a ~80–240 m sobre la calle de al lado. Se midió en
+> la grilla de sentido único del Centro (Av Uruguay ‖ Mercedes, ~90 m).
+- **Caso canónico — 4615 (Av Uruguay y Julio Herrera y Obes, 18 líneas):** la **L124→SANTA CATALINA**
+  (variante que corre por la paralela) snapea a **113 m → `not-on-route` → excluida**, mientras la
+  MISMA L124→Ciudad Vieja (la que corre por Av Uruguay) es reconocida on-route. El gate distingue las
+  dos variantes de una línea por su shape exacto, no por la línea.
+- **Banda clave:** los buses excluidos por paralela snapean a **108–239 m**. El snap viejo del path
+  GTFS (`MAX_GPS_SNAP_M = 900`) los **incluía**; el gate de 75 m los **excluye**. Ese es, literal, el
+  fix de "calle paralela".
+- **Corte de ruido (6 paradas céntricas, en vivo):** 4040 66→11 · 4909 54→9 · 4615 46→6 · 573 50→5 ·
+  4549 31→1 · 5109 47→0. (El 0 de 5109 fue honesto: en ese instante no había bus en una variante
+  servidora cerca; los próximos estaban en paralelas/cruces o ya pasados.)
+- **Auditoría de falso-negativo (la preocupación explícita):** para 5109/4615/4549, **TODAS** las
+  líneas de la parada (17/17, 18/18, 15/15) tienen al menos una variante con snap **≤75 m** → el gate
+  reconoce el sentido servido de cada línea. **No sobre-excluye**: cuando llega un bus por la variante
+  correcta, lo muestra. Lo que oculta es la variante paralela/opuesta de esa misma línea.
+
+### Decisión #2/#4 (a confirmar) — el gate los vuelve innecesarios
+- **#2 (bajar `MAX_GPS_SNAP_M` 900→250):** ya no hace falta. El gate impone un requisito de **75 m
+  sobre el shape EXACTO** (más estricto que 250 m sobre cualquier variante), y corre ANTES. El 900 m
+  del path GTFS sólo se usa para enriquecer ETA DESPUÉS de que el gate ya vetó dirección/pasado →
+  bajarlo no agrega honestidad y arriesga ETAs peores. **Propongo no tocarlo.**
+- **#4 (endurecer márgenes "ya pasó" 75/120→40):** ya no hace falta. El gate decide "pasó" por el
+  along del shape exacto (margen 80 m); los márgenes de `bus-direction-gtfs.ts` quedan como segunda
+  capa. Endurecerlos arriesga ocultar el bus que está EN la parada (la razón por la que son generosos).
+  **Propongo no tocarlos.**
+- **Conclusión:** con #1 (gate por variante exacta) + #3 (cap) el grueso del ruido cae —
+  sentido-opuesto, calle-paralela, ya-pasado y 27 km— sin tocar las tolerancias geométricas. #2/#4
+  quedan **cerrados como innecesarios** salvo que aparezca un caso que el gate no cubra.
+
 ## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
 > Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión
 > (mapa/home/SW). Separación bug-verificado vs oportunidad. **0 errores de consola** en
