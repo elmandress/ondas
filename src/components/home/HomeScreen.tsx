@@ -252,8 +252,8 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className="gps"><span className="gps-dot" />{locationIsReal ? "Ubicación precisa" : "Ubicación aproximada"}</span>
-          {/* El tema vive en Ajustes (Apariencia) — sacado del header para no competir con
-              lo importante. Header = solo Ayuda + Ajustes. Menos ruido para gente grande. */}
+          {/* Header = solo Ayuda + Ajustes, sin selector de tema (la app es dark-only desde
+              R67). Menos ruido para gente grande. */}
           <button onClick={() => setShowHowTo(true)} aria-label="Cómo usar" className="icon-btn sm" style={{ width: 40, height: 40 }}>
             <Icons.Help size={20} />
           </button>
