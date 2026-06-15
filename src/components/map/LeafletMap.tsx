@@ -224,14 +224,13 @@ export default function LeafletMap({
         map.doubleClickZoom.disable(); map.boxZoom.disable(); map.keyboard.disable();
       }
 
-      // Tiles CARTO según TEMA (oscuro = dark matter, claro = positron) y RED:
+      // Tiles CARTO (dark matter — la app es dark-only desde R67) según RED:
       //  - celular/Data Saver: 1 sola capa con labels + tiles 1x (la mitad de tiles, sin @2x).
       //  - WiFi: base sin labels + capa de labels (look más limpio) y retina.
       const net = getNetInfo();
       const lite = net.cellular || net.saveData || net.slow;
       const r = lite ? "" : "{r}"; // {r} = @2x en pantallas retina
-      const light = (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light");
-      const base = light ? "light" : "dark";
+      const base = "dark";
       if (lite) {
         L.tileLayer(`https://{s}.basemaps.cartocdn.com/${base}_all/{z}/{x}/{y}${r}.png`, {
           attribution: '&copy; <a href="https://carto.com">CARTO</a> &copy; OSM',

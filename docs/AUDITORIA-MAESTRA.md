@@ -361,6 +361,17 @@ special, speed, access, thermalConfort, emissions`. Sin rumbo ni sentido explíc
   sentido-opuesto, calle-paralela, ya-pasado y 27 km— sin tocar las tolerancias geométricas. #2/#4
   quedan **cerrados como innecesarios** salvo que aparezca un caso que el gate no cubra.
 
+### Orden de llegadas — hipótesis a confirmar (2026-06-14)
+El "desorden" reportado (12, 3, 25, 8 min) **NO reprodujo** con datos válidos: el endpoint
+ordena (`combined.sort`) y todos los paths cliente preservan/ordenan — verificado en vivo en 18
+paradas, todas ascendentes, incl. mezcla vivo+programado. Se endureció igual con
+`sortArrivalsByEta` (punto de verdad único + guard de finitud para NaN/Infinity, la única forma
+en que el comparador rompía). **Hipótesis:** lo que se veía "desordenado" eran probablemente los
+**buses fantasma/ruido** que el fix de esta sesión elimina (un bus a 70 min mezclado con uno a 3
+min se lee como desorden aunque el array esté sorteado). **A confirmar:** si el desorden NO vuelve
+tras este fix combinado (gate + cap + sort endurecido), eran la misma causa. Si vuelve, reproducir
+en la superficie exacta (interior / pager / cache stale) antes de tocar.
+
 ## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
 > Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión
 > (mapa/home/SW). Separación bug-verificado vs oportunidad. **0 errores de consola** en

@@ -1085,85 +1085,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 }
 .filter-chip.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
 
-/* ============================================================
-   TEMA CLARO — opt-in (toggle o preferencia del dispositivo).
-   El OSCURO sigue siendo el default y la base de marca: esto SOLO
-   aplica bajo [data-theme="light"]. Se define overrideando los
-   tokens del :root; los acentos semánticos se ajustan para contraste.
-   ============================================================ */
-:root[data-theme="light"] {
-  /* Crema cálido suave (no blanco frío que "flashea"). Fondo apenas tostado y
-     superficies en blanco roto: descansa la vista y se ve premium. */
-  --bg: #f3efe7;
-  --bg-elevated: #fbf9f4;
-  --bg-float: #fdfcf8;
-
-  --surface: rgba(70,55,30,0.05);
-  --surface-hover: rgba(70,55,30,0.08);
-  --surface-active: rgba(70,55,30,0.11);
-
-  --border: rgba(70,55,30,0.12);
-  --border-strong: rgba(70,55,30,0.20);
-
-  --text: #1f1a12;
-  --text-2: #475063;
-  /* R58b (QW-2): pasada AA medida (no a ojo) contra el peor fondo (#f3efe7).
-     text-3 daba 3.28:1, accent 2.99, live 3.02, warn 4.23 — todos se usan en texto
-     chico (metadata, "en vivo", links). Valores nuevos ≥4.5:1. */
-  --text-3: #646c7d;
-
-  --accent: #9b5e00;          /* 4.58:1 sobre --bg (antes #c77800 = 2.99) */
-  --accent-bg: #c77800;       /* relleno: 5.2:1 con el texto #1a1206 encima */
-  --accent-deep: #855000;
-  --accent-soft: rgba(155,94,0,0.10);
-  --accent-border: rgba(155,94,0,0.30);
-
-  --live: #087a56;            /* 4.66:1 (antes 3.02) */
-  --live-soft: rgba(8,122,86,0.12);
-  --sched: #5b5fcf;
-  --sched-soft: rgba(91,95,207,0.12);
-
-  --urgency-now: #087a56;
-  --urgency-soon: #9b5e00;
-  --urgency-chill: #2563eb;
-
-  --warn: #c73127;            /* 4.70:1 (antes 4.23, justo abajo de AA) */
-  --warn-soft: rgba(199,49,39,0.12);
-}
-[data-theme="light"] html, [data-theme="light"] body { background: var(--bg); }
-
-/* Puente para clases Tailwind hardcodeadas (texto) — evita refactorizar 9 archivos.
-   Solo bajo light; en dark estas clases siguen como siempre. */
-[data-theme="light"] .text-white { color: var(--text) !important; }
-[data-theme="light"] .text-slate-200,
-[data-theme="light"] .text-slate-300 { color: var(--text) !important; }
-[data-theme="light"] .text-slate-400 { color: var(--text-2) !important; }
-[data-theme="light"] .text-slate-500,
-[data-theme="light"] .text-slate-600,
-[data-theme="light"] .text-slate-700 { color: var(--text-3) !important; }
-[data-theme="light"] .placeholder\:text-slate-600::placeholder { color: var(--text-3) !important; }
-
-/* Glass/superficies que usaban blanco translúcido → adaptarlas a light */
-[data-theme="light"] .glass { background: var(--surface); border-color: var(--border); }
-[data-theme="light"] .bottom-nav { background: rgba(255,255,255,0.92); }
-[data-theme="light"] .leaflet-container { background: #e8ebf0 !important; }
-/* R65: velo del backdrop en light subido a ≥0.70 — a 0.45 el hero se transparentaba
-   detrás del sheet y competía por la atención. Tono cálido propio del tema claro. */
-[data-theme="light"] .sheet-backdrop { background: rgba(40,33,20,0.72); }
-
-/* Paneles/sheets con dark HARDCODEADO (Tailwind arbitrary) → claros en light, para
-   que el texto (que el puente vuelve oscuro) sea legible. Solo aplica en light. */
-:root[data-theme="light"] .bg-\[\#0a0f1c\],
-:root[data-theme="light"] .bg-\[\#0a0f1c\]\/97,
-:root[data-theme="light"] .bg-\[\#0a0f1c\]\/95,
-:root[data-theme="light"] .bg-\[\#0a0f1c\]\/90,
-:root[data-theme="light"] .bg-\[\#101626\]\/95,
-:root[data-theme="light"] .bg-\[\#070b14\] {
-  background-color: rgba(255,255,255,0.97) !important;
-}
-:root[data-theme="light"] .border-white\/\[0\.07\],
-:root[data-theme="light"] .border-white\/\[0\.08\],
-:root[data-theme="light"] .border-white\/\[0\.1\] { border-color: var(--border) !important; }
+/* TEMA CLARO eliminado (R69): la app es dark-only desde R67 (señalética nocturna —
+   farol de sodio sobre asfalto). La base de marca vive en :root. Si algún día vuelve
+   un tema claro, se reintroduce acá overrideando los tokens del :root bajo
+   [data-theme="light"] (el pre-paint de layout.tsx ya fija data-theme="dark"). */
 
 /* "Optimizar para" — selector de criterio de ruteo */
 .opt-row { display: flex; gap: 7px; margin: 10px 0 4px; overflow-x: auto; scrollbar-width: none; }

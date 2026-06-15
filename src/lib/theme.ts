@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * theme.ts — Tema con 3 modos: Auto / Claro / Oscuro.
- *  - "auto" (default): siempre oscuro — identidad dark-first de marca.
- *  - "light" / "dark": fijo, elegido explícitamente por el usuario.
- * El diseño es 100% tokens (var(--...)); el tema se define overrideando esos tokens
- * bajo [data-theme="light"] en globals.css.
+ * theme.ts — DARK-ONLY desde R67 (identidad "señalética" nocturna).
+ * `resolveTheme` siempre devuelve "dark"; el CSS `[data-theme="light"]` ya se eliminó
+ * de globals.css (R69). El tema lo fija el pre-paint de layout.tsx (`data-theme="dark"`),
+ * así que este módulo no lo usa la app — se mantiene `resolveTheme` (tested) y la firma
+ * de los helpers por si alguna vez vuelve un tema claro (se reintroduce el override
+ * `[data-theme="light"]` y se hace que `resolveTheme` respete el modo de nuevo).
  */
 
 import { useSyncExternalStore } from "react";
@@ -23,8 +24,8 @@ export function getMode(): ThemeMode {
 
 /** Resuelve el tema concreto. R67: decisión DARK-ONLY (identidad "señalética"
  *  nocturna — farol de sodio sobre asfalto). El tema light queda deprecado: siempre
- *  devolvemos "dark" y el selector de Apariencia se quitó de Ajustes. El CSS de
- *  [data-theme="light"] es código muerto (se limpia en un commit aparte). */
+ *  devolvemos "dark"; el selector de Apariencia se quitó de Ajustes y el CSS de
+ *  [data-theme="light"] se eliminó (R69). */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- dark-only: el modo se ignora a propósito (se mantiene la firma para callers/tests)
 export function resolveTheme(_mode: ThemeMode = getMode()): Theme {
   return "dark";
