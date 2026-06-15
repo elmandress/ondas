@@ -459,7 +459,7 @@ en la superficie exacta (interior / pager / cache stale) antes de tocar.
 | **P1** | **LCP 6.1s Home** (hero `ct-text` bloqueado por fuente+hidratación) | bug perf | preload/optimizar Archivo + priorizar el render del contador; medir LCP element |
 | **P1** | **Focus management de sheets** (no entra / no atrapa / no restaura) | bug a11y | focus-trap + restore en el contenedor de bottom-sheet (una vez, transversal) |
 | **P2** | **CLS 0.189 Home** (shift por fuente/hero/mapa) | bug perf | reservar espacio del hero/preview, `font-display` + size-adjust |
-| **P2** | **TTFB ~2.1–2.6s todas las rutas** (middleware en cada request) | bug perf | revisar `proxy.ts`/middleware: ¿corre en estáticas?, ¿se puede acotar a rutas con auth? |
+| ~~P2~~ **P0✅** | **TTFB ~2.1–2.6s todas las rutas** (middleware en cada request) | bug perf | **RESUELTO R70** — ver abajo |
 | **P2** | **Supabase ~120 KB en bundle inicial Home** (SettingsSheet estático) | oportunidad | `dynamic(ssr:false)` SettingsSheet |
 | **P2** | **stops.json 209 KB en Home** | oportunidad | ¿cargar diferido tras el hero? ¿subset para paradas-cerca? |
 | **P3** | getStopVariants 60s→TTL largo/precompute + prewarm token paralelo | oportunidad | cachear variantes (cuasi-estático) + paralelizar token |
@@ -471,6 +471,22 @@ en la superficie exacta (interior / pager / cache stale) antes de tocar.
 **Lectura:** no hay P0 (nada roto en prod). Los dos P1 son el LCP del Home (perf) y el focus-management
 de sheets (a11y) — entradas independientes. Varias P2/P3 son baratas y autocontenidas (lazy SettingsSheet,
 TTL de variantes). El contraste AA y los aria-labels salieron limpios — buena noticia del dark-only.
+
+### ✅ RESUELTO R70 — TTFB del middleware (era el P0 real, no un P2)
+**Causa raíz confirmada:** `src/middleware.ts` corría `supabase.auth.getUser()` (round-trip de red a
+Supabase Auth) en CADA request — el matcher era un negative-lookahead que cubría TODO menos assets:
+las ~6,600 páginas SEO (`/linea/*`, `/parada/*`, `/barrio/*`, `/a/*`, `/lineas`…), todos los `/api/*` y
+los sitemaps. Por eso `/linea/183` (SSG, debería servirse del edge en ms) medía **TTFB 2.61s**.
+**Y no servía para nada:** `getSupabaseServer()` está definido pero **NUNCA se llama** — ningún server
+component ni API route lee la sesión server-side; todo el auth/favoritos es CLIENTE (`getSupabaseBrowser`
+en `useAuth` + `sync-favorites`, con auto-refresh del token). El refresh server-side era peso muerto
+(y el try/catch de R67 lo confirma: tiraba 500 en `/api/stm/*`).
+**Fix (1 línea, `matcher: ["/"]`):** el middleware corre SOLO en el SPA `/` (donde aterriza un usuario
+logueado por recarga dura). **Verificado local** (dev logs): `/` muestra `proxy.ts` en el timing;
+`/linea/183`, `/parada/2201` y `/api/stm/arrivals` ya **NO**. Impacto: saca el getUser() de las 6,600
+páginas SEO (ventaja competitiva #1 — TTFB en cada resultado de Google → rankings + abandono) y de
+`/api/*` (baja la latencia de arrivals del #2 + elimina el modo de falla 500 de R67). La mejora de TTFB
+en prod se confirma post-deploy. Esto reordena la ronda: era el de mayor palanca, no una página lenta.
 
 ## 🔎 QA AUDIT R68 (2026-06-14) — recorrido mobile-first (375px) post-rediseño
 > Ronda de auditoría + tester end-to-end a 375px, foco en lo que cambió esta sesión

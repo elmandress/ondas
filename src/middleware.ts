@@ -45,8 +45,16 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Corre en todo menos assets estáticos y los .json/.db de datos (no necesitan sesión).
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons/|manifest.json|.*\\.(?:json|db|png|jpg|jpeg|svg|webp)$).*)",
-  ],
+  // R70 — SOLO el SPA (`/`). Antes el matcher corría sobre TODO (negative-lookahead):
+  // las ~6,600 páginas SEO (/linea/*, /parada/*, /barrio/*, /a/*, /lineas…), todos los
+  // /api/* y los sitemaps. Cada request pagaba un `supabase.auth.getUser()` (round-trip
+  // de red a Supabase Auth) → TTFB ~2s medido en prod hasta en /linea/183 (SSG que debería
+  // servirse del edge en ms). Y NADA server-side consume esa sesión: `getSupabaseServer()`
+  // está definido pero nunca se llama; todo el auth/favoritos es CLIENTE (getSupabaseBrowser
+  // en useAuth + sync-favorites), y el browser client auto-refresca su token. El refresh
+  // server-side sólo es defendible en el SPA donde aterriza un usuario logueado por recarga
+  // dura → matcher acotado a `/`. Esto saca el getUser() de las 6,600 SEO (la ventaja
+  // competitiva #1, TTFB en cada resultado de Google) y de /api/* (baja la latencia de
+  // arrivals + elimina el modo de falla 500 que el try/catch de R67 parchaba).
+  matcher: ["/"],
 };
