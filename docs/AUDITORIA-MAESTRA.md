@@ -372,6 +372,53 @@ min se lee como desorden aunque el array esté sorteado). **A confirmar:** si el
 tras este fix combinado (gate + cap + sort endurecido), eran la misma causa. Si vuelve, reproducir
 en la superficie exacta (interior / pager / cache stale) antes de tocar.
 
+## 🔬 INVESTIGACIÓN — Paradas del interior sin "cuánto falta" (2026-06-15)
+> Los buses del interior se ven moverse en el mapa, pero NINGUNA parada del interior calcula
+> "te falta X / llega en N". Research-first: ¿por qué, y qué tan grande es el problema?
+
+### El dato de Busmatick es RICO (y parte se ignora — patrón buses-fantasma)
+`/api/gps/interior` (avl.xml/geojson de CODESA/COPAY/Rocha) ya parsea por bus: `lat/lon, line (lin),
+lineName (lnm), speed (vel), heading (rum)`, **`nextStop (p1n)` + `nextStopCode (p1c)`** (la PRÓXIMA
+parada, nombre+código), **`delayMin (reg)`** (atraso vs horario, +tarde/-adelantado) y `occupancy (psj)`.
+→ El bus reporta su próxima parada Y su atraso. **`useInteriorArrivals` usa SOLO `nextStopCode === code`
+(la parada inmediata) + ETA por distancia/velocidad. Ignora la secuencia de paradas y el `delayMin`.**
+
+### La data del recorrido del interior EXISTE (no hay que construirla de cero)
+- **`public/interior-stops.json`**: ~171 paradas GEOLOCALIZADAS — `{zona, code, name, lat, lon, samples,
+  lines}` — **inferidas de las observaciones de Busmatick** (`collect-interior-stops.mjs`: agrupa dónde los
+  buses reportan cada `p1c`). Ya se mergean al dataset (`stops-dataset.ts` → `int-{zona}-{code}`) → se abren.
+- **`data/interior-edges.json`**: **el GRAFO DE SECUENCIA de paradas** (`"961>962":5` por `zona|línea|dir`,
+  de `p1c→p2c`). Es "el recorrido" que parecía faltar — **existe**. PERO `useInteriorArrivals` NO lo usa.
+- **NO hay GTFS formal del interior** (sin timetable oficial); la data es OBSERVADA, no de un GTFS. Así que
+  los ETAs deben ser por posición/secuencia, no por horario (el `delayMin` no tiene baseline sin schedule).
+
+### La causa raíz (el gap, no el síntoma)
+La data (paradas geolocalizadas + grafo de secuencia) existe, pero el motor del interior es DELGADO:
+`useInteriorArrivals` solo marca "viene" si la parada es el **next-stop INMEDIATO** del bus. Un bus a 2-3
+paradas (que SÍ viene) cae al complemento "buses de la línea ≤4 km" mostrado como estimado "en la zona" —
+no como "te falta 3 paradas, llega en 5 min". Por eso la parada "no funciona". **Falta un SEGUNDO MOTOR DE
+HONESTIDAD para el interior** que use `interior-edges` (secuencia) igual que `bus-direction-gtfs.ts` usa
+`routes.json`: ubicar el bus en la secuencia → ¿está upstream de la parada? → paradas restantes → ETA.
+
+### Tamaño real del problema (cobertura desigual por ciudad)
+| Ciudad | Paradas inferidas | Edges (línea·dir) | Estado |
+|--------|-------------------|-------------------|--------|
+| **Maldonado** (CODESA) | **89** | **16** | data completa → solo falta el motor. **Empezar acá** (+ tráfico Punta del Este) |
+| **Paysandú** (COPAY) | 66 | 8 | data ok → motor |
+| San Carlos | 16 | **0** | paradas sí, edges no → re-correr inferencia de edges |
+| **Rocha** | **0** | **0** | GPS sí, paradas NO (el GeoJSON quizá no trae `p1c`) → inferencia incierta |
+
+Afecta a las 4, pero la data sólo cubre 3 bien. **Interdept overlap: ninguno** (interdept.json = salidas
+empresa/hora, sin paradas). Reutilizable: `interior-stops` + `interior-edges` (ya construidos).
+
+### Esfuerzo y alcance (a decidir juntos — NADA ejecutado)
+- **NO es "construir data de cero"** para Maldonado/Paysandú (existe). El trabajo es **el MOTOR**: un
+  `bus-direction-interior` que use `interior-edges` → dirección/upstream + paradas restantes + ETA. Espeja
+  `bus-direction-gtfs` pero con un grafo más simple → **MEDIO** (más chico que el de MVD).
+- Mejoras opcionales: usar `delayMin` (regularidad), re-inferir edges de San Carlos, intentar Rocha.
+- **Es una pieza de arquitectura real (2º motor de honestidad), pero ACOTADA** porque la data ya existe.
+  Recomendación: prototipar el motor en **Maldonado** (mejor data + tráfico) y validar antes de extender.
+
 ## 🔁 RONDA R71 (2026-06-15) — honestidad del hero + parada↔mapa + barrido de gaps
 
 ### Cierre R71 (lo hecho, 5 commits locales sin pushear)
