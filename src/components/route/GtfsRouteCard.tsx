@@ -41,6 +41,9 @@ export default function GtfsRouteCard({
   // "M-"). Esas líneas son por HORARIO oficial — no tenemos GPS en vivo de las empresas
   // suburbanas. Lo decimos derecho (honestidad #1).
   const usesMetro = route.legs.some((l) => l.type === "bus" && l.variantId?.startsWith("M-"));
+  // Distancia total en bus (km) → tarifa suburbana por TRAMO (fix R71: antes siempre $86,
+  // ignorando la distancia; un viaje a Canelones de 50 km mostraba $86 en vez de $153).
+  const busKm = route.legs.filter((l) => l.type === "bus").reduce((s, l) => s + (l.distanceM || 0), 0) / 1000;
   const isWalkOnly = route.signature === "walk";
   // R62: exposición a pie de noche, VISIBLE al elegir (no enterrada en el taxi del
   // detalle). De día assess da level "none" → no muestra nada. El diferencial único
@@ -99,7 +102,7 @@ export default function GtfsRouteCard({
               distinta ($86+, aumentó 01/06/2026). Solo rutas con bus. */}
           {!isWalkOnly && (
             <p style={{ font: "600 11px/1 var(--ff)", color: "var(--text-3)", marginTop: 3 }}>
-              {fareLabel(route.numTransfers, usesMetro)}
+              {fareLabel(route.numTransfers, usesMetro, busKm)}
             </p>
           )}
         </div>
@@ -237,7 +240,7 @@ export default function GtfsRouteCard({
             "relleno"; el uruguayo quiere saber qué bondi tomar, no un sermón verde.
             Solo aparece si el usuario TOCA "Ver impacto del viaje". */}
         {!isWalkOnly && (() => {
-          const busM = route.legs.filter((l) => l.type === "bus").reduce((s, l) => s + (l.distanceM || 0), 0);
+          const busM = busKm * 1000;
           const walkMin = Math.round(route.legs.filter((l) => l.type === "walk").reduce((s, l) => s + l.durationS, 0) / 60);
           const label = tripImpactLabel(busM, walkMin);
           return label ? (
@@ -252,7 +255,7 @@ export default function GtfsRouteCard({
             no saturar). Aclara que es estimado y de cuándo son los valores. */}
         {!isWalkOnly && (
           <p style={{ font: "500 11px/1.4 var(--ff)", color: "var(--text-3)", marginTop: 10 }}>
-            {fareDetail(route.numTransfers, usesMetro)}
+            {fareDetail(route.numTransfers, usesMetro, busKm)}
           </p>
         )}
 

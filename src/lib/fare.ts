@@ -52,13 +52,35 @@ export interface FareEstimate {
 }
 
 /**
- * Estima el costo de una ruta urbana de Montevideo.
- * El boleto de 1 hora cubre 1 transbordo → 0-1 transbordos = 1 boleto.
- * 2+ transbordos podrían exceder los 60 min → "desde" (exact:false).
+ * Tarifa suburbana/metropolitana según la DISTANCIA del viaje en bus (km).
+ *
+ * CLAVE (gap corregido R71): antes `estimateFare(suburban)` devolvía SIEMPRE `dentro_mvd`
+ * ($86), ignorando la distancia → un viaje a Canelones de 50 km (real $153) se mostraba "$86".
+ * La distancia ya estaba disponible (la suma de los tramos en bus); no se usaba.
+ *
+ * En la app, "suburbano" = la ruta usa una línea METRO (variant "M-"), y eso IMPLICA que el
+ * viaje SALE de Montevideo: el planner bloquea las metro en viajes intra-MVD
+ * (route-planner-gtfs `allowVariant`). Por eso el piso real es `hasta_32km` ($107), no
+ * `dentro_mvd` ($86) — ese tramo es para un servicio suburbano DENTRO de MVD, que la app no
+ * rutea (los viajes intra-MVD van por líneas urbanas → tarifa urbana, no esta función).
  */
-export function estimateFare(numTransfers: number, suburban = false): FareEstimate {
+export function suburbanFareForKm(km?: number): number {
+  if (!Number.isFinite(km)) return SUBURBAN_FARES.hasta_32km; // distancia desconocida → tramo base de salir
+  const k = km as number;
+  if (k <= 32) return SUBURBAN_FARES.hasta_32km;
+  if (k <= 40) return SUBURBAN_FARES.hasta_40km;
+  return SUBURBAN_FARES.hasta_60km; // ≤60 y más allá (no hay tramo mayor)
+}
+
+/**
+ * Estima el costo de una ruta. Urbano: boleto de 1 hora (1 transbordo). Suburbano: tramo por
+ * distancia (`km` = total en bus). Sin `km` cae al tramo base suburbano (honesto: nunca el
+ * mínimo intra-MVD, porque un viaje suburbano sale de MVD — ver suburbanFareForKm).
+ */
+export function estimateFare(numTransfers: number, suburban = false, km?: number): FareEstimate {
   if (suburban) {
-    return { stm: SUBURBAN_FARES.dentro_mvd, cash: SUBURBAN_FARES.dentro_mvd, exact: false, suburban: true };
+    const price = suburbanFareForKm(km);
+    return { stm: price, cash: price, exact: false, suburban: true };
   }
   const exact = numTransfers <= 1;
   return { stm: URBAN_FARES.hora_stm, cash: URBAN_FARES.hora_efectivo, exact, suburban: false };
@@ -67,8 +89,8 @@ export function estimateFare(numTransfers: number, suburban = false): FareEstima
 /** Texto corto para el resumen de la tarjeta: "~$64 efectivo" / "~desde $64" / "~$86 suburbano".
  *  El "~" deja claro que es estimado. Mostramos el EFECTIVO primero (es lo que paga la
  *  mayoría sin tarjeta STM; con tarjeta sale más barato → buena sorpresa, no mala). */
-export function fareLabel(numTransfers: number, suburban = false): string {
-  const f = estimateFare(numTransfers, suburban);
+export function fareLabel(numTransfers: number, suburban = false, km?: number): string {
+  const f = estimateFare(numTransfers, suburban, km);
   if (f.suburban) return `~$${f.cash} suburbano`;
   return f.exact ? `~$${f.cash} efectivo` : `~desde $${f.cash} efectivo`;
 }
@@ -84,10 +106,13 @@ export function boletosFromSaldo(saldo: number): number | null {
 }
 
 /** Detalle completo para la ruta expandida: efectivo primero + tarjeta + vigencia. */
-export function fareDetail(numTransfers: number, suburban = false): string {
-  const f = estimateFare(numTransfers, suburban);
+export function fareDetail(numTransfers: number, suburban = false, km?: number): string {
+  const f = estimateFare(numTransfers, suburban, km);
   if (f.suburban) {
-    return `Estimado ~$${f.cash} (suburbano, varía por distancia) · valores vigentes a ${FARE_VIGENCIA}`;
+    const tramo = !Number.isFinite(km) ? "varía por distancia"
+      : (km as number) <= 32 ? "hasta 32 km"
+      : (km as number) <= 40 ? "hasta 40 km" : "hasta 60 km";
+    return `Estimado ~$${f.cash} (suburbano, ${tramo}) · valores vigentes a ${FARE_VIGENCIA}`;
   }
   const base = f.exact ? `$${f.cash} efectivo / $${f.stm} con tarjeta` : `desde $${f.cash} efectivo`;
   return `${base} · estimado según tarifas vigentes a ${FARE_VIGENCIA}`;
