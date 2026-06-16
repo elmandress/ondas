@@ -372,7 +372,60 @@ min se lee como desorden aunque el array esté sorteado). **A confirmar:** si el
 tras este fix combinado (gate + cap + sort endurecido), eran la misma causa. Si vuelve, reproducir
 en la superficie exacta (interior / pager / cache stale) antes de tocar.
 
-## ⚡ AUDITORÍA PERFORMANCE + ACCESIBILIDAD R70 (2026-06-15) — números reales con deploy en prod
+## 🔁 RONDA R71 (2026-06-15) — honestidad del hero + parada↔mapa + barrido de gaps
+
+### Cierre R71 (lo hecho, 5 commits locales sin pushear)
+- **Cuándo salir — 3 escenarios resueltos** (`891a264` + `b0c6da5`): Esc 2 (estado honesto "no llegás
+  a estos a pie" en vez de "¡Ya!" imposible), Esc 1 (bus inalcanzable dimmed, no borrado), Esc 3
+  (alternativa "sin apuro" explícita — medido frecuente: 35% de las decisiones / 41% de los "corré").
+  Lógica pura en `selectHeroBus` + 11 tests.
+- **Parada ↔ mapa conviven** (`2f86cc8`, Opción A): tocar parada en Home → tab Mapa + StopPanel + mapa
+  con todos los buses; store `selected-map-stop` + breadcrumb "← Inicio" + back semántico (round-trip a
+  Inicio si viniste del Home; normal si exploraste el mapa). Reusa MapScreen existente, sin 2º Leaflet.
+  StopArrivalSheet intacto (lo usa el favorito-ruta).
+- **Focus-management probado en prod** (cierra pendiente de R70): el restore parecía roto en dev →
+  instrumenté → era el **doble-invoke de React StrictMode (solo dev)** corrompiendo la captura de
+  `restoreTo`. Con StrictMode off (= prod): **RESTORE OK**. Trap (0 fugas) + restore funcionan en prod.
+- **Validación integrada (5 puntos):** Home→parada→mapa→Inicio ✓ · mapa-directo (back se queda en Mapa,
+  no salta a Inicio) ✓ · hero sin regresión ✓ · focus trap+restore ✓ · 320px sin overflow ✓ · 0 errores.
+
+### 🔬 Barrido de gaps silenciosos (patrón buses-fantasma: dato disponible pero no usado)
+- **🐞 fare.ts — TARIFA SUBURBANA SUBREPORTADA (gap confirmado, mismo patrón):** `SUBURBAN_FARES` tiene
+  tramos por distancia ($86 dentro MVD / $107 ≤32km / $127 ≤40km / $153 ≤60km), pero
+  `estimateFare(suburban)` devuelve **SIEMPRE `dentro_mvd` ($86)** — nunca usa la distancia. Y la
+  distancia ESTÁ disponible: `GtfsRouteCard.tsx:240` ya calcula `busM` (metros en bus) para el impacto,
+  pero `fareLabel`/`fareDetail` (líneas 102/255) no la reciben. Un viaje a Canelones de 50 km (real
+  $153) se muestra **"$86"** — subreporte de hasta ~$67 (la disculpa "varía por distancia" está, pero
+  el número siempre es el mínimo). **Matiz de producto del fix:** distinguir "dentro de MVD" ($86) de
+  "sale de MVD" (tramos por km) — `busM` solo no lo dice (un viaje de 25 km puede ser intra-MVD o cruzar
+  a Canelones). El dato preciso existe: coords del destino + `mvd-area.ts` (`isValidMvdCoord`) → si el
+  destino está fuera de MVD, usar tramo por `busM`. Decisión de approach pendiente (ver abajo).
+- **trip-safety.ts — sin gap:** `isOnAvenue` matchea por TEXTO (regex + lista de avenidas) pero es
+  **proxy honesto documentado** — no existe clasificación de calles en el dato. (Menor: el walk usa
+  nombres de parada, no las calles reales del polyline de OSRM → mejora posible, no dato-ya-disponible.)
+- **occupancy.ts — sin gap de dato:** agrega bien; el riesgo "mostrar con 1 reporte" es regla de UI
+  (devuelve `count`, la UI debe distinguir "1 persona dijo…" de un hecho). Verificar en OccupancySection.
+- **interdept — sin gap de campo:** `interdept.json` tiene campos escasos (empresa/salida/llegada/días),
+  sin precio/km. Lo pendiente es INGERIR más data (CSV MTOP), no un campo ignorado.
+
+### 🧹 Pasada C (deprecar StopArrivalSheet) — audit de tamaño
+StopArrivalSheet (340 líneas) tiene 4 features que StopPanel (183) no: **favorito** (`toggleFavoriteStop`),
+**compartir** (`shareStop`), **OccupancySection**, **inactiveLines** ("vuelve a las HH:MM"). Ambos ya
+comparten ColdMode + paradas-a-pasos. Migración = wirear esas 4 (hooks/componentes reusables YA existen)
+→ **MEDIA** (~60-100 líneas en StopPanel) + rerutear el favorito-ruta + borrar StopArrivalSheet.
+**Recomendación: HOLD** — no por "validar en uso real" (débil sin deploy) sino porque (a) depreca un
+fallback que funciona mientras A sigue sin validar en uso, (b) es cleanup de menor impacto que el gap de
+fare. Si A se confirma (deploy + uso), se hace. No urge.
+
+### 🔭 Competencia — features baratas que faltan (2-3, criterio: barato bien + alto impacto)
+- **Animación suave de los buses en el mapa** (interpolar entre updates de GPS): Maprab/VoyEnBondi
+  "se sienten vivos" porque los buses se mueven; los nuestros saltan cada 8-20s. Barato (interpolación
+  client-side), impacto de percepción "premium" medio. Bajo riesgo.
+- **"Avisame cuándo salir" — notificación local** (aunque la PWA esté cerrada, vía SW): es el gap real
+  vs Moovit (departure alerts). Alta utilidad para el commuter ("salí en 8 min para el 121"). Esfuerzo
+  MEDIO (permiso de notificación + scheduling + SW), no barato-trivial, pero alto impacto.
+- **Favorito de LÍNEA (no solo parada):** "¿cuándo pasa el 121?" en un toque, apalanca las páginas
+  `/linea/[x]` que ya existen. Barato, leverage de lo construido.
 > Research-first, sin fixes. Ahora que hay deploy (`cuando-bondi.netlify.app`) y la app es
 > dark-only, varias cosas "pendientes, requieren HTTPS" son medibles. Herramientas: Lighthouse
 > mobile (npx), axe-core 4.10 vía Playwright 375px, curl/Invoke-WebRequest con timing, análisis
