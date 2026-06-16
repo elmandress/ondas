@@ -413,17 +413,31 @@ StopArrivalSheet (340 líneas) tiene 4 features que StopPanel (183) no: **favori
 **compartir** (`shareStop`), **OccupancySection**, **inactiveLines** ("vuelve a las HH:MM"). Ambos ya
 comparten ColdMode + paradas-a-pasos. Migración = wirear esas 4 (hooks/componentes reusables YA existen)
 → **MEDIA** (~60-100 líneas en StopPanel) + rerutear el favorito-ruta + borrar StopArrivalSheet.
-**Recomendación: HOLD** — no por "validar en uso real" (débil sin deploy) sino porque (a) depreca un
-fallback que funciona mientras A sigue sin validar en uso, (b) es cleanup de menor impacto que el gap de
-fare. Si A se confirma (deploy + uso), se hace. No urge.
+**Recomendación: HOLD — pero como PREFERENCIA DE SECUENCIA, no bloqueo técnico (razón afilada R71).**
+¿Qué se rompe si migro ahora vs con A en prod? **Nada concreto** — el código de la migración es correcto
+independiente del estado de deploy de A. Lo único que "A en prod + usado" aporta es CONFIRMAR que su UX
+(tab-switch al mapa al abrir una parada) es la dirección correcta. El único downside concreto de migrar
+ahora: si A se rechaza tras uso real, el revert es más grande (hay que **restaurar StopArrivalSheet** además
+de revertir A) y el Home quedaría sin vista de parada en el ínterin. O sea: no hay riesgo técnico de migrar
+ya; el HOLD es "no deprecar el fallback hasta confirmar la dirección de A". Que la próxima sesión NO asuma
+que hay algo peligroso acá — es secuencia, no peligro.
 
 ### 🔭 Competencia — features baratas que faltan (2-3, criterio: barato bien + alto impacto)
 - **Animación suave de los buses en el mapa** (interpolar entre updates de GPS): Maprab/VoyEnBondi
-  "se sienten vivos" porque los buses se mueven; los nuestros saltan cada 8-20s. Barato (interpolación
-  client-side), impacto de percepción "premium" medio. Bajo riesgo.
-- **"Avisame cuándo salir" — notificación local** (aunque la PWA esté cerrada, vía SW): es el gap real
-  vs Moovit (departure alerts). Alta utilidad para el commuter ("salí en 8 min para el 121"). Esfuerzo
-  MEDIO (permiso de notificación + scheduling + SW), no barato-trivial, pero alto impacto.
+  "se sienten vivos"; los nuestros `setLatLng` instantáneo cada 8-20s (saltan). **Approach (research R71):**
+  interpolar old→new con rAF (lerp lat/lon, llamando setLatLng por frame) — **NO CSS-transition** (chocaría
+  con el `translate3d` que Leaflet recomputa en pan/zoom). **Riesgo: toca el loop de markers de LeafletMap**
+  (que ya tuvo bugs: mapa negro, markers), con edge-cases (cleanup de la animación al remover el vehículo,
+  updates rápidos, interacción durante la animación). **Cosmético + delicado → hacerlo como pasada
+  enfocada con su testing, NO al apuro.** Pendiente, no ejecutado.
+- **"Avisame cuándo salir" — notificación** (gap real vs Moovit). **Research (R71): NO hay infra de
+  notificaciones hoy** — sin push/VAPID/web-push/showNotification; el SW no maneja `push`/`notificationclick`;
+  manifest sin notificación. La versión con valor (avisar con la app CERRADA) = **Web Push completo desde
+  cero**: VAPID + suscripción (pushManager) + guardar subs (Supabase) + backend que mande el push a la hora
+  de salida (Netlify scheduled fn) + handlers SW. **Esfuerzo MEDIO-ALTO, NO barato.** La versión barata
+  (Notification + setTimeout con app abierta) es de bajo valor (ya ves el hero). Notification Triggers
+  (local sin server) → soporte nulo en iOS. **Veredicto: alta utilidad pero es una feature deliberada con
+  su propio scope, no un quick-win.** No ejecutar sin decidir el alcance del backend.
 - **Favorito de LÍNEA (no solo parada):** "¿cuándo pasa el 121?" en un toque, apalanca las páginas
   `/linea/[x]` que ya existen. Barato, leverage de lo construido.
 > Research-first, sin fixes. Ahora que hay deploy (`cuando-bondi.netlify.app`) y la app es
