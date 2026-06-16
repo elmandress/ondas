@@ -8,6 +8,7 @@ import { useLineStops } from "@/hooks/useLineStops";
 import { titleCaseDestination } from "@/lib/utils";
 import { loadOperators, resolveOperator, type OperatorInfo } from "@/lib/operators";
 import { shareLine } from "@/lib/share";
+import { useFavoriteLines, toggleFavoriteLine } from "@/lib/favorite-lines";
 import { Icons } from "@/components/brand/Icons";
 import { haptic } from "@/lib/haptics";
 
@@ -33,6 +34,8 @@ export default function LineDetailSheet({
   useFocusTrap(panelRef); // R70: drill-down sobre la parada → el trap se apila; back vuelve el foco al padre
   const { stops, headsign, loading, notFound } = useLineStops(line, destination);
   const highlightRef = useRef<HTMLDivElement | null>(null);
+  // Favorito de línea (R71): ★ → aparece en Inicio para "¿cuándo pasa el X?" en un toque.
+  const isFav = useFavoriteLines().some((f) => f.line === line);
 
   // Empresa operadora + contacto + WiFi (datos reales; sin clave inventada).
   const [operator, setOperator] = useState<OperatorInfo | null>(null);
@@ -117,6 +120,15 @@ export default function LineDetailSheet({
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => { haptic(10); toggleFavoriteLine(line); }}
+                  aria-label={isFav ? `Quitar la línea ${line} de favoritas` : `Guardar la línea ${line} en favoritas`}
+                  aria-pressed={isFav}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: isFav ? "var(--accent-soft)" : "rgba(255,255,255,0.05)", color: isFav ? "var(--accent)" : "var(--text-3)" }}
+                >
+                  <Icons.Star size={17} filled={isFav} />
+                </button>
                 <button
                   onClick={handleShare}
                   aria-label="Compartir línea"

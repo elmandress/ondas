@@ -662,6 +662,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 
 /* ============== Fav list ============== */
 .list-stack { display: flex; flex-direction: column; gap: 8px; }
+/* Líneas favoritas (R71): chips de la chapa de línea, tap → recorrido. */
+.fav-lines-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }
+.fav-line-chip { background: transparent; border: none; padding: 4px; margin: -4px; cursor: pointer; -webkit-tap-highlight-color: transparent; min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.fav-line-chip:active { transform: scale(0.93); transition: transform .1s; }
 .fav-row { display: flex; align-items: center; gap: 13px; min-height: 56px; padding: 12px 16px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--r-chip); text-align: left; }
 .fav-row .lead-icon { color: var(--text-3); flex-shrink: 0; }
 .fav-row .text { flex: 1; min-width: 0; }

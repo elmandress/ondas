@@ -8,6 +8,7 @@ import { useArrivals } from "@/hooks/useArrivals";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
 import { getPrefs, type FavoriteRoute } from "@/lib/store";
 import { useFavoriteStops, removeFavoriteStop, aliasIcon, type FavoriteStop } from "@/lib/favorite-stops";
+import { useFavoriteLines } from "@/lib/favorite-lines";
 import AliasEditor from "@/components/home/AliasEditor";
 import LeaveNowHero from "@/components/home/LeaveNowHero";
 import { getNearbyStopsClient, distanceTo, formatEta, walkingMinutes } from "@/lib/utils";
@@ -61,6 +62,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
   const [favorites, setFavorites] = useState<FavoriteRoute[]>([]);
   const favoriteStops = useFavoriteStops();
+  const favoriteLines = useFavoriteLines();
   const alerts = useServiceAlerts();
   const [editingAlias, setEditingAlias] = useState<{ stopId: string; stopName: string; alias?: string } | null>(null);
 
@@ -449,7 +451,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       {mounted && (
         <details
           className="home-more"
-          open={moreOpen === null ? (favoriteStops.length > 0 || favorites.length > 0) : moreOpen}
+          open={moreOpen === null ? (favoriteStops.length > 0 || favorites.length > 0 || favoriteLines.length > 0) : moreOpen}
           onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}
         >
           <summary>
@@ -457,6 +459,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
             <span className="hm-meta">
               {[
                 favoriteStops.length > 0 ? `${favoriteStops.length} ${favoriteStops.length === 1 ? "favorita" : "favoritas"}` : null,
+                favoriteLines.length > 0 ? `${favoriteLines.length} ${favoriteLines.length === 1 ? "línea" : "líneas"}` : null,
                 favorites.length > 0 ? `${favorites.length} ${favorites.length === 1 ? "ruta" : "rutas"}` : null,
                 "Saldo STM",
               ].filter(Boolean).join(" · ")}
@@ -477,6 +480,21 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
                       onRemove={() => removeFavoriteStop(fav.stopId)}
                       onEditAlias={() => setEditingAlias({ stopId: fav.stopId, stopName: fav.stopName, alias: fav.alias })}
                     />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Líneas favoritas (R71): "¿cuándo pasa el 121?" en un toque. Tap → recorrido
+                (LineDetailSheet); se quitan con el ★ del propio detalle. */}
+            {favoriteLines.length > 0 && (
+              <>
+                <div className="section-head"><h2>Líneas favoritas</h2><span className="link">{favoriteLines.length}</span></div>
+                <div className="fav-lines-row">
+                  {favoriteLines.slice(0, 14).map((fl) => (
+                    <button key={fl.line} className="fav-line-chip" onClick={() => setLineDetail({ line: fl.line })} aria-label={`Ver la línea ${fl.line}`}>
+                      <LineBadge num={fl.line} size="sm" />
+                    </button>
                   ))}
                 </div>
               </>
