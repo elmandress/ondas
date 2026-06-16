@@ -13,6 +13,7 @@ import LeaveNowHero from "@/components/home/LeaveNowHero";
 import { getNearbyStopsClient, distanceTo, formatEta, walkingMinutes } from "@/lib/utils";
 import { type BusStop, STOPS_DATASET } from "@/lib/stm";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
+import { requestMapStop } from "@/lib/selected-map-stop";
 import LineDetailSheet from "@/components/home/LineDetailSheet";
 import HomeMapPreview from "@/components/home/HomeMapPreview";
 import RoutesManager from "@/components/home/RoutesManager";
@@ -91,6 +92,15 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     });
     onTabChange("route");
   }
+
+  // Opción A (R71): tocar una parada desde el Home → abrirla en el MAPA (lista StopPanel +
+  // mapa con TODOS los buses que la sirven, todo lo que MapScreen ya hace) en vez del
+  // StopArrivalSheet (lista sola que tapa la pantalla). fromHome=true → el back/breadcrumb
+  // del mapa devuelven a Inicio. El StopArrivalSheet queda intacto (lo usa el favorito-ruta).
+  function goToMapStop(stopId: string) {
+    requestMapStop(stopId, true);
+    onTabChange("map");
+  }
   const homeShortcut = shortcuts.find((f) => f.alias?.toLowerCase() === "casa");
   const workShortcut = shortcuts.find((f) => f.alias?.toLowerCase() === "trabajo");
   const [mounted, setMounted] = useState(false);
@@ -144,7 +154,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     const sp = new URLSearchParams(window.location.search);
     const parada = sp.get("parada");
     const linea = sp.get("linea");
-    if (parada) setSheetStopId(parada);
+    if (parada) goToMapStop(parada);
     else if (linea) setLineDetail({ line: linea });
     if (parada || linea) {
       window.history.replaceState(window.history.state, "", window.location.pathname); // R59d: preservar internals de Next (null remontaba la página al volver)
@@ -353,8 +363,8 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
             atStop={heroSource.atStop}
             inactiveLines={heroInactive}
             altStop={heroAlt}
-            onTap={() => setSheetStopId(heroSource.stopId)}
-            onAltTap={heroAlt ? () => setSheetStopId(heroAlt.stopId) : undefined}
+            onTap={() => goToMapStop(heroSource.stopId)}
+            onAltTap={heroAlt ? () => goToMapStop(heroAlt.stopId) : undefined}
           />
         ) : (!mounted || !stopsReady || locationStatus === "pending") ? (
           /* CARGANDO: skeleton del hero en vez de un empty state seco. Da sensación de
@@ -403,7 +413,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
                 <button
                   key={stop.stopId}
                   className={`stop-chip ${stop.stopId === activeStopId ? "active" : ""}`}
-                  onClick={() => { setActiveStopId(stop.stopId); setSheetStopId(stop.stopId); }}
+                  onClick={() => { setActiveStopId(stop.stopId); goToMapStop(stop.stopId); }}
                 >
                   <div className="name">{stop.stopName.split(" – ")[0]}</div>
                   <div className="meta">
@@ -463,7 +473,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
                     <FavoriteStopRow
                       key={fav.stopId}
                       fav={fav}
-                      onTap={() => setSheetStopId(fav.stopId)}
+                      onTap={() => goToMapStop(fav.stopId)}
                       onRemove={() => removeFavoriteStop(fav.stopId)}
                       onEditAlias={() => setEditingAlias({ stopId: fav.stopId, stopName: fav.stopName, alias: fav.alias })}
                     />

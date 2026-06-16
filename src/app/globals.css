@@ -374,6 +374,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
    full-height en desktop (estilo Moovit). Slide CSS (sin transform de framer). */
 .map-stop-panel { animation: sheet-up 0.3s cubic-bezier(0.2,0.85,0.25,1); }
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+/* Opción A (R71): breadcrumb "← Inicio" cuando la parada se abrió desde el Home. */
+.stop-panel-breadcrumb {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin: 0 0 2px 12px; padding: 8px 12px 8px 8px; min-height: 40px;
+  font: 600 13px/1 var(--ff); color: var(--accent);
+  border-radius: var(--r-chip); -webkit-tap-highlight-color: transparent;
+}
+.stop-panel-breadcrumb:active { background: var(--surface-active); }
 @media (min-width: 1024px) {
   /* Pane lateral FLUSH (pegado, sin esquinas redondeadas flotando) — más sobrio en PC. */
   .map-stop-panel { top: 0; bottom: 0; left: 0; right: auto; width: 400px; animation: sheet-left 0.28s cubic-bezier(0.2,0.85,0.25,1); }

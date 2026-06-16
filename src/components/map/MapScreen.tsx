@@ -25,6 +25,8 @@ import { loadRoutesCache, loadLineShapes, type RoutesIndex } from "@/lib/routes-
 import { filterUpstreamBuses } from "@/lib/bus-direction";
 import { useSelectedPlace, setSelectedPlace } from "@/lib/selected-place";
 import { useSelectedRoute, setSelectedRoute } from "@/lib/selected-route";
+import { useMapStopRequest, clearMapStopRequest } from "@/lib/selected-map-stop";
+import { setActiveTab } from "@/lib/active-tab";
 import { useEnrichedRouteLegs } from "@/hooks/useEnrichedRouteLegs";
 import { speak } from "@/lib/voice-alerts";
 import { haptic } from "@/lib/haptics";
@@ -59,6 +61,9 @@ export default function MapScreen() {
   const { ready: stopsReady } = useStopsDataset();
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  // Opción A (R71): true si la parada abierta vino del Home (→ back/breadcrumb vuelven a Inicio).
+  const [stopFromHome, setStopFromHome] = useState(false);
+  const mapStopReq = useMapStopRequest();
   // Detalle de línea (mismo menú que Inicio→parada): recorrido completo, empresa, wifi.
   const [lineDetail, setLineDetail] = useState<{ line: string; destination?: string; company?: string } | null>(null);
   const [filterLine, setFilterLine] = useState<string | null>(null);
@@ -170,6 +175,23 @@ export default function MapScreen() {
     setFilterLine(null);
     if (mapApi) mapApi.flyTo(selectedPlace.lat, selectedPlace.lon, 16);
   }, [selectedPlace, mapApi]);
+
+  // Opción A (R71): el Home pidió abrir una parada acá → seleccionarla (el flyTo + StopPanel
+  // + todos los buses ya los disparan los efectos/estado existentes) y recordar que vino del
+  // Home (back/breadcrumb → Inicio). Limpiamos el pedido para no re-seleccionar en re-render.
+  useEffect(() => {
+    if (!mapStopReq) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- sync de store externo (pedido del
+       Home) → estado local; mismo patrón legítimo que el efecto de selectedPlace de arriba. */
+    setSelectedStopId(mapStopReq.stopId);
+    setSelectedVehicleId(null);
+    setFilterLine(null);
+    setSelectedPlace(null);
+    setSelectedRoute(null);
+    setStopFromHome(mapStopReq.fromHome);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    clearMapStopRequest();
+  }, [mapStopReq]);
 
   // Enriquecemos los walk legs con OSRM (calles reales) — async, no bloquea render
   const enrichedLegs = useEnrichedRouteLegs(selectedRoute?.route ?? null);
@@ -352,17 +374,31 @@ export default function MapScreen() {
     setFilterLine(null);
     setSelectedPlace(null);
     setSelectedRoute(null);
+    setStopFromHome(false);
+  }
+
+  // Vuelve a Inicio cerrando la parada (Opción A: round-trip cuando viniste del Home).
+  function backToHome() {
+    clearSelections();
+    setActiveTab("home");
   }
 
   // Atrás del sistema cierra el panel abierto del mapa, no la app (R58c).
-  // Un back limpia toda la selección (predecible; los paneles son una "vista").
+  // Un back limpia toda la selección (predecible; los paneles son una "vista"). Opción A
+  // (R71): si la parada se abrió DESDE el Home, el back hace el round-trip a Inicio.
   const anyPanelOpen = !!(selectedStopId || selectedVehicleId || selectedPlace || selectedRoute || pinDrop);
-  useBackClose(() => { setPinDrop(null); clearSelections(); }, anyPanelOpen);
+  useBackClose(() => {
+    setPinDrop(null);
+    const goHome = stopFromHome && !!selectedStopId;
+    clearSelections();
+    if (goHome) setActiveTab("home");
+  }, anyPanelOpen);
 
   function selectStop(id: string) {
     setSelectedStopId(id);
     setSelectedVehicleId(null);
     setFilterLine(null);
+    setStopFromHome(false); // selección manual en el mapa (marker) → no vino del Home
   }
 
   const userDistanceM = selectedStop && location && locationIsReal
@@ -455,6 +491,8 @@ export default function MapScreen() {
             } : null}
             onLinePress={(line, destination, company) => setLineDetail({ line, destination, company })}
             onClose={clearSelections}
+            fromHome={stopFromHome}
+            onBackToHome={backToHome}
           />
         )}
       </AnimatePresence>

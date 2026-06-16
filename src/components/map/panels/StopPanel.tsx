@@ -37,12 +37,17 @@ interface Props {
   onFollowBus: ((lat: number, lon: number, vehicleId?: string) => void) | null;
   onLinePress: (line: string, destination?: string, company?: string) => void;
   onClose: () => void;
+  /** Opción A (R71): la parada se abrió DESDE el Home → muestra breadcrumb "← Inicio". */
+  fromHome?: boolean;
+  /** Vuelve a Inicio (round-trip). Solo se usa cuando fromHome. */
+  onBackToHome?: () => void;
 }
 
 export default function StopPanel({
   stop, userDistanceM, realLines, filterLine, onFilterLine,
   arrivals, arrivalsLoading, lastUpdated, arrivalsFetchFailed, arrivalsOffline, refetch,
   vehiclesForMap, selectedVehicleId, onFollowBus, onLinePress, onClose,
+  fromHome, onBackToHome,
 }: Props) {
   // Modo frío proactivo (mismas reglas que StopArrivalSheet): espera >15 min o sin
   // servicio → alternativas alcanzables a pasos con ETA en vivo.
@@ -63,6 +68,15 @@ export default function StopPanel({
         <div className="map-panel-handle flex justify-center pt-2.5 pb-1.5">
           <div className="w-9 h-[3px] rounded-full bg-white/15" />
         </div>
+
+        {/* Opción A (R71): viniste del Home → breadcrumb de retorno. Comunica "te traje a
+            ver esto en el mapa" y da el camino de vuelta a Inicio (= back semántico). */}
+        {fromHome && onBackToHome && (
+          <button onClick={onBackToHome} className="stop-panel-breadcrumb" aria-label="Volver a Inicio">
+            <span style={{ transform: "rotate(180deg)", display: "grid" }}><Icons.Chevron size={14} /></span>
+            Inicio
+          </button>
+        )}
 
         <div className="px-4 pb-2 flex items-start gap-2">
           <div className="flex-1 min-w-0">
