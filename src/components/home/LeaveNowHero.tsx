@@ -30,8 +30,11 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
   // próximo (que puede estar demasiado cerca para llegar caminando → "¡Ya!" para un bus
   // imposible). Si NINGUNO es alcanzable, `noneReachable` dispara un estado honesto abajo
   // en vez de mentir con un countdown a un bus que no tomás. atStop → no caminás → el más próximo.
-  const { firstIdx, noneReachable } = selectHeroBus(arrivals, walkMinutes, !!atStop);
+  const { firstIdx, noneReachable, comfyAltIdx } = selectHeroBus(arrivals, walkMinutes, !!atStop);
   const first = arrivals[firstIdx];
+  // Escenario 3 (R71): el ancla es "corré" pero hay otra línea "sin apuro" → la ofrecemos
+  // como segunda opción explícita (no elegimos por el usuario). null si no aplica.
+  const comfyAlt = comfyAltIdx >= 0 ? arrivals[comfyAltIdx] : null;
 
   // Tick de 1s para re-renderizar el countdown; el valor no se lee directamente.
   const [, setNowTick] = useState(0);
@@ -201,6 +204,11 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
             </>
           )}
         </div>
+        {/* Escenario 3 (R71): segunda opción explícita cuando el ancla es "corré" pero hay
+            otra línea sin apuro. No elegimos por el usuario: le damos la info para que decida. */}
+        {comfyAlt && (
+          <div className="hero-altline">o sin apuro: <b>{comfyAlt.lineName}</b> en {comfyAlt.eta} min</div>
+        )}
       </div>
 
       <div className="hero-right">

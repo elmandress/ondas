@@ -70,29 +70,54 @@ export interface HeroBusSelection {
   firstIdx: number;
   /** true si NINGÚN bus es alcanzable a pie (todos salen antes de que llegues). */
   noneReachable: boolean;
+  /** Escenario 3: índice de una alternativa de OTRA línea "sin apuro" cuando el ancla es
+   *  "corré" (now). -1 si no aplica. El hero la ofrece como segunda opción explícita. */
+  comfyAltIdx: number;
 }
 
+/** ¿Cuántos min después de la alternativa sale el ancla? Ventana para considerarla "cercana". */
+const COMFY_ALT_WINDOW_MIN = 12;
+
 /**
- * Elige el bus "ancla" del hero "cuándo salir" (Bug B + Escenario 2, R71).
+ * Elige el bus "ancla" del hero "cuándo salir" (Bug B + Escenario 2 + 3, R71).
  *
  * Ancla en el PRIMER bus alcanzable: `eta >= caminata - 1` (1 min de gracia para correr
  * uno marginal). Si estás EN la parada (atStop) no caminás → vale el más próximo.
  *
- * CLAVE (Escenario 2): si NINGUNO es alcanzable (estás a 15 min y todos salen en ≤12),
- * NO mentimos anclando en el último como si llegaras ("¡Salí ahora!" para un bus imposible
- * = recomendar un bus que ya pasó). Devolvemos `noneReachable: true` para que el hero
- * muestre un estado HONESTO ("no llegás a estos") en vez del countdown optimista.
+ * Escenario 2: si NINGUNO es alcanzable (estás a 15 min y todos salen en ≤12), NO mentimos
+ * anclando en el último como si llegaras ("¡Salí ahora!" imposible). `noneReachable: true`.
+ *
+ * Escenario 3 (frecuente — ~41% de los "corré" tienen alternativa relajada): si el ancla es
+ * "corré/¡Ya!" (now) y hay OTRA línea, poco después (≤12 min), que es "sin apuro" (chill),
+ * devolvemos su índice en `comfyAltIdx`. El hero NO elige por el usuario: muestra el ancla
+ * grande ("corré") + una sub-línea con la alternativa ("o sin apuro: el X en N min"). atStop
+ * no aplica (no "salís", esperás).
  */
 export function selectHeroBus(
-  arrivals: { eta: number }[],
+  arrivals: { eta: number; lineName?: string }[],
   walkMinutes: number,
   atStop: boolean,
 ): HeroBusSelection {
-  if (arrivals.length === 0) return { firstIdx: -1, noneReachable: false };
+  if (arrivals.length === 0) return { firstIdx: -1, noneReachable: false, comfyAltIdx: -1 };
   const effWalk = atStop ? 0 : walkMinutes;
   const reachableIdx = arrivals.findIndex((a) => a.eta >= effWalk - 1);
-  if (reachableIdx < 0) return { firstIdx: 0, noneReachable: true };
-  return { firstIdx: reachableIdx, noneReachable: false };
+  if (reachableIdx < 0) return { firstIdx: 0, noneReachable: true, comfyAltIdx: -1 };
+
+  let comfyAltIdx = -1;
+  if (!atStop) {
+    const anchor = arrivals[reachableIdx];
+    const anchorNow = leaveNowUrgency(walkToLeaveTime(walkMinutes, anchor.eta)) === "now";
+    if (anchorNow) {
+      comfyAltIdx = arrivals.findIndex(
+        (a, i) =>
+          i > reachableIdx &&
+          a.lineName !== anchor.lineName &&
+          a.eta <= anchor.eta + COMFY_ALT_WINDOW_MIN &&
+          leaveNowUrgency(walkToLeaveTime(walkMinutes, a.eta)) === "chill",
+      );
+    }
+  }
+  return { firstIdx: reachableIdx, noneReachable: false, comfyAltIdx };
 }
 
 /**
