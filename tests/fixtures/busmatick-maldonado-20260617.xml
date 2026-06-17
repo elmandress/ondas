@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<list>
+<marker>
+<lat>-34.9081038</lat><lon>-54.9475756</lon><id>46</id><rum>266</rum><est>n</est><bus>202</bus><bmt>BTC1021</bmt><bac>0</bac><bas>31</bas><bpp>35</bpp><fec>17/06/2026</fec><hor>05:20:03</hor><vel>5</vel><lin>9</lin><tra>3</tra><sen>1</sen><lnm>9y12 PUNTA DEL ESTE</lnm><sal>05:00</sal><srv>7180</srv><ord>1</ord><p1c>602</p1c><p1n>CODEPAL</p1n><p2c>603</p2c><p2n>ITUZAINGO</p2n><reg>-1</reg><psj>15</psj><poc>22</poc><ico>d6o</ico></marker>
+<marker>
+<lat>-34.8163383</lat><lon>-54.94003</lon><id>76</id><rum>230</rum><est>n</est><bus>324</bus><bmt>BTC1088</bmt><bac>1</bac><bas>39</bas><bpp>20</bpp><fec>17/06/2026</fec><hor>05:19:44</hor><vel>74</vel><lin>24</lin><tra>3</tra><sen>1</sen><lnm>P. DEL ESTE DE VIAL</lnm><sal>05:00</sal><srv>12510</srv><ord>1</ord><p1c>15</p1c><p1n>CEMENTERIO</p1n><p2c>16</p2c><p2n>EMP LOS CEIBOS</p2n><reg>3</reg><psj>31</psj><poc>52</poc><ico>r5o</ico></marker>
+<marker>
+<lat>-34.9176769</lat><lon>-54.9575635</lon><id>56</id><rum>71</rum><est>n</est><bus>301</bus><bmt>BTC1041</bmt><bac>0</bac><bas>44</bas><bpp>30</bpp><fec>17/06/2026</fec><hor>05:20:09</hor><vel>13</vel><lin>7</lin><tra>4</tra><sen>1</sen><lnm>7/24 SAN CARLOS</lnm><sal>05:00</sal><srv>5320</srv><ord>1</ord><p1c>108</p1c><p1n>MAUTONE</p1n><p2c>109</p2c><p2n>TNAL MALDONADO</p2n><reg>-2</reg><psj>4</psj><poc>5</poc><ico>d2o</ico></marker>
+<marker>
+<lat>-34.9457198</lat><lon>-54.9367402</lon><id>61</id><rum>166</rum><est>n</est><bus>306</bus><bmt>BTC1046</bmt><bac>0</bac><bas>44</bas><bpp>30</bpp><fec>17/06/2026</fec><hor>05:19:47</hor><vel>18</vel><lin>14</lin><tra>1</tra><sen>1</sen><lnm>JOSÉ IGNACIO</lnm><sal>04:50</sal><srv>8672</srv><ord>1</ord><p1c>753</p1c><p1n>LICEO P DEL ESTE</p1n><p2c>754</p2c><p2n>HOTEL OASIS</p2n><reg>-1</reg><psj>2</psj><poc>2</poc><ico>d4o</ico></marker>
+</list>

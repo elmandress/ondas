@@ -114,8 +114,12 @@ async function main() {
 
   fs.writeFileSync(RAW, JSON.stringify(raw));
   fs.writeFileSync(EDGES, JSON.stringify(edgesRaw));
+  // El runtime (useInteriorArrivals) navega el grafo client-side → necesita la copia
+  // servida en public/. Escribimos ambas acá para que no driften entre corridas.
+  fs.writeFileSync(path.join(ROOT, "public", "interior-edges.json"), JSON.stringify(edgesRaw));
   const stops = recompute(raw);
   fs.writeFileSync(OUT, JSON.stringify(stops));
+  fs.writeFileSync(path.join(ROOT, "public", "interior-stops.json"), JSON.stringify(stops));
   console.log(`\n[stops] raw: ${Object.keys(raw).length} códigos · confiables (≥3 obs, cluster): ${Object.keys(stops).length}`);
   console.log(`[edges] ${Object.keys(edgesRaw).length} líneas-sentido con aristas de recorrido`);
 }

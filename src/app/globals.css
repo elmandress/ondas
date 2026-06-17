@@ -469,6 +469,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .il-when { font: 500 13px/1.3 var(--ff); color: var(--text-3); }
 .il-when b { color: var(--text-2); font-weight: 700; }
 .il-soon { color: var(--accent); }
+.il-caveat { color: var(--text-3); opacity: 0.8; }
+
+/* Interior: nota de honestidad del ETA estimado (no hay horario oficial). */
+.interior-eta-note { display: flex; align-items: flex-start; gap: 6px; margin: 0 22px 10px; font: 500 12px/1.4 var(--ff); color: var(--text-3); }
+.interior-eta-note svg { flex: none; margin-top: 1px; }
 
 /* ── Hero empty state — útil: próximo retorno + alternativa a pasos ──────── */
 .hero-empty { display: flex; flex-direction: column; gap: 12px; padding: 16px; min-height: 0; grid-template-columns: none; grid-template-rows: none; }

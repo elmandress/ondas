@@ -38,6 +38,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
   const stm = useArrivals(interior ? null : stopId, 20000);
   const int = useInteriorArrivals(interior ? stopId : null, stop?.stopLat, stop?.stopLon, stop?.lines);
   const arrivals = interior ? int.arrivals : stm.arrivals;
+  const inZone = interior ? int.inZone : [];
   const loading = interior ? int.loading : stm.loading;
   const lastUpdated = interior ? new Date() : stm.lastUpdated;
   const lastFetchFailed = interior ? false : stm.lastFetchFailed;
@@ -223,6 +224,15 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
             {!Number.isFinite(arrivals[0].eta) || arrivals[0].eta <= 0 ? "llegando ahora" : `en ${Math.round(arrivals[0].eta)} minutos`}
           </p>
         )}
+        {/* Honestidad del interior: no hay horario oficial → el ETA sale de la posición
+            en vivo y una estimación de tiempo entre paradas. Lo decimos la primera vez
+            que aparece un "~", para no mostrarlo con la confianza de un ETA de MVD. */}
+        {interior && arrivals.length > 0 && (
+          <p className="interior-eta-note">
+            <Icons.Clock size={13} /> Tiempos estimados (~): el interior no publica horario;
+            los calculamos de la posición en vivo del bus.
+          </p>
+        )}
         <div className="sheet-arrivals scrollbar-none">
           {loading && !arrivals.length ? (
             Array.from({ length: 5 }).map((_, i) => <div key={i} className="skel" style={{ height: 64, marginBottom: 8 }} />)
@@ -268,6 +278,24 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
                 <span className="il-when">
                   vuelve ~<b>{il.resumesHHMM}</b>
                   {il.resumesInMin < 90 ? <span className="il-soon"> · en {il.resumesInMin} min</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Interior: buses de líneas de esta parada que circulan cerca pero que el grafo
+            no pudo atar a esta parada. Honestidad: no afirmamos que vienen (no hay ETA),
+            pero no escondemos que el servicio está activo. Espejo de "No están pasando". */}
+        {interior && inZone.length > 0 && (
+          <div className="inactive-lines">
+            <div className="il-head">Circulando en la zona</div>
+            {inZone.map((z) => (
+              <div key={z.line} className="il-row">
+                <LineBadge num={z.line} size="sm" />
+                <span className="il-when">
+                  a ~<b>{(z.distM / 1000).toFixed(1)} km</b>
+                  <span className="il-caveat"> · sin confirmar que viene</span>
                 </span>
               </div>
             ))}

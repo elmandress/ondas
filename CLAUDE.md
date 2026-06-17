@@ -156,6 +156,7 @@ D:\comoire\ondas\
 |--------|----------|-------|
 | `gtfs-db.ts` | Acceso al GTFS JSON (variantes, paradas, secuencias) | **Server-only** — no importar en client components |
 | `bus-direction-gtfs.ts` | ¿El bus va hacia la parada o ya pasó? (`busTowardsStopGtfs`, `busLikelyPassedStop`) | Core de la honestidad — no simplificar |
+| `bus-direction-interior.ts` | Espejo de honestidad para el INTERIOR (Busmatick, sin GTFS): navega `interior-edges` (BFS p1c→target), 3 capas (approaching/nearby/in-zone) | `AVG_SECONDS_PER_HOP=90` SIN VALIDAR → ETA siempre `~`. `delayMin` no es ETA (sin baseline). v1 Maldonado |
 | `route-planner-gtfs.ts` | Motor de ruteo O-D | Detecta continuaciones de línea (181→183 es el mismo bus) |
 | `line-hours.ts` | Ventana operativa por línea/tipo-día (bitsets) | 157/233 líneas tienen bitset saturado a 00:00–24:00 → dato dudoso → **no afirmar "24h"** para esas |
 | `trip-safety.ts` | Seguridad contextual nocturna | Puro, testeado. Hora granular + avenidas + taxi por tramo |

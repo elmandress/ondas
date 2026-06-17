@@ -376,6 +376,19 @@ en la superficie exacta (interior / pager / cache stale) antes de tocar.
 > Los buses del interior se ven moverse en el mapa, pero NINGUNA parada del interior calcula
 > "te falta X / llega en N". Research-first: ¿por qué, y qué tan grande es el problema?
 
+> ✅ **IMPLEMENTADO v1 — Maldonado (2026-06-17).** `src/lib/bus-direction-interior.ts` (motor puro,
+> espejo de `bus-direction-gtfs.ts`): navega `interior-edges` (BFS p1c→target), clasifica en 3 capas
+> honestas — **approaching** (grafo encierra la cadena → "a N paradas · ~M min"), **nearby** (línea
+> sirve + cerca, grafo no conecta → "~M min" sin conteo), **in-zone** (no confirma dirección → sección
+> "Circulando en la zona", sin ETA). Dos hallazgos del dato que reordenaron el diseño: (1) el peso de
+> cada arista es **conteo de observaciones, no segundos** → el ETA usa `AVG_SECONDS_PER_HOP=90` (constante
+> SIN VALIDAR, se afina con `samples`; todo minuto va con `~`); (2) **`delayMin` no tiene baseline** (no hay
+> horario del interior) → descartado como fuente de ETA. Endpoint expone `sen`+`p2c`; `useInteriorArrivals`
+> consume el motor; grafo servido en `public/interior-edges.json`. Tests: `bus-direction-interior.test.ts`
+> (grafo puro) + `busmatick-snapshot.test.ts` (fixture vivo capturado con `capture-busmatick-snapshot.mjs`,
+> espejo de paradas 2201/4615). Pendiente: calibrar `AVG_SECONDS_PER_HOP` con muestras; extender a Paysandú/
+> San Carlos (re-inferir edges) cuando Maldonado valide en uso real.
+
 ### El dato de Busmatick es RICO (y parte se ignora — patrón buses-fantasma)
 `/api/gps/interior` (avl.xml/geojson de CODESA/COPAY/Rocha) ya parsea por bus: `lat/lon, line (lin),
 lineName (lnm), speed (vel), heading (rum)`, **`nextStop (p1n)` + `nextStopCode (p1c)`** (la PRÓXIMA

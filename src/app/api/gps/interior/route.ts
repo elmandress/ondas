@@ -32,6 +32,8 @@ export interface InteriorBus {
   hora: string;         // HH:MM:SS del reporte
   nextStop?: string;    // próxima parada (nombre)
   nextStopCode?: string;// próxima parada (código p1c) — para cruzar con paradas inferidas
+  nextNextStopCode?: string; // parada siguiente a la próxima (p2c) — sanity de sentido
+  dir?: string;         // sentido (sen) — elige el subgrafo dirigido de interior-edges
   delayMin?: number;    // regularidad (+tarde / -adelantado)
   occupancy?: number;   // pasajeros a bordo (si lo reporta)
 }
@@ -56,6 +58,8 @@ function fromProps(lat: number, lon: number, p: Record<string, unknown>): Interi
     hora: String(p.hor ?? ""),
     nextStop: p.p1n ? String(p.p1n) : undefined,
     nextStopCode: p.p1c ? String(p.p1c) : undefined,
+    nextNextStopCode: p.p2c ? String(p.p2c) : undefined,
+    dir: p.sen ? String(p.sen) : undefined,
     delayMin: num("reg"),
     occupancy: num("psj"),
   };
@@ -65,7 +69,7 @@ function parseXml(xml: string): InteriorBus[] {
   const out: InteriorBus[] = [];
   for (const m of xml.match(/<marker>[\s\S]*?<\/marker>/gi) || []) {
     const props: Record<string, string> = {};
-    for (const f of ["bus", "lin", "lnm", "vel", "rum", "hor", "p1n", "p1c", "reg", "psj"]) props[f] = tag(m, f);
+    for (const f of ["bus", "lin", "lnm", "vel", "rum", "hor", "p1n", "p1c", "p2c", "sen", "reg", "psj"]) props[f] = tag(m, f);
     const b = fromProps(parseFloat(tag(m, "lat")), parseFloat(tag(m, "lon")), props);
     if (b) out.push(b);
   }
