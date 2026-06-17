@@ -16,6 +16,7 @@ import { useVehicles } from "@/hooks/useVehicles";
 import { useInteriorBuses } from "@/hooks/useInteriorBuses";
 import { useLocation } from "@/hooks/useLocation";
 import { useArrivals } from "@/hooks/useArrivals";
+import { useInteriorArrivals, isInteriorStop } from "@/hooks/useInteriorArrivals";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
 import { useStopInfo } from "@/hooks/useStopInfo";
 import { useBackClose } from "@/hooks/useBackClose";
@@ -153,12 +154,20 @@ export default function MapScreen() {
     [selectedStopId, stopsReady]
   );
 
-  // Líneas REALES de la parada (API STM, no shapefile viejo)
-  const { info: stopInfo } = useStopInfo(selectedStopId);
+  // Parada del INTERIOR (int-zona-code): no la cubre el STM, va por el GPS Busmatick.
+  const interior = isInteriorStop(selectedStopId);
+
+  // Líneas REALES de la parada (API STM, no shapefile viejo). Para el interior el STM no
+  // sabe nada → se queda vacío A PROPÓSITO: alimenta useVehicles (abajo), y meter las
+  // líneas del interior ahí dispararía un fetch de buses MVD con el mismo nº de línea.
+  const { info: stopInfo } = useStopInfo(interior ? null : selectedStopId);
   const realLines = useMemo<string[]>(
     () => stopInfo?.variants.map((v) => v.lineCode) || [],
     [stopInfo]
   );
+  // Líneas para MOSTRAR en el panel (chips). En el interior salen del dataset (no del STM);
+  // separadas de realLines para no contaminar el pipeline de vehículos MVD.
+  const displayLines = interior ? (selectedStop?.lines ?? []) : realLines;
 
   // Centrar mapa en la parada al seleccionarla
   useEffect(() => {
@@ -229,13 +238,28 @@ export default function MapScreen() {
     : undefined;
 
   const { vehicles } = useVehicles(8000, {
-    enabled: !!selectedStop && (realLines.length > 0 || !!filterLine),
+    // !interior: blindaje de la trampa realLines→vehículos. Aunque realLines queda vacío
+    // para el interior, un chip de filtro (filterLine) habilitaría el fetch de buses MVD
+    // con ese nº de línea. El interior va por useInteriorBuses, nunca por este hook.
+    enabled: !!selectedStop && !interior && (realLines.length > 0 || !!filterLine),
     lineIds: linesForBuses,
     stopId: selectedStopId, // server usa API autenticada con filtro upstream oficial
     keepVehicleId: selectedVehicleId, // R60: el bus seguido no muere al pasar la parada
   });
 
-  const { arrivals, loading: arrivalsLoading, lastUpdated, lastFetchFailed: arrivalsFetchFailed, isOffline: arrivalsOffline, refetch } = useArrivals(selectedStopId, 15000);
+  // Llegadas: STM (MVD) o motor del interior (Busmatick) según la zona de la parada.
+  // Mismo patrón que StopArrivalSheet — ambos hooks se llaman siempre (regla de hooks),
+  // gateados por `interior`. El interior no tiene "offline/failed/refetch" del STM →
+  // fallbacks neutros (la fuente propia degrada sola devolviendo vacío).
+  const stm = useArrivals(interior ? null : selectedStopId, 15000);
+  const int = useInteriorArrivals(interior ? selectedStopId : null, selectedStop?.stopLat, selectedStop?.stopLon, selectedStop?.lines);
+  const arrivals = interior ? int.arrivals : stm.arrivals;
+  const arrivalsLoading = interior ? int.loading : stm.loading;
+  const lastUpdated = interior ? new Date() : stm.lastUpdated;
+  const arrivalsFetchFailed = interior ? false : stm.lastFetchFailed;
+  const arrivalsOffline = interior ? false : stm.isOffline;
+  const refetch = interior ? () => {} : stm.refetch;
+  const inZone = interior ? int.inZone : [];
 
   // Filtros sobre buses (SRS FR-2):
   // NOTA: el filtro upstream ahora se hace SERVER-SIDE con la API oficial autenticada
@@ -473,7 +497,9 @@ export default function MapScreen() {
           <StopPanel
             stop={selectedStop}
             userDistanceM={userDistanceM}
-            realLines={realLines}
+            realLines={displayLines}
+            interior={interior}
+            inZone={inZone}
             filterLine={filterLine}
             onFilterLine={setFilterLine}
             arrivals={arrivals}

@@ -13,15 +13,20 @@ import ArrivalRow from "@/components/ui/ArrivalRow";
 import EmptyState from "@/components/ui/EmptyState";
 import ColdModeSuggestion from "@/components/home/ColdModeSuggestion";
 import { useColdAlternatives } from "@/hooks/useColdAlternatives";
-import { isInteriorStop } from "@/hooks/useInteriorArrivals";
+import { isInteriorStop, type InZoneLine } from "@/hooks/useInteriorArrivals";
+import LineBadge from "@/components/ui/LineBadge";
 import { Icons } from "@/components/brand/Icons";
 
 interface Props {
   stop: BusStop;
   /** Distancia del usuario a la parada (m), null si no hay GPS real. */
   userDistanceM: number | null;
-  /** Líneas REALES de la parada (API STM, no shapefile viejo). */
+  /** Líneas de la parada para mostrar (STM en MVD; dataset en el interior). */
   realLines: string[];
+  /** Parada del interior (GPS Busmatick) → ETA estimado + capa "en la zona". */
+  interior?: boolean;
+  /** Buses de la línea circulando cerca sin confirmar que vienen (solo interior). */
+  inZone?: InZoneLine[];
   filterLine: string | null;
   onFilterLine: (line: string | null) => void;
   arrivals: Arrival[];
@@ -44,7 +49,7 @@ interface Props {
 }
 
 export default function StopPanel({
-  stop, userDistanceM, realLines, filterLine, onFilterLine,
+  stop, userDistanceM, realLines, interior, inZone, filterLine, onFilterLine,
   arrivals, arrivalsLoading, lastUpdated, arrivalsFetchFailed, arrivalsOffline, refetch,
   vehiclesForMap, selectedVehicleId, onFollowBus, onLinePress, onClose,
   fromHome, onBackToHome,
@@ -107,8 +112,10 @@ export default function StopPanel({
           </button>
         </div>
 
-        {/* Filtro de líneas DENTRO de la hoja (antes flotaba sobre el mapa) */}
-        {realLines.length > 1 && (
+        {/* Filtro de líneas DENTRO de la hoja (antes flotaba sobre el mapa). No en el
+            interior: el motor de llegadas no filtra por línea → sería un chip que no hace
+            nada (y tocarlo activaría el fetch de vehículos MVD). */}
+        {!interior && realLines.length > 1 && (
           <div className="px-4 pb-2.5 flex gap-1.5 overflow-x-auto scrollbar-none">
             <button
               onClick={() => onFilterLine(null)}
@@ -144,6 +151,14 @@ export default function StopPanel({
         <div className="map-panel-scroll px-4 max-h-[44vh] overflow-y-auto"
              style={{ paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }}>
           <ColdModeSuggestion suggestions={coldSuggestions} />
+          {/* Honestidad del interior: sin horario oficial, el ETA sale de la posición en
+              vivo + estimación de tiempo entre paradas → lo decimos la primera vez. */}
+          {interior && arrivals.length > 0 && (
+            <p className="interior-eta-note" style={{ margin: "0 0 10px" }}>
+              <Icons.Clock size={13} /> Tiempos estimados (~): el interior no publica horario;
+              los calculamos de la posición en vivo del bus.
+            </p>
+          )}
           {arrivalsLoading && !arrivals.length ? (
             [1, 2, 3, 4].map((i) => <div key={i} className="h-14 skeleton rounded-xl" />)
           ) : arrivals.length === 0 ? (
@@ -151,6 +166,8 @@ export default function StopPanel({
               <EmptyState emoji="📡" title="Sin conexión" sub="No hay internet ahora. Cuando vuelva, actualizamos solos." onRetry={refetch} />
             ) : arrivalsFetchFailed ? (
               <EmptyState emoji="💤" title="Los servidores del STM están durmiendo" sub="No pudimos traer las llegadas ahora. Probá de nuevo." onRetry={refetch} />
+            ) : interior ? (
+              <EmptyState icon={<Icons.Bus size={28} />} title="Ningún bus se acerca ahora" sub="Mostramos los buses del interior en vivo cuando esta parada es su próxima. En el mapa ves todos los que circulan en la zona." />
             ) : (
               <EmptyState icon={<Icons.Bus size={28} />} title="Sin buses próximamente" sub="No hay servicios en los próximos minutos." />
             )
@@ -175,6 +192,24 @@ export default function StopPanel({
                 />
               );
             })
+          )}
+
+          {/* Interior: líneas de esta parada circulando cerca que el grafo no pudo atar a
+              ella. No afirmamos que vienen (sin ETA), pero el mapa ya las muestra moviéndose
+              → coherente con el StopArrivalSheet (misma capa "en la zona"). */}
+          {interior && inZone && inZone.length > 0 && (
+            <div className="inactive-lines" style={{ margin: "12px 0 0" }}>
+              <div className="il-head">Circulando en la zona</div>
+              {inZone.map((z) => (
+                <div key={z.line} className="il-row">
+                  <LineBadge num={z.line} size="sm" />
+                  <span className="il-when">
+                    a ~<b>{(z.distM / 1000).toFixed(1)} km</b>
+                    <span className="il-caveat"> · sin confirmar que viene</span>
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
