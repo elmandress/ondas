@@ -305,7 +305,7 @@ export default function StopArrivalSheet({ stopId, onClose }: StopArrivalSheetPr
         {stop && <NearbyAlternatives stop={stop} currentLines={realLines.length ? realLines : stop.lines} />}
 
         <div className="sheet-footer">
-          {fAccess || fAc ? `${shown.length} de ${arrivals.length}` : arrivals.length} servicios próximos · datos STM Montevideo
+          {fAccess || fAc ? `${shown.length} de ${arrivals.length}` : arrivals.length} servicios próximos · {interior ? "posición en vivo del interior (Busmatick)" : "datos STM Montevideo"}
         </div>
       </div>
 
