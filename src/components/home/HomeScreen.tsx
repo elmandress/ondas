@@ -9,6 +9,7 @@ import { useStopsDataset } from "@/hooks/useStopsDataset";
 import { getPrefs, type FavoriteRoute } from "@/lib/store";
 import { useFavoriteStops, removeFavoriteStop, aliasIcon, type FavoriteStop } from "@/lib/favorite-stops";
 import { useFavoriteLines } from "@/lib/favorite-lines";
+import { useRecentStops } from "@/lib/recent-stops";
 import AliasEditor from "@/components/home/AliasEditor";
 import LeaveNowHero from "@/components/home/LeaveNowHero";
 import { getNearbyStopsClient, distanceTo, formatEta, walkingMinutes } from "@/lib/utils";
@@ -63,6 +64,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   const [favorites, setFavorites] = useState<FavoriteRoute[]>([]);
   const favoriteStops = useFavoriteStops();
   const favoriteLines = useFavoriteLines();
+  const recentStops = useRecentStops();
   const alerts = useServiceAlerts();
   const [editingAlias, setEditingAlias] = useState<{ stopId: string; stopName: string; alias?: string } | null>(null);
 
@@ -81,6 +83,17 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
   }
 
   const shortcuts = useMemo(() => favoriteStops.filter((f) => !!f.alias), [favoriteStops]);
+  // Paradas recientes (TTL 7 días) → BusStop, sin las que ya son favoritas (no duplicar la
+  // fila de arriba), máximo 5. Tap → mapa, mismo flujo que favoritos.
+  const recentBusStops = useMemo<BusStop[]>(() => {
+    if (!stopsReady) return []; // STOPS_DATASET se llena async → recomputar al estar listo
+    const favIds = new Set(favoriteStops.map((f) => f.stopId));
+    return recentStops
+      .filter((r) => !favIds.has(r.stopId))
+      .map((r) => STOPS_DATASET.find((s) => s.stopId === r.stopId))
+      .filter(Boolean)
+      .slice(0, 5) as BusStop[];
+  }, [recentStops, favoriteStops, stopsReady]);
 
   // "Get me home/work" (Citymapper): un toque planifica la ruta desde tu ubicación
   // actual hasta la parada con alias Casa/Trabajo. Solo aparece si tenés esa parada
@@ -451,7 +464,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       {mounted && (
         <details
           className="home-more"
-          open={moreOpen === null ? (favoriteStops.length > 0 || favorites.length > 0 || favoriteLines.length > 0) : moreOpen}
+          open={moreOpen === null ? (favoriteStops.length > 0 || favorites.length > 0 || favoriteLines.length > 0 || recentBusStops.length > 0) : moreOpen}
           onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}
         >
           <summary>
@@ -461,6 +474,7 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
                 favoriteStops.length > 0 ? `${favoriteStops.length} ${favoriteStops.length === 1 ? "favorita" : "favoritas"}` : null,
                 favoriteLines.length > 0 ? `${favoriteLines.length} ${favoriteLines.length === 1 ? "línea" : "líneas"}` : null,
                 favorites.length > 0 ? `${favorites.length} ${favorites.length === 1 ? "ruta" : "rutas"}` : null,
+                recentBusStops.length > 0 ? `${recentBusStops.length} ${recentBusStops.length === 1 ? "reciente" : "recientes"}` : null,
                 "Saldo STM",
               ].filter(Boolean).join(" · ")}
             </span>
@@ -494,6 +508,25 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
                   {favoriteLines.slice(0, 14).map((fl) => (
                     <button key={fl.line} className="fav-line-chip" onClick={() => setLineDetail({ line: fl.line })} aria-label={`Ver la línea ${fl.line}`}>
                       <LineBadge num={fl.line} size="sm" />
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Paradas recientes (D, R73): las últimas que consultaste, sin re-buscar.
+                Vienen del módulo recent-stops (TTL 7 días, compartido con Buscar). */}
+            {recentBusStops.length > 0 && (
+              <>
+                <div className="section-head"><h2>Paradas recientes</h2><span className="link">{recentBusStops.length}</span></div>
+                <div className="list-stack">
+                  {recentBusStops.map((stop) => (
+                    <button key={stop.stopId} className="fav-row" onClick={() => goToMapStop(stop.stopId)} style={{ width: "100%", cursor: "pointer", textAlign: "left" }}>
+                      <span className="lead-icon" style={{ color: "var(--text-3)" }}><Icons.Clock size={18} /></span>
+                      <div className="text">
+                        <div className="name">{stop.stopName.split(" – ")[0]}</div>
+                        <div className="meta" style={{ marginTop: 2 }}>{stop.lines.slice(0, 6).join(" · ") || "Ver llegadas"}</div>
+                      </div>
                     </button>
                   ))}
                 </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { STOPS_DATASET, searchStops, type BusStop } from "@/lib/stm";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
+import { useRecentStops, pushRecentStop, clearRecentStops } from "@/lib/recent-stops";
 import { useLocation } from "@/hooks/useLocation";
 import StopArrivalSheet from "@/components/home/StopArrivalSheet";
 import { setSelectedPlace } from "@/lib/selected-place";
@@ -32,7 +33,12 @@ export default function SearchScreen() {
   // Buses EN VIVO que van al destino buscado ("a Pocitos") — lo que la gente ama.
   const [liveToDest, setLiveToDest] = useState<{ count: number; lines: string[] }>({ count: 0, lines: [] });
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
-  const [history, setHistory] = useState<BusStop[]>([]);
+  // Paradas recientes (módulo compartido con Home, TTL 7 días) → BusStop[] del dataset.
+  const recentStops = useRecentStops();
+  const history = useMemo<BusStop[]>(
+    () => (stopsReady ? (recentStops.map((r) => STOPS_DATASET.find((s) => s.stopId === r.stopId)).filter(Boolean) as BusStop[]) : []),
+    [recentStops, stopsReady],
+  );
   // Pista de sentido para paradas con nombre duplicado ("Basilea…" ×2 → "hacia
   // Plaza Independencia" / "hacia Rambla Costanera"). 42KB lazy, cache de módulo.
   const [stopDirs, setStopDirs] = useState<Record<string, string> | null>(null);
@@ -66,17 +72,6 @@ export default function SearchScreen() {
     return TRENDING_IDS
       .map((id) => STOPS_DATASET.find((s) => s.stopId === id))
       .filter(Boolean) as BusStop[];
-  }, [stopsReady]);
-
-  useEffect(() => {
-    if (!stopsReady) return;
-    try {
-      const raw = localStorage.getItem("ondas_stop_history");
-      if (raw) {
-        const ids: string[] = JSON.parse(raw);
-        setHistory(ids.map((id) => STOPS_DATASET.find((s) => s.stopId === id)).filter(Boolean) as BusStop[]);
-      }
-    } catch {}
   }, [stopsReady]);
 
   // Debounce de 150 ms para la búsqueda de paradas (itera ~5000 paradas por keystroke).
@@ -121,13 +116,7 @@ export default function SearchScreen() {
 
   function handleSelectStop(stopId: string) {
     setSelectedStopId(stopId);
-    try {
-      const raw = localStorage.getItem("ondas_stop_history");
-      const ids: string[] = raw ? JSON.parse(raw) : [];
-      const updated = [stopId, ...ids.filter((id) => id !== stopId)].slice(0, 6);
-      localStorage.setItem("ondas_stop_history", JSON.stringify(updated));
-      setHistory(updated.map((id) => STOPS_DATASET.find((s) => s.stopId === id)).filter(Boolean) as BusStop[]);
-    } catch {}
+    pushRecentStop(stopId); // módulo compartido (TTL 7 días) — re-render vía useSyncExternalStore
   }
 
   function handleSelectPlace(place: GeoResult) {
@@ -272,7 +261,7 @@ export default function SearchScreen() {
             <>
               <div className="search-section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span>Recientes</span>
-                <button onClick={() => { setHistory([]); localStorage.removeItem("ondas_stop_history"); }} style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Borrar</button>
+                <button onClick={() => clearRecentStops()} style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Borrar</button>
               </div>
               {history.map((stop) => <StopRow key={stop.stopId} stop={stop} onTap={() => handleSelectStop(stop.stopId)} isHistory dir={stopDirs?.[stop.stopId]} />)}
             </>
