@@ -158,7 +158,7 @@ D:\comoire\ondas\
 | `bus-direction-gtfs.ts` | ¿El bus va hacia la parada o ya pasó? (`busTowardsStopGtfs`, `busLikelyPassedStop`) | Core de la honestidad — no simplificar |
 | `bus-direction-interior.ts` | Espejo de honestidad para el INTERIOR (Busmatick, sin GTFS): navega `interior-edges` (BFS p1c→target), 3 capas (approaching/nearby/in-zone) | `AVG_SECONDS_PER_HOP=90` SIN VALIDAR → ETA siempre `~`. `delayMin` no es ETA (sin baseline). v1 Maldonado |
 | `route-planner-gtfs.ts` | Motor de ruteo O-D | Detecta continuaciones de línea (181→183 es el mismo bus) |
-| `line-hours.ts` | Ventana operativa por línea/tipo-día (bitsets) | 157/233 líneas tienen bitset saturado a 00:00–24:00 → dato dudoso → **no afirmar "24h"** para esas |
+| `line-hours.ts` | Ventana operativa por línea/tipo-día (bitsets) | 43/233 líneas tienen el bloque operativo principal ≥22h (≈24h) → dato dudoso (24 con 24h literal); medido 2026-06-17 → **no afirmar "24h"** para esas |
 | `trip-safety.ts` | Seguridad contextual nocturna | Puro, testeado. Hora granular + avenidas + taxi por tramo |
 | `fare.ts` | Tarifas STM | Efectivo primero en la UI |
 | `occupancy.ts` | Crowdsourcing de ocupación | Código listo; SQL pendiente de aplicar en Supabase |
@@ -284,7 +284,7 @@ Si `vitest run` falla ANTES de tu cambio → documentar el fallo previo en AUDIT
 | Copiar la función haversine en otro archivo | Deuda técnica DT-9 ya corregida | Importar `lib/geo.ts` |
 | `typeof value === 'number'` para coordenadas | NaN pasa el check (VAL-2) | `Number.isFinite(value)` |
 | Mostrar dato de crowdsourcing con 1 reporte | Mentira estadística | Mínimo 2 reportes para mostrar como hecho; con 1 decir "1 persona: venía lleno" |
-| Afirmar "funciona 24h" sin verificar el bitset | 157/233 líneas tienen dato dudoso | Mostrar ventana solo para las ~73 con datos reales |
+| Afirmar "funciona 24h" sin verificar el bitset | 43/233 líneas tienen dato dudoso (medido 2026-06-17, no 157) | Mostrar ventana solo para las ~190 con datos reales |
 | Afirmar ETA sin el `~` | Inventamos precisión que no tenemos | Siempre `~N min` para estimados |
 | "el resto del código sigue igual" | No sirve para copiar/pegar — Claude Code rompe el archivo | Archivo completo siempre |
 | Usar `dynamic()` sin `ssr:false` en Leaflet | Server-side rendering de Leaflet falla | `dynamic(() => import('./LeafletMap'), { ssr: false })` |

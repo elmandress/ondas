@@ -81,8 +81,9 @@ andaban en prod pero **las rutas no**. Solución: `scripts/export-gtfs-json.mjs`
 - **Buses que ya pasaron la parada**: `busTowardsStopGtfs` + `busLikelyPassedStop` proyectan el GPS
   sobre la variante y descartan los que quedaron atrás (no recomienda lo que no va a llegar).
 - **Mapa negro**: Leaflet `preferCanvas` clipeaba polylines; fix con `noClip:true` + SVG + `invalidateSize`.
-- **Honestidad de horarios**: 157/233 líneas tienen el bitset saturado a 00:00–24:00 (dato dudoso) →
-  NO afirmamos "24h"; sólo mostramos ventana en las 73 parciales reales (nocturnas/suburbanas).
+- **Honestidad de horarios**: 43/233 líneas tienen el bloque operativo principal ≥22h (≈24h, dato
+  dudoso; 24 con 24h literal — medido 2026-06-17, no 157) → NO afirmamos "24h"; mostramos ventana
+  en las ~190 restantes con datos reales.
 
 ## 8. Performance (aplicado)
 - Code-splitting por pestaña (Home estático; Mapa/Rutas/Buscar lazy con `dynamic`).
