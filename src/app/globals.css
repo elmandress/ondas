@@ -430,6 +430,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 }
 .app-header .gps-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--live); position: relative; }
 .app-header .gps-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--live); animation: live-ping 2.2s infinite; }
+/* Honestidad (R73): sin GPS real, dot gris SIN pulso "en vivo" + CTA para activarlo. */
+.app-header .gps-dot.off { background: var(--text-3); }
+.app-header .gps-dot.off::after { display: none; }
+.gps-off { display: inline-flex; align-items: center; gap: 6px; font: var(--font-badge); color: var(--text-3); background: none; padding: 4px 2px; }
 @media (min-width: 768px) { .app-header { display: none; } }
 
 .desktop-header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: var(--gap-section); }
@@ -600,6 +604,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .hero-card.state-now   { --urgency-bg: rgba(34,180,85,0.14); border-color: rgba(34,180,85,0.30); }
 .hero-card.state-soon  { --urgency-bg: rgba(232,148,10,0.14); }
 .hero-card.state-chill { --urgency-bg: rgba(79,134,247,0.12); }
+/* Honestidad (R73): hero sin GPS real — calmo (glow gris, no ámbar de "salí ahora"), bloque. */
+.hero-nowalk { display: block; --urgency-bg: rgba(120,130,150,0.10); border-color: var(--border-strong); padding-bottom: 22px; }
+.hero-nowalk .he-lines { margin-top: 14px; }
 
 .hero-left { grid-column: 1; grid-row: 1; padding-bottom: 16px; position: relative; z-index: 1; }
 /* Eyebrow de señalética: Señal condensada, mayúsculas, tracking de cartel. */

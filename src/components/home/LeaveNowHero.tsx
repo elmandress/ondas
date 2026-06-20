@@ -11,7 +11,8 @@ import LineBadge from "@/components/ui/LineBadge";
 interface LeaveNowHeroProps {
   arrivals: Arrival[];
   loading: boolean;
-  walkMinutes: number;
+  /** Minutos a pie a la parada. null = sin GPS real → no inventamos caminata ni "cuándo salir". */
+  walkMinutes: number | null;
   stopName?: string;
   stopAlias?: string;
   /** La ubicación coincide con la parada (≤40 m) → "estás parado acá ahora". */
@@ -30,7 +31,7 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
   // próximo (que puede estar demasiado cerca para llegar caminando → "¡Ya!" para un bus
   // imposible). Si NINGUNO es alcanzable, `noneReachable` dispara un estado honesto abajo
   // en vez de mentir con un countdown a un bus que no tomás. atStop → no caminás → el más próximo.
-  const { firstIdx, noneReachable, comfyAltIdx } = selectHeroBus(arrivals, walkMinutes, !!atStop);
+  const { firstIdx, noneReachable, comfyAltIdx } = selectHeroBus(arrivals, walkMinutes ?? 0, !!atStop);
   const first = arrivals[firstIdx];
   // Escenario 3 (R71): el ancla es "corré" pero hay otra línea "sin apuro" → la ofrecemos
   // como segunda opción explícita (no elegimos por el usuario). null si no aplica.
@@ -45,7 +46,7 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
     return () => clearInterval(id);
   }, []);
 
-  const leaveInMin = first ? walkToLeaveTime(walkMinutes, first.eta) : 99;
+  const leaveInMin = first ? walkToLeaveTime(walkMinutes ?? 0, first.eta) : 99;
   // A4 (R68): si estás EN la parada no "salís", esperás → el contador muestra la LLEGADA
   // del bus y la urgencia sale de su ETA. El cálculo de salida (Bug B / walkToLeaveTime)
   // queda intacto: solo cambia QUÉ se muestra, no cómo se calcula el tiempo de salida.
@@ -56,8 +57,8 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
   // Segundos exactos para cuando queda poco (< 3 min). Restamos caminata + el mismo
   // buffer de seguridad (3–5 min) que usa walkToLeaveTime → coherente con el contador.
   const etaSec = first?.etaSeconds ?? (first ? first.eta * 60 : null);
-  const walkSec = walkMinutes * 60;
-  const leaveInSec = etaSec !== null ? Math.max(0, etaSec - walkSec - dynamicBuffer(walkMinutes) * 60) : null;
+  const walkSec = (walkMinutes ?? 0) * 60;
+  const leaveInSec = etaSec !== null ? Math.max(0, etaSec - walkSec - dynamicBuffer(walkMinutes ?? 0) * 60) : null;
   const showSeconds = leaveInSec !== null && leaveInSec < 180 && urgency !== "chill";
 
   const progressBase = atStopMode ? busEta : leaveInMin;
@@ -103,6 +104,42 @@ export default function LeaveNowHero({ arrivals, loading, walkMinutes, stopName,
           </button>
         )}
       </div>
+    );
+  }
+
+  // Honestidad (R73): sin GPS real (walkMinutes null) NO sabemos a cuánto estás → no podemos
+  // decir "cuándo salir" ni "X min a pie" sin inventar. Mostramos los PRÓXIMOS buses de la
+  // parada (aproximada), sin contador de salida ni caminata. El header ya invita a activar GPS.
+  if (walkMinutes == null) {
+    const nm = stopAlias || stopName?.split(" – ")[0] || stopName;
+    const lines = [...new Set(arrivals.map((a) => a.lineName))];
+    return (
+      <motion.button
+        whileTap={{ scale: 0.985 }}
+        onClick={onTap}
+        aria-label={first
+          ? `Próximo bus${nm ? ` en ${nm}` : ""}: ${first.lineName} ${formatEta(first.eta, first.etaApprox)}. Ubicación aproximada; activá el GPS para saber cuándo salir.`
+          : "Buscando próximos buses. Ubicación aproximada."}
+        className="hero-card hero-nowalk"
+        style={{ display: "block", width: "100%", cursor: "pointer", textAlign: "left" }}
+      >
+        <div className="hero-left">
+          <div className="hero-label">próximo bus{nm ? ` · ${nm}` : ""}</div>
+          <div className="hero-count">
+            {first ? (<><CountUp value={first.eta} className="tnum" /><span className="unit">min</span></>) : <span className="tnum">—</span>}
+          </div>
+          <div className="hero-walk">
+            <Icons.Crosshair size={15} />
+            <span>Ubicación aproximada · <b>activá el GPS</b> para saber cuándo salir</span>
+          </div>
+        </div>
+        {lines.length > 1 && (
+          <div className="he-lines" aria-label="Próximas líneas">
+            {lines.slice(0, 6).map((l) => <LineBadge key={l} num={l} size="xs" />)}
+            {lines.length > 6 && <span className="he-more">+{lines.length - 6}</span>}
+          </div>
+        )}
+      </motion.button>
     );
   }
 

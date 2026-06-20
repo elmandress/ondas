@@ -133,17 +133,20 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
     return [
       ...shortcuts.slice(0, 2).map((f) => {
         const stopData = STOPS_DATASET.find((s) => s.stopId === f.stopId);
-        const distM = location && stopData ? distanceTo(location.lat, location.lon, stopData.stopLat, stopData.stopLon) : null;
-        return { stopId: f.stopId, stopName: f.stopName, alias: f.alias, walkMin: distM != null ? walkingMinutes(distM) : 5, atStop: distM != null && distM <= 40 };
+        // Sin GPS real no sabemos la caminata → walkMin null (el hero NO inventa "X min a pie").
+        const distM = location && locationIsReal && stopData ? distanceTo(location.lat, location.lon, stopData.stopLat, stopData.stopLon) : null;
+        return { stopId: f.stopId, stopName: f.stopName, alias: f.alias, walkMin: distM != null ? walkingMinutes(distM) : null, atStop: distM != null && distM <= 40 };
       }),
-      ...(nearbyStops.length > 0 && !shortcuts.some((s) => s.stopId === nearbyStops[0].stopId)
+      // Parada cercana AUTO-detectada: solo con GPS real. Sin él, "cercana" sería del centro de
+      // MVD (fallback) → presentarla como tu parada sería mentir. Cae al CTA "activá ubicación".
+      ...(locationIsReal && nearbyStops.length > 0 && !shortcuts.some((s) => s.stopId === nearbyStops[0].stopId)
         ? [(() => {
-            const distM = location && locationIsReal ? distanceTo(location.lat, location.lon, nearbyStops[0].stopLat, nearbyStops[0].stopLon) : null;
+            const distM = location ? distanceTo(location.lat, location.lon, nearbyStops[0].stopLat, nearbyStops[0].stopLon) : null;
             return {
               stopId: nearbyStops[0].stopId,
               stopName: nearbyStops[0].stopName,
               alias: undefined as string | undefined,
-              walkMin: distM != null ? walkingMinutes(distM) : 5,
+              walkMin: distM != null ? walkingMinutes(distM) : null,
               atStop: distM != null && distM <= 40,
             };
           })()]
@@ -262,9 +265,17 @@ export default function HomeScreen({ onTabChange }: HomeScreenProps) {
       <div className="app-header mobile-only">
         <LogoLockup size={24} ring="var(--text)" dot="var(--accent)" />
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {locationStatus === "pending"
-            ? <span style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Ubicando…</span>
-            : <span className="gps-dot" role="img" aria-label="GPS activo" />}
+          {locationStatus === "pending" ? (
+            <span style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Ubicando…</span>
+          ) : locationIsReal ? (
+            <span className="gps-dot" role="img" aria-label="GPS activo" />
+          ) : (
+            /* Honestidad (R73): sin GPS real NO mostramos "GPS activo" verde pulsante. Gris +
+               CTA para activarlo — la app no afirma una ubicación que no tiene. */
+            <button onClick={() => retryLocation()} className="gps-off" aria-label="Activá la ubicación para tus paradas reales">
+              <span className="gps-dot off" /> Activá ubicación
+            </button>
+          )}
           <button onClick={() => setShowHowTo(true)} aria-label="Cómo usar" style={{ color: "var(--text-2)", display: "grid", placeItems: "center", width: 32, height: 32 }}>
             <Icons.Help size={20} />
           </button>
