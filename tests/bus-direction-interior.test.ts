@@ -57,8 +57,17 @@ describe("hopsToStop — navegación del grafo dirigido", () => {
 describe("etaMinFromHops — estimado por constante sin validar", () => {
   it("convierte saltos a minutos con AVG_SECONDS_PER_HOP", () => {
     expect(etaMinFromHops(0)).toBe(0);
-    expect(etaMinFromHops(1)).toBe(Math.round(AVG_SECONDS_PER_HOP / 60)); // 90s → 2 min
-    expect(etaMinFromHops(4)).toBe(Math.round((4 * AVG_SECONDS_PER_HOP) / 60)); // 6 min
+    expect(etaMinFromHops(1)).toBe(Math.round(AVG_SECONDS_PER_HOP / 60)); // 50s → 1 min
+    expect(etaMinFromHops(4)).toBe(Math.round((4 * AVG_SECONDS_PER_HOP) / 60)); // 200s → 3 min
+  });
+});
+
+describe("AVG_SECONDS_PER_HOP — constante calibrada, no tocar sin datos", () => {
+  it("vale 50s (calibrado 2026-06-17, 31 hops reales Maldonado, mediana 45s + margen diurno)", () => {
+    // Si cambiás este valor, el test falla a propósito: exige una NUEVA medición documentada
+    // (scripts/measure-interior-hops.mjs) antes de tocarlo. El 90s original, puesto a ojo,
+    // duplicaba el ETA real. No ajustar por intuición.
+    expect(AVG_SECONDS_PER_HOP).toBe(50);
   });
 });
 
@@ -75,7 +84,7 @@ describe("classifyInteriorBus — 3 capas de honestidad", () => {
     );
     expect(r?.tier).toBe("approaching");
     expect(r?.hops).toBe(1);
-    expect(r?.etaMin).toBe(2);
+    expect(r?.etaMin).toBe(1); // 1 salto × 50s ≈ ~1 min
     expect(r?.estimated).toBe(true); // todo ETA del interior es estimado
   });
 

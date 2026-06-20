@@ -102,6 +102,6 @@ describe("snapshot Busmatick — integración con el motor", () => {
     const r = classifyInteriorBus(bus, stopTarget("109"), edges);
     expect(r?.tier).toBe("approaching");
     expect(r?.hops).toBe(1);
-    expect(r?.etaMin).toBe(2); // ~2 min (1 salto × 90s)
+    expect(r?.etaMin).toBe(1); // ~1 min (1 salto × 50s, calibrado 2026-06-17)
   });
 });

@@ -33,13 +33,19 @@ export type InteriorSubgraph = Record<string, number>;
 export type InteriorEdges = Record<string, InteriorSubgraph>;
 
 /**
- * Estimación a ojo del tiempo entre paradas consecutivas en el interior (segundos).
- * SIN VALIDAR: el grafo no tiene tiempos, solo orden. Las paradas del interior están más
- * separadas que las de MVD (donde `AVG_SECONDS_PER_STOP = 70`). Se afina con `samples`
- * cuando juntemos suficientes muestras reales — documentar al calibrar. Hasta entonces,
- * todo ETA que use esta constante se muestra con "~" (estimado), nunca como dato firme.
+ * Tiempo promedio entre paradas consecutivas del interior (segundos).
+ *
+ * CALIBRADO 2026-06-17: medido con 31 hops reales de Busmatick Maldonado (captura fina cada
+ * 15s, `scripts/measure-interior-hops.mjs`, midiendo el tiempo entre cambios de `p1c` del
+ * mismo coche) → mediana 45s, promedio 47s. Valor = 50s = 45s medido + ~5s de margen para
+ * tráfico diurno (la captura fue ~22:00, tráfico liviano). El 90s anterior (puesto a ojo)
+ * DUPLICABA el ETA real — le decía a la gente que el bus estaba el doble de lejos.
+ *
+ * El grafo da ORDEN, no TIEMPO → esto sigue siendo un estimado: todo minuto que lo use va
+ * con "~". NO cambiar por intuición: el test `bus-direction-interior` fija este valor y exige
+ * una nueva medición documentada (mismo script) para tocarlo.
  */
-export const AVG_SECONDS_PER_HOP = 90;
+export const AVG_SECONDS_PER_HOP = 50;
 
 /** Tope de saltos para afirmar "a N paradas": más allá, el grafo ralo deja de ser confiable. */
 export const MAX_HOPS = 8;
