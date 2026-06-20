@@ -871,8 +871,12 @@ No hay P0/P1 nuevos → **se puede avanzar a Búsqueda/Ruteo**. Recomendado mete
 
 ## 🎯 FRENTE 2 — Calibración de tiempos y trayectos (research 2026-06-17, no ejecutado)
 
-### 2a. ETA de MVD (bus-direction-gtfs) — método, requiere ventana dedicada
-La precisión real del "~N min" de MVD necesita ground-truth en el tiempo: pollear una parada cada 30s y anotar cuándo el bus desaparece de llegadas (= llegó), comparar contra el ETA mostrado, repetido en 5-10 paradas × varias horas. **Es la única sub-medición que necesita una ventana dedicada de horas** (no se hace honestamente en una corrida). Harness: script Playwright/curl que pollea `/api/stm/arrivals?stopId=X`, registra `(t, vehicleId, eta)` por bus, y al desaparecer un bus calcula error = `eta_en_T − (t_desaparición − T)`. Pendiente de correr con ventana real. Lo honesto: **no lo medimos todavía, no lo afirmamos**.
+### 2a. ETA de MVD (bus-direction-gtfs) — MEDIDO 2026-06-20: PRECISO, sin fix
+Ventana dedicada: 4 paradas (avenida 18 de Julio + Av Italia, terminal Cerro, residencial Malvín Norte), 50 min en franja con servicio (~17:00), `scripts/measure-mvd-eta.mjs` + `analyze-mvd-eta.mjs`. Método: por coche, secuencia de `(t, eta)`; al desaparecer con eta chico (llegó), la llegada real ≈ punto medio del gap; error = `eta_mostrado − (llegada_real − t_obs)`.
+
+**Resultado (robusto, n=146): error medio −0.63 min (sesgo despreciable), MAE 1.4 min, mediana abs 1 min, 89% dentro de ±3 min.** Por parada: Av Italia casi perfecto (+0.14), las demás ±1.5 min (leve subestimación en terminal/residencial — más dwell). **El motor de proyección geométrica de MVD es PRECISO → no necesita fix** (contraste con el interior, que estaba 2× off y se recalibró a 50s).
+
+**Límite del método (honesto):** el poller hizo fetches secuenciales → ~2.5 min/round en vez de 30s (bug mío) → la llegada se estima a ±1.25 min, ruido comparable al MAE medido. O sea el error REAL del motor podría ser aún menor; el dato igual alcanza para concluir "preciso, sin sesgo grande". Un re-run con fetches paralelos (30s real) + varias franjas horarias afinaría, pero no cambia la conclusión. **Frente 2 de calibración: CERRADO.**
 
 ### 2b. Interior `AVG_SECONDS_PER_HOP=90` (constante puesta a ojo) — MEDIDO: 90s SOBREESTIMA
 Captura Busmatick Maldonado (`scripts/measure-interior-hops.mjs`), midiendo el delta de tiempo cuando un coche cambia de `p1c` (cruzó a la parada siguiente). 6 snapshots × 60s, 12 buses/snapshot, **33 cambios de p1c observados**.
