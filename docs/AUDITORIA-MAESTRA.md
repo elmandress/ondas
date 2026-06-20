@@ -857,8 +857,15 @@ No hay P0/P1 nuevos → **se puede avanzar a Búsqueda/Ruteo**. Recomendado mete
 - **Motor de honestidad degrada**: `bus-direction-gtfs.ts` proyecta sobre la SECUENCIA DE PARADAS de `gtfs-v2.json` (`getStopsForVariant`, no un shapes aparte). Si una variante cambia su secuencia y no actualizamos, la proyección "ya pasó / viene" se corrompe → vuelven los buses-fantasma que R57 arregló.
 - **Ruteo** puede mandar a una parada eliminada (`route-planner-gtfs.ts` usa las mismas paradas).
 
-### Diseño del pipeline auto (lo que falta, no implementar aún)
-Un workflow `gtfs-regenerate.yml` (disparado por el issue de freshness o manual): descarga ZIP → corre los 9 scripts → valida → si pasa, **abre PR** con los datasets regenerados + `--save` de la versión (no push directo a main: el PR deja revisar el diff de paradas/líneas antes de desplegar). Extender el freshness check a metro/interdept (sus fuentes: MTOP). Embeber `version` en `gtfs-v2.json` para provenance auto-verificable.
+### Pipeline auto — IMPLEMENTADO (2026-06-20, R73) con gaps documentados
+- **`.github/workflows/gtfs-regenerate.yml`** (nuevo): cron semanal + manual. Hace su propio check de versión (sale temprano si está al día), y si hay versión nueva: descarga ZIP → `build-gtfs-db` → `export-gtfs-json` → `build-stops-json` → `build-stop-dirs` → `--save` → `validate` → corre `gtfs-diff-summary.mjs` → **abre PR** (merge MANUAL, sin auto-merge). El cuerpo del PR lleva el diff semántico (paradas/líneas +/−).
+- **`scripts/pipeline/gtfs-diff-summary.mjs`** (nuevo): compara los datasets regenerados vs `HEAD` → markdown con paradas/líneas agregadas/eliminadas + warning de revisión.
+- **Provenance embebida** en `gtfs-v2.json`: `meta: {gtfs_version, generated}` (lo agrega `export-gtfs-json.mjs`; parcheado en el actual = 20260608/2026-06-11). Ya no driftea respecto del dato servido.
+
+**Gaps que el workflow NO cubre (descubiertos al ensamblar — fuentes/inputs no disponibles en CI):**
+- **`line-hours.json` + `data/sched/*`**: dependen de `schedule.db` (84MB) que **NO está en git ni hay script que lo reconstruya del GTFS** (`build-line-hours.js` lo lee, no lo crea). Un cambio de frecuencias del GTFS no se refleja en horarios hasta reconstruir schedule.db a mano. **Gap real, no trivial.**
+- **`routes.json` / `line-shapes.json`**: vienen de SIT (otra fuente, `npm run routes:update`), no del ZIP del STM.
+- **`metro-schedule.db` / `interdept.json`**: vienen de MTOP, **sin endpoint de versión claro** identificado → no hay detección upstream confiable. Detección por edad de archivo es un proxy débil (un archivo viejo puede seguir vigente). **Próximo paso: investigar el versionado de la fuente MTOP** antes de construir un detector que parezca detección sin serlo. Documentado, no fakeado.
 
 ---
 

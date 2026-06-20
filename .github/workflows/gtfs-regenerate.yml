@@ -1,0 +1,88 @@
+# PG-3 (auto-regeneración): cuando el STM publica un GTFS nuevo, regenera los datasets
+# MVD derivados del GTFS y abre UN PR (merge MANUAL — un cambio grande de GTFS debe
+# revisarse antes de ir a producción, donde alimenta los motores de honestidad).
+#
+# Complementa a gtfs-freshness.yml (que solo ALERTA con un issue): este ACTÚA.
+# Hace su propio check de versión y sale temprano si ya está al día (no gasta CI).
+#
+# COBERTURA (lo que SÍ regenera, todo derivado del ZIP GTFS oficial):
+#   gtfs-v2.json (+ provenance), stops.json, gtfs-v2.db, stop-dirs.
+# GAPS DOCUMENTADOS (NO se regeneran acá — fuentes/inputs no disponibles en CI):
+#   - line-hours.json + data/sched/*: dependen de schedule.db (84MB, NO está en git ni
+#     hay script que lo reconstruya del GTFS). Regenerar requiere schedule.db a mano.
+#   - routes.json / line-shapes.json: vienen de SIT (otra fuente) → `npm run routes:update`.
+#   - metro-schedule.db / interdept.json: vienen de MTOP (sin endpoint de versión claro).
+#   Estos gaps están en docs/AUDITORIA-MAESTRA.md (Frente 1).
+#
+# Secrets: MVD_API_CLIENT_ID / MVD_API_CLIENT_SECRET (los mismos del deploy).
+name: GTFS auto-regenerate
+
+on:
+  schedule:
+    - cron: "30 9 * * 1" # lunes 09:30 UTC, 30 min después del check de freshness
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: ¿Hay versión nueva del STM?
+        id: fresh
+        env:
+          MVD_API_CLIENT_ID: ${{ secrets.MVD_API_CLIENT_ID }}
+          MVD_API_CLIENT_SECRET: ${{ secrets.MVD_API_CLIENT_SECRET }}
+        run: |
+          set +e
+          node scripts/pipeline/check-gtfs-freshness.mjs
+          code=$?
+          if [ "$code" = "1" ]; then echo "error real del check"; exit 1; fi
+          exit 0
+
+      - name: Regenerar datasets MVD (solo si está desactualizado)
+        if: steps.fresh.outputs.stale == 'true'
+        env:
+          MVD_API_CLIENT_ID: ${{ secrets.MVD_API_CLIENT_ID }}
+          MVD_API_CLIENT_SECRET: ${{ secrets.MVD_API_CLIENT_SECRET }}
+        run: |
+          set -e
+          node scripts/pipeline/download-gtfs.mjs tmp_gtfs_latest
+          node scripts/build-gtfs-db.mjs tmp_gtfs_latest data/gtfs-v2.db
+          node scripts/export-gtfs-json.mjs            # embebe provenance (gtfs_version)
+          node scripts/build-stops-json.mjs tmp_gtfs_latest public/stops.json
+          node scripts/build-stop-dirs.mjs
+          node scripts/pipeline/check-gtfs-freshness.mjs --save
+          node scripts/pipeline/validate-gtfs-data.mjs
+
+      - name: Resumen del cambio (para el cuerpo del PR)
+        if: steps.fresh.outputs.stale == 'true'
+        run: node scripts/pipeline/gtfs-diff-summary.mjs > /tmp/gtfs-diff.md
+
+      - name: Abrir PR (merge manual)
+        if: steps.fresh.outputs.stale == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: gtfs-update/${{ steps.fresh.outputs.upstream }}
+          base: main
+          title: "GTFS ${{ steps.fresh.outputs.upstream }}: regenerar datasets MVD"
+          body-path: /tmp/gtfs-diff.md
+          add-paths: |
+            data/gtfs-v2.json
+            data/gtfs-v2.db
+            data/gtfs-version.json
+            public/stops.json
+            public/stop-dirs.json
+          delete-branch: true
+          # SIN auto-merge: un humano revisa el diff de paradas/líneas antes de desplegar.

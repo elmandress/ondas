@@ -68,8 +68,26 @@ for (const r of variantStops) {
   (variantsByStop[r.stop_id] ||= []).push([r.variant_id, r.stop_sequence]);
 }
 
-const out = { variantsByLine, stopsByVariant, variantsByStop, variantMeta };
+// Provenance embebida (anti-drift): qué versión del GTFS del STM generó estos datos, para
+// que nunca driftee respecto del dato servido. Fuente preferida: el VERSION que escribe
+// download-gtfs.mjs (la versión REAL procesada); fallback: data/gtfs-version.json.
+let gtfsVersion = "unknown";
+for (const src of [
+  path.join(process.cwd(), "tmp_gtfs_latest", "VERSION"),
+  path.join(process.cwd(), "data", "gtfs-version.json"),
+]) {
+  try {
+    if (!fs.existsSync(src)) continue;
+    const raw = fs.readFileSync(src, "utf-8").trim();
+    gtfsVersion = src.endsWith(".json") ? JSON.parse(raw).version || gtfsVersion : raw;
+    break;
+  } catch { /* probar siguiente fuente */ }
+}
+const meta = { gtfs_version: gtfsVersion, generated: new Date().toISOString().slice(0, 10) };
+
+const out = { meta, variantsByLine, stopsByVariant, variantsByStop, variantMeta };
 fs.writeFileSync(OUT, JSON.stringify(out));
+console.log(`   provenance: gtfs_version=${meta.gtfs_version} generated=${meta.generated}`);
 const mb = (fs.statSync(OUT).size / 1048576).toFixed(1);
 console.log(`✅ ${OUT}  (${mb} MB)`);
 console.log(`   líneas: ${Object.keys(variantsByLine).length}, variantes: ${variants.length}, variant_stops: ${variantStops.length}`);
