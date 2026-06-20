@@ -110,3 +110,22 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
+
+// Notificación local del bus seguido (Feature A): al tocarla, enfoca la app y la lleva a
+// la parada (data.url = /?parada=…). Si no hay ventana abierta, abre una nueva.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if ("focus" in w) {
+          w.focus();
+          if ("navigate" in w && typeof w.navigate === "function") w.navigate(url).catch(() => {});
+          return;
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
+  );
+});

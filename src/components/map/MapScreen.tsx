@@ -31,6 +31,7 @@ import { setActiveTab } from "@/lib/active-tab";
 import { useEnrichedRouteLegs } from "@/hooks/useEnrichedRouteLegs";
 import { speak } from "@/lib/voice-alerts";
 import { haptic } from "@/lib/haptics";
+import { requestNotifyPermission, fireBusNotification, notifySupported } from "@/lib/bus-notify";
 import LineDetailSheet from "@/components/home/LineDetailSheet";
 import { Icons } from "@/components/brand/Icons";
 import StopPanel from "@/components/map/panels/StopPanel";
@@ -392,6 +393,41 @@ export default function MapScreen() {
     else if (followAlert === "now") { haptic([20, 60, 20]); speak("¡Bajate ahora! Tu bus está llegando a tu parada."); }
   }, [followAlert, followedStops]);
 
+  // Notificación LOCAL del OS (Feature A): el usuario elige avisarse a N paradas. A diferencia
+  // de la voz/haptic (necesitan la app en foco), la del SW aparece en la pantalla de bloqueo.
+  // Explícito + N configurable; el permiso se pide SOLO al activar (no en el onboarding).
+  const [notifyAt, setNotifyAt] = useState<number | null>(null);
+  const [notifyDenied, setNotifyDenied] = useState(false);
+  const notifiedRef = useRef(false);
+  const handleSetNotify = async (n: number | null) => {
+    if (n == null) { setNotifyAt(null); return; }
+    const perm = await requestNotifyPermission();
+    if (perm === "granted") { setNotifyAt(n); setNotifyDenied(false); notifiedRef.current = false; }
+    else { setNotifyAt(null); setNotifyDenied(perm === "denied"); }
+  };
+  // Resetear el aviso al cambiar/cerrar el bus seguido. El estado va con el patrón "ajustar
+  // en render" (permitido); el ref se resetea en un efecto (acceder refs en render no se debe).
+  const [notifyForVehicle, setNotifyForVehicle] = useState(selectedVehicleId);
+  if (selectedVehicleId !== notifyForVehicle) {
+    setNotifyForVehicle(selectedVehicleId);
+    setNotifyAt(null);
+    setNotifyDenied(false);
+  }
+  useEffect(() => { notifiedRef.current = false; }, [selectedVehicleId]);
+  // Disparar UNA vez al cruzar el umbral elegido.
+  useEffect(() => {
+    if (notifyAt == null || followedStops == null || !selectedStop || notifiedRef.current) return;
+    if (followedStops <= notifyAt) {
+      notifiedRef.current = true;
+      fireBusNotification({
+        line: selectedVehicle?.lineName ?? "bus",
+        stops: followedStops,
+        stopName: selectedStop.stopName,
+        stopId: selectedStop.stopId,
+      });
+    }
+  }, [notifyAt, followedStops, selectedStop, selectedVehicle]);
+
   function clearSelections() {
     setSelectedStopId(null);
     setSelectedVehicleId(null);
@@ -555,6 +591,10 @@ export default function MapScreen() {
             followedStops={followedStops}
             followedEta={followedEta}
             abovePanel={!!selectedStop}
+            notifySupported={notifySupported()}
+            notifyAt={notifyAt}
+            notifyDenied={notifyDenied}
+            onSetNotify={handleSetNotify}
             onOpenLineDetail={(line, destination, company) => setLineDetail({ line, destination, company })}
             onClose={() => setSelectedVehicleId(null)}
           />

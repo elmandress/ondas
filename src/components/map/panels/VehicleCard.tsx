@@ -21,12 +21,18 @@ interface Props {
   followedEta: number | null;
   /** true si el panel de parada está abierto debajo (drill-down: la ficha se apila). */
   abovePanel: boolean;
+  /** Feature A: notificación local del OS cuando falten N paradas. */
+  notifySupported: boolean;
+  notifyAt: number | null;
+  notifyDenied: boolean;
+  onSetNotify: (n: number | null) => void;
   onOpenLineDetail: (line: string, destination?: string, company?: string) => void;
   onClose: () => void;
 }
 
 export default function VehicleCard({
-  vehicle, followAlert, followedStops, followedEta, abovePanel, onOpenLineDetail, onClose,
+  vehicle, followAlert, followedStops, followedEta, abovePanel,
+  notifySupported, notifyAt, notifyDenied, onSetNotify, onOpenLineDetail, onClose,
 }: Props) {
   const hasRich = vehicle.nextStop || vehicle.delayMin != null || vehicle.occupancy != null;
   const cardRef = useRef<HTMLDivElement>(null);
@@ -93,6 +99,27 @@ export default function VehicleCard({
             <Icons.Close size={16} />
           </button>
         </div>
+
+        {/* Feature A: avisame a N paradas. Explícito (no automático) + N configurable. La
+            notificación del OS aparece en la pantalla de bloqueo (a diferencia de la voz). */}
+        {notifySupported && abovePanel && (
+          <div className="fb-notify">
+            <span className="fb-notify-label">Avisame cuando falten</span>
+            {[3, 2, 1].map((n) => (
+              <button
+                key={n}
+                className={`fb-notify-chip ${notifyAt === n ? "on" : ""}`}
+                onClick={() => onSetNotify(notifyAt === n ? null : n)}
+                aria-pressed={notifyAt === n}
+                aria-label={`Avisarme cuando falten ${n} ${n === 1 ? "parada" : "paradas"}`}
+              >
+                {n}
+              </button>
+            ))}
+            <span className="fb-notify-unit">{notifyAt != null ? `${notifyAt === 1 ? "parada" : "paradas"} ✓` : "paradas"}</span>
+            {notifyDenied && <div className="fb-notify-denied">Activá las notificaciones del navegador para esto.</div>}
+          </div>
+        )}
       </div>
     </motion.div>
   );

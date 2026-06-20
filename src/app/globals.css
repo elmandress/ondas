@@ -354,6 +354,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="button"]:focu
 .fb-meta .fb-link { color: var(--accent); font-weight: 700; }
 .fb-close { flex-shrink: 0; width: 34px; height: 34px; border-radius: 11px; background: var(--surface); display: grid; place-items: center; color: var(--text-2); }
 
+/* Feature A: "avisame cuando falten N paradas" — control explícito en la ficha-bus. */
+.fb-notify { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--border); }
+.fb-notify-label { font: 600 12px/1.2 var(--ff); color: var(--text-2); }
+.fb-notify-chip { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 9px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); font: 700 13px/1 var(--ff); }
+.fb-notify-chip.on { background: var(--accent-bg); border-color: transparent; color: #1a1206; }
+.fb-notify-unit { font: 500 12px/1.2 var(--ff); color: var(--text-3); }
+.fb-notify-denied { flex-basis: 100%; font: 500 11px/1.3 var(--ff); color: var(--warn); }
+
 /* Búsqueda "que va a X" en vivo: card destacada con los buses que van al destino. */
 .live-to-dest { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
   padding: 13px 14px; margin: 4px 0 12px; border-radius: var(--r-card);
