@@ -6,7 +6,7 @@
  * cuando es DRILL-DOWN (lo seguís desde la hoja de parada, abovePanel) flota compacta
  * por encima. La lógica de seguimiento (followAlert/ETA/paradas) vive en MapScreen.
  */
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { VehiclePosition } from "@/lib/stm";
 import { titleCaseDestination } from "@/lib/utils";
@@ -26,14 +26,21 @@ interface Props {
   notifyAt: number | null;
   notifyDenied: boolean;
   onSetNotify: (n: number | null) => void;
+  /** Feature E: paradas aguas abajo del bus para elegir destino ("estoy en el bus"). */
+  destOptions: { stopId: string; name: string; distM: number }[];
+  selectedDestStopId: string | null;
+  onSetDest: (id: string | null) => void;
   onOpenLineDetail: (line: string, destination?: string, company?: string) => void;
   onClose: () => void;
 }
 
 export default function VehicleCard({
   vehicle, followAlert, followedStops, followedEta, abovePanel,
-  notifySupported, notifyAt, notifyDenied, onSetNotify, onOpenLineDetail, onClose,
+  notifySupported, notifyAt, notifyDenied, onSetNotify,
+  destOptions, selectedDestStopId, onSetDest, onOpenLineDetail, onClose,
 }: Props) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const destName = destOptions.find((o) => o.stopId === selectedDestStopId)?.name;
   const hasRich = vehicle.nextStop || vehicle.delayMin != null || vehicle.occupancy != null;
   const cardRef = useRef<HTMLDivElement>(null);
   useFocusTrap(cardRef); // R70: ficha-bus (par o drill-down sobre la parada) atrapa el foco arriba
@@ -55,13 +62,17 @@ export default function VehicleCard({
         <div className={`follow-alert ${followAlert}`}>
           <Icons.Bus size={16} />
           <span>{followAlert === "now"
-            ? "¡Está llegando! Salí a la parada ahora"
+            ? (selectedDestStopId
+                ? `¡Bajate ahora! Llegás a ${destName || "tu destino"}`
+                : "¡Está llegando! Salí a la parada ahora")
             : (() => {
                 const stopsTxt = followedStops != null && followedStops > 0
-                  ? `Faltan ${followedStops} parada${followedStops > 1 ? "s" : ""}` : null;
+                  ? `${followedStops} parada${followedStops > 1 ? "s" : ""}` : null;
                 const minTxt = followedEta != null ? `~${followedEta} min` : null;
                 const both = [stopsTxt, minTxt].filter(Boolean).join(" · ");
-                return both ? `${both} — prepárate` : "Tu bus se acerca — prepárate";
+                // Modo viaje (E): "bajás en…"; modo seguimiento: "faltan… — prepárate".
+                if (selectedDestStopId) return both ? `Bajás en ${both}` : "Te acercás a tu destino";
+                return both ? `Faltan ${both} — prepárate` : "Tu bus se acerca — prepárate";
               })()}</span>
         </div>
       )}
@@ -99,6 +110,36 @@ export default function VehicleCard({
             <Icons.Close size={16} />
           </button>
         </div>
+
+        {/* Feature E (Paso 2): "voy hasta…" — elegir destino entre las paradas que el bus
+            tiene por delante. Al elegir, el countdown apunta al destino (lógica del Paso 1). */}
+        {abovePanel && destOptions.length > 0 && (
+          <div className="fb-dest">
+            {selectedDestStopId ? (
+              <button className="fb-dest-chosen" onClick={() => onSetDest(null)} aria-label="Cambiar destino">
+                <Icons.Pin size={14} /> Bajás en <b>{destName || "tu parada"}</b>
+                <span className="fb-dest-change">cambiar</span>
+              </button>
+            ) : (
+              <>
+                <button className="fb-dest-toggle" onClick={() => setPickerOpen((o) => !o)} aria-expanded={pickerOpen}>
+                  <Icons.Pin size={14} /> Voy hasta…
+                  <span style={{ marginLeft: "auto", display: "grid", transform: pickerOpen ? "rotate(90deg)" : "none", transition: "transform .18s" }}><Icons.Chevron size={15} /></span>
+                </button>
+                {pickerOpen && (
+                  <div className="fb-dest-list scrollbar-none" role="listbox" aria-label="Elegí tu parada de destino">
+                    {destOptions.map((o) => (
+                      <button key={o.stopId} className="fb-dest-row" role="option" aria-selected={false} onClick={() => { onSetDest(o.stopId); setPickerOpen(false); }}>
+                        <span className="fb-dest-name">{o.name}</span>
+                        <span className="fb-dest-dist">{o.distM < 1000 ? `${o.distM} m` : `${(o.distM / 1000).toFixed(1)} km`}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Feature A: avisame a N paradas. Explícito (no automático) + N configurable. La
             notificación del OS aparece en la pantalla de bloqueo (a diferencia de la voz). */}

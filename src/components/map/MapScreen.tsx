@@ -19,6 +19,7 @@ import { useArrivals } from "@/hooks/useArrivals";
 import { useInteriorArrivals, isInteriorStop } from "@/hooks/useInteriorArrivals";
 import { useStopsDataset } from "@/hooks/useStopsDataset";
 import { useStopInfo } from "@/hooks/useStopInfo";
+import { useLineStops } from "@/hooks/useLineStops";
 import { useBackClose } from "@/hooks/useBackClose";
 import { STOPS_DATASET, type BusStop, type VehiclePosition } from "@/lib/stm";
 import { getStopsInBoundsClient, distanceTo } from "@/lib/utils";
@@ -384,6 +385,23 @@ export default function MapScreen() {
   }, [selectedVehicleId, selectedStop, arrivals, destArr.arrivals, selectedDestStopId]);
   const followedEta = followed?.eta ?? null;
   const followedStops = followed?.remainingStops ?? null;
+
+  // Feature E Paso 2: paradas de la variante del bus seguido → opciones de DESTINO. Solo las
+  // de aguas abajo (las que el bus todavía no pasó: seq > la parada más cercana al bus ahora).
+  const lineStops = useLineStops(selectedVehicle?.lineName ?? null, selectedVehicle?.destinoDesc ?? "");
+  const destOptions = useMemo(() => {
+    if (!selectedVehicle || !lineStops.stops.length) return [];
+    let curSeq = -Infinity, best = Infinity;
+    for (const s of lineStops.stops) {
+      const d = distanceTo(selectedVehicle.lat, selectedVehicle.lon, s.lat, s.lon);
+      if (d < best) { best = d; curSeq = s.sequence; }
+    }
+    return lineStops.stops
+      .filter((s) => s.sequence > curSeq)
+      .map((s) => ({ stopId: s.stopId, name: s.name, distM: Math.round(distanceTo(selectedVehicle.lat, selectedVehicle.lon, s.lat, s.lon)) }));
+  }, [selectedVehicle, lineStops.stops]);
+  // Nombre del destino elegido (E): para el re-enmarcado de voz/notificación hacia "bajate".
+  const selectedDestName = lineStops.stops.find((s) => s.stopId === selectedDestStopId)?.name;
   // Disparamos por paradas restantes si lo tenemos (más preciso que el ETA); si no, por ETA.
   const followAlert: "now" | "soon" | null =
     followedStops != null
@@ -398,10 +416,18 @@ export default function MapScreen() {
   useEffect(() => {
     if (followAlert === lastSpokenAlert.current) return;
     lastSpokenAlert.current = followAlert;
+    const trip = !!selectedDestStopId; // modo "estoy en el bus": el aviso es "bajate", no "salí"
     const stopsTxt = followedStops != null && followedStops > 0 ? ` Faltan ${followedStops} paradas.` : "";
-    if (followAlert === "soon") { haptic(15); speak(`Preparate, tu bus está por llegar a tu parada.${stopsTxt}`); }
-    else if (followAlert === "now") { haptic([20, 60, 20]); speak("¡Bajate ahora! Tu bus está llegando a tu parada."); }
-  }, [followAlert, followedStops]);
+    if (followAlert === "soon") {
+      haptic(15);
+      speak(trip
+        ? `Bajás pronto${followedStops ? ` en ${followedStops} paradas` : ""}${selectedDestName ? `, en ${selectedDestName}` : ""}.`
+        : `Preparate, tu bus está por llegar a tu parada.${stopsTxt}`);
+    } else if (followAlert === "now") {
+      haptic([20, 60, 20]);
+      speak(trip ? `¡Bajate ahora! Llegás a ${selectedDestName || "tu destino"}.` : "¡Bajate ahora! Tu bus está llegando a tu parada.");
+    }
+  }, [followAlert, followedStops, selectedDestStopId, selectedDestName]);
 
   // Notificación LOCAL del OS (Feature A): el usuario elige avisarse a N paradas. A diferencia
   // de la voz/haptic (necesitan la app en foco), la del SW aparece en la pantalla de bloqueo.
@@ -433,11 +459,13 @@ export default function MapScreen() {
       fireBusNotification({
         line: selectedVehicle?.lineName ?? "bus",
         stops: followedStops,
-        stopName: selectedStop.stopName,
-        stopId: selectedStop.stopId,
+        // Modo viaje (E): el target es el destino elegido; sino, la parada de origen.
+        stopName: selectedDestStopId ? (selectedDestName ?? "tu destino") : selectedStop.stopName,
+        stopId: selectedDestStopId ?? selectedStop.stopId,
+        toDest: !!selectedDestStopId,
       });
     }
-  }, [notifyAt, followedStops, selectedStop, selectedVehicle]);
+  }, [notifyAt, followedStops, selectedStop, selectedVehicle, selectedDestStopId, selectedDestName]);
 
   function clearSelections() {
     setSelectedStopId(null);
@@ -606,6 +634,9 @@ export default function MapScreen() {
             notifyAt={notifyAt}
             notifyDenied={notifyDenied}
             onSetNotify={handleSetNotify}
+            destOptions={destOptions}
+            selectedDestStopId={selectedDestStopId}
+            onSetDest={setSelectedDestStopId}
             onOpenLineDetail={(line, destination, company) => setLineDetail({ line, destination, company })}
             onClose={() => setSelectedVehicleId(null)}
           />

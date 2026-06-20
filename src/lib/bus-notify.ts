@@ -40,14 +40,21 @@ export async function fireBusNotification(opts: {
   stops: number;
   stopName: string;
   stopId: string;
+  /** Feature E: vas ARRIBA del bus hacia un destino → el aviso es "bajate", no "salí". */
+  toDest?: boolean;
 }): Promise<void> {
   if (!notifySupported() || Notification.permission !== "granted") return;
   try {
     const reg = await navigator.serviceWorker.ready;
     const arriving = opts.stops <= 0;
-    const body = arriving
-      ? `El ${opts.line} está llegando a ${opts.stopName}. Salí a la parada.`
-      : `Faltan ${opts.stops} parada${opts.stops > 1 ? "s" : ""} para ${opts.stopName}. Prepárate.`;
+    const plural = opts.stops > 1 ? "s" : "";
+    const body = opts.toDest
+      ? (arriving
+          ? `Bajate ahora: llegás a ${opts.stopName}.`
+          : `Bajás en ${opts.stops} parada${plural} (${opts.stopName}). Prepará tus cosas.`)
+      : (arriving
+          ? `El ${opts.line} está llegando a ${opts.stopName}. Salí a la parada.`
+          : `Faltan ${opts.stops} parada${plural} para ${opts.stopName}. Prepárate.`);
     // `vibrate`/`requireInteraction` no están en el tipo estándar de NotificationOptions.
     const options = {
       body,
@@ -58,7 +65,10 @@ export async function fireBusNotification(opts: {
       requireInteraction: arriving, // "bajate ahora" queda hasta que lo toques
       data: { url: `/?parada=${encodeURIComponent(opts.stopId)}` },
     } as NotificationOptions;
-    await reg.showNotification(arriving ? "¡Tu bus está llegando!" : "Tu bus está cerca", options);
+    const title = opts.toDest
+      ? (arriving ? "¡Bajate ahora!" : "Tu parada se acerca")
+      : (arriving ? "¡Tu bus está llegando!" : "Tu bus está cerca");
+    await reg.showNotification(title, options);
   } catch {
     /* SW no listo → no-op */
   }
