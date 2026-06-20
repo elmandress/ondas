@@ -902,3 +902,10 @@ CLAUDE.md §6 afirma "157/233 líneas con bitset saturado 00:00-24:00". **El nú
 | **E** | Modo "estoy en el bus" | YA existe el grueso: follow + `followAlert` (voz+haptic "Faltan N paradas") + countdown + `voice-alerts.ts` (toggle en Ajustes) | Elegir parada DESTINO (hoy alerta hacia la parada seleccionada) + OS notif (solapa con A) | **Medio** — el núcleo existe; el incremento es destino + notif |
 
 **Orden sugerido por impacto/esfuerzo:** D (chico, retención) → B (chico, viral) → A (chico-medio, retención alta; desbloquea E) → C (medio-chico, recurrentes) → E (medio, sobre A). Decisión de cuál entra primero: del usuario.
+
+### Estado de ejecución (2026-06-20, R73)
+- ✅ **D** (paradas recientes en Home) — `recent-stops.ts` + TTL 7 días + Search refactoreado. Verificado @375px.
+- ✅ **B** (compartir ETA en StopPanel del mapa) — reusa `shareStop`. Verificado @375px.
+- ✅ **A** (avisame a N paradas) — `bus-notify.ts` (`registration.showNotification`) + `notificationclick` en el SW + control 3/2/1 en la VehicleCard. Verificado end-to-end @375px. Límite honesto: cliente vivo (no bajo suspensión total → eso es Web Push, diferido).
+- ⏸️ **C** (badge de desvío en favorito de línea) — **DIFERIDA, con razón concreta**: el feed `/api/stm/alerts` (`ServiceAlert = {id, title, body, date, url}`) **NO identifica la línea afectada de forma estructurada** — ni por número ni por ID interno; la línea solo aparece en el TEXTO LIBRE del título/cuerpo. Cruzar favoritos × alerts no es un join, es text-matching (extraer el nº de línea del texto) con riesgo de **falso positivo** (badge "tu línea tiene desvío" cuando no → erosiona la confianza). Además el feed **hoy trae 0 mensajes** → no hay con qué calibrar/testear el matcher. **Retomar cuando el feed tenga volumen real de alertas**, y construirlo como extractor con guards de borde de palabra + patrones de línea conocidos (G, CE1, números), no como badge trivial.
+- ⏳ **E** (modo "estoy en el bus") — mini-plan de UX pendiente antes de codear (elegir destino + "bajate en X paradas"; solapa con A).
