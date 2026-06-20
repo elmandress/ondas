@@ -828,3 +828,70 @@ No hay P0/P1 nuevos → **se puede avanzar a Búsqueda/Ruteo**. Recomendado mete
 - **¿Qué hace volver a Google Maps?** confiabilidad, multimodal, familiaridad. → confiabilidad horarios #2.
 - **¿Qué hace volver a Moovit?** alertas "bajate ahora", cobertura. → experiencia parada #4.
 - **¿Qué hace abandonar?** recomendar un bus que no opera (confiabilidad #2), app rota tras deploy (#1 ✅), interdept que manda a caminar (#7).
+
+---
+
+## 🔭 FRENTE 1 — Staleness del GTFS (research 2026-06-17, no ejecutado)
+
+> "Los datos se quedan viejos y no hay mecanismo que lo detecte." **Premisa parcialmente FALSA** — ya existe infraestructura. Lo verificamos con números reales.
+
+### Estado HOY: al día
+- `data/gtfs-version.json` = `{version: "20260608", recordedAt: "2026-06-11"}`.
+- Freshness check EN VIVO contra el STM (`version.txt`, OAuth2): **upstream 20260608 = local 20260608 → AL DÍA.** Los datos MVD no están viejos hoy.
+
+### Lo que YA existe (no hay que construirlo)
+- **`.github/workflows/gtfs-freshness.yml`**: cron semanal (lunes 09:00 UTC) → valida datos + compara versión STM vs local → **abre un issue de GitHub** (sin duplicar) con los pasos de regeneración. "No envejecen en silencio".
+- **`scripts/pipeline/download-gtfs.mjs`**: descarga el ZIP oficial (endpoint `buses/gtfs/static/latest/google_transit.zip` + `version.txt`, OAuth2).
+- **`scripts/pipeline/check-gtfs-freshness.mjs`**: compara y `--save` registra la versión. Degrada sin credenciales (no rompe forks).
+- **`validate-gtfs-data.mjs`**, **`check-shape-alignment.mjs`**: validación de datos + shapes.
+- Los 9 pasos de regeneración son TODOS scripts existentes (`build-gtfs-db`, `export-gtfs-json`, `build-stops-json`, `merge-metro-gtfs`, `build-stop-dirs`, `routes:update`, `validate`, `--save`).
+
+### Los gaps REALES (esto es lo que falta)
+1. **Alerta sí, regeneración automática NO.** El workflow abre un issue; un humano corre 9 pasos a mano. No existe el "(b) regenerar + abrir PR" automático. Como todos los pasos ya son scripts, esto es **ensamblar** (un workflow que corre los 9 + crea PR), no construir.
+2. **Cobertura solo MVD.** El metro/suburbano (`metro-schedule.db`, 33MB, último 2026-06-01) y el interdept (`interdept.json`, 2026-06-01) **no tienen freshness check**. El GTFS metropolitano (MTOP) y el dataset interdept envejecen sin vigilancia.
+3. **Sin provenance en el dato servido.** `gtfs-v2.json` no tiene campo de versión embebido; el único registro es `gtfs-version.json` (archivo aparte). Si alguien regenera sin `--save`, el baseline driftea silenciosamente.
+4. **No verificable acá si el workflow corre de verdad** (depende de secrets en GitHub + `gh` no está instalado local). A confirmar: que tenga los secrets y que haya disparado al menos una vez.
+
+### Breakage si el GTFS cambia y no actualizamos (números reales)
+- **6.340 páginas SEO de parada** (`/parada/[id]` con ≥2 líneas) + **230 de línea** (`/linea/[x]`, 1.481 variantes) muestran datos viejos: paradas que ya no existen, recorridos cambiados.
+- **Motor de honestidad degrada**: `bus-direction-gtfs.ts` proyecta sobre la SECUENCIA DE PARADAS de `gtfs-v2.json` (`getStopsForVariant`, no un shapes aparte). Si una variante cambia su secuencia y no actualizamos, la proyección "ya pasó / viene" se corrompe → vuelven los buses-fantasma que R57 arregló.
+- **Ruteo** puede mandar a una parada eliminada (`route-planner-gtfs.ts` usa las mismas paradas).
+
+### Diseño del pipeline auto (lo que falta, no implementar aún)
+Un workflow `gtfs-regenerate.yml` (disparado por el issue de freshness o manual): descarga ZIP → corre los 9 scripts → valida → si pasa, **abre PR** con los datasets regenerados + `--save` de la versión (no push directo a main: el PR deja revisar el diff de paradas/líneas antes de desplegar). Extender el freshness check a metro/interdept (sus fuentes: MTOP). Embeber `version` en `gtfs-v2.json` para provenance auto-verificable.
+
+---
+
+## 🎯 FRENTE 2 — Calibración de tiempos y trayectos (research 2026-06-17, no ejecutado)
+
+### 2a. ETA de MVD (bus-direction-gtfs) — método, requiere ventana dedicada
+La precisión real del "~N min" de MVD necesita ground-truth en el tiempo: pollear una parada cada 30s y anotar cuándo el bus desaparece de llegadas (= llegó), comparar contra el ETA mostrado, repetido en 5-10 paradas × varias horas. **Es la única sub-medición que necesita una ventana dedicada de horas** (no se hace honestamente en una corrida). Harness: script Playwright/curl que pollea `/api/stm/arrivals?stopId=X`, registra `(t, vehicleId, eta)` por bus, y al desaparecer un bus calcula error = `eta_en_T − (t_desaparición − T)`. Pendiente de correr con ventana real. Lo honesto: **no lo medimos todavía, no lo afirmamos**.
+
+### 2b. Interior `AVG_SECONDS_PER_HOP=90` (constante puesta a ojo) — MEDIDO: 90s SOBREESTIMA
+Captura Busmatick Maldonado (`scripts/measure-interior-hops.mjs`), midiendo el delta de tiempo cuando un coche cambia de `p1c` (cruzó a la parada siguiente). 6 snapshots × 60s, 12 buses/snapshot, **33 cambios de p1c observados**.
+
+**Resultado: los 33 hops ocurrieron dentro de UN solo intervalo de 60s → el hop real es ≤60s, no 90s.** Los buses "limpios" de incremento unitario (ej. L12 coche 325: 707→708→709→710, exactamente 1 parada por muestra de 60s; L24 coche 150: 130→131→132) avanzan ~1 parada cada 60s pero nunca 2 → el hop está en **~45-60s**. **El 90s sobreestima → las ETAs del interior salen MÁS LARGAS de lo real** (le decimos a la gente que el bus está más lejos en tiempo de lo que está).
+
+**Captura fina (15s × 16, midiendo el tiempo entre cambios de `p1c` consecutivos del mismo coche): 31 hops, mediana 45s, promedio 47s** (distribución 15-120s: muchos de 15-30s entre paradas cercanas, cola hasta 120s). **El real es ~45s, la mitad del 90s asumido.** → **Recomendación: bajar `AVG_SECONDS_PER_HOP` a ~50s** (45 medido + margen chico para hora pico — la captura fue ~22:00, tráfico liviano; conviene no calibrar solo con datos nocturnos antes de bajar de 50). Igual hay que mantener el `~` (sigue siendo estimado). Reproducible con `scripts/measure-interior-hops.mjs`.
+
+### 2c. Ruteo O-D (route-planner-gtfs) — sanity OK, optimalidad pendiente
+3 pares probados contra `/api/route/plan`: Ciudad Vieja→Tres Cruces da directo 180/188 (0 transb), Centro→Punta Carretas da 117/121 directo, Tres Cruces→Pocitos da 64→427 (1 transb). Opciones plausibles, directos donde existen. **Sanity OK**; una auditoría de optimalidad rigurosa necesita ground-truth por par (comparar vs Cómo Ir/Moovit) — no hecho acá.
+
+### 2d. Horarios "24h" (line-hours) — CORRECCIÓN del doc: 43, no 157
+CLAUDE.md §6 afirma "157/233 líneas con bitset saturado 00:00-24:00". **El número real con la lógica actual (bloque contiguo principal, tolera huecos ≤2 cuartos) es 43/233** (~18%). Literal-24h (todos los cuartos, todos los días): solo **24**. La lógica de bloque-principal (line-hours.ts:102) ya descarta los falsos 24h por outliers de madrugada que inflaban el número viejo. **Acción: corregir el 157 en CLAUDE.md §6 + anti-patrones.** Ground-truth de "¿la línea X corre a las 2am?": spot-check del feed STM a esa hora (no corrible ahora). Candidatas a revisar (24.0h exactas): 2, 17, 76, 103, 105, 109, 125, 137, 145, 148, 149, 151.
+
+---
+
+## 🧩 FRENTE 3 — Features: estimaciones de esfuerzo (research 2026-06-17, no ejecutado)
+
+> Hallazgo transversal: **la mayoría ya está parcial o casi construida**. Reuso, no rebuild.
+
+| # | Feature | Qué YA existe | Qué falta | Esfuerzo |
+|---|---------|---------------|-----------|----------|
+| **A** | "Avisame cuando falten N paradas" | `followAlert` (now/soon a ≤2 paradas) + `speak()` + `haptic()` + countdown YA disparan al seguir un bus (MapScreen:377-393) | Notificación OS vía `registration.showNotification()` (para pantalla apagada/app en background) + pedir permiso `Notification` (hoy NO se pide; sí tenemos SW + permiso de vibración) | **Chico-medio** — agregar OS notif a una lógica que ya existe + 1 permiso |
+| **B** | Compartir ETA como link | `navigator.share` + fallback clipboard YA en `share.ts`; `StopArrivalSheet` ya pasa el próximo ETA al compartir | Verificar el formato del texto; agregar botón compartir al StopPanel del mapa (no lo tiene) | **Chico** — mayormente hecho |
+| **C** | Badge de desvío en favorito de línea | `useServiceAlerts`/`service-alerts.ts` (feed) + `favorite-lines.ts` existen, pero **no cruzados** | Cruzar favoritos × alerts activas → badge en el favorito + nota al abrir el sheet | **Medio-chico** — wiring nuevo, datos ya están |
+| **D** | Historial de paradas recientes | YA existe: `ondas_stop_history` en SearchScreen (localStorage, lista + "Borrar") | Surfacearlo en el **Home** (hoy solo en Buscar) | **Chico** — el dato ya existe, falta UI en Home |
+| **E** | Modo "estoy en el bus" | YA existe el grueso: follow + `followAlert` (voz+haptic "Faltan N paradas") + countdown + `voice-alerts.ts` (toggle en Ajustes) | Elegir parada DESTINO (hoy alerta hacia la parada seleccionada) + OS notif (solapa con A) | **Medio** — el núcleo existe; el incremento es destino + notif |
+
+**Orden sugerido por impacto/esfuerzo:** D (chico, retención) → B (chico, viral) → A (chico-medio, retención alta; desbloquea E) → C (medio-chico, recurrentes) → E (medio, sobre A). Decisión de cuál entra primero: del usuario.
