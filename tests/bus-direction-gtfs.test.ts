@@ -199,6 +199,28 @@ describe.skipIf(!HAS_GTFS)("bus-direction-gtfs", async () => {
       expect(r.routeDistanceM!).toBeGreaterThan(0);
     });
 
+    // Feature E (modo "estoy en el bus"): el countdown sigue al TARGET elegido. El mismo bus,
+    // con destino lejano vs cercano, da conteos distintos → "target = destino" funciona y NO
+    // queda pegado al countdown hacia la parada de origen.
+    it.skipIf(!clean)("countdown sigue al target: destino lejano da más paradas que uno cercano", () => {
+      const { line, headsign, stops } = clean!;
+      const busAt = stops[3];
+      const nearTarget = stops[5]; // 2 paradas adelante (como la parada de origen)
+      const farTarget = stops[9]; // 6 paradas adelante (el destino elegido)
+      const bus = {
+        vehicleId: "904", lineId: line, lineName: line,
+        lat: busAt.lat, lon: busAt.lon, bearing: 0, speed: 10, timestamp: Date.now(),
+        destinoDesc: headsign,
+      };
+      const near = busTowardsStopGtfs(bus, nearTarget.stopId);
+      const far = busTowardsStopGtfs(bus, farTarget.stopId);
+      expect(near.goingTo).toBe(true);
+      expect(far.goingTo).toBe(true);
+      expect(near.remainingStops).toBe(2);
+      expect(far.remainingStops).toBe(6);
+      expect(far.remainingStops!).toBeGreaterThan(near.remainingStops!);
+    });
+
     it.skipIf(!clean)("bus EN la parada target → llegando (no passed)", () => {
       const { line, headsign, stops } = clean!;
       const target = stops[5];

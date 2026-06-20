@@ -63,6 +63,10 @@ export default function MapScreen() {
   const { ready: stopsReady } = useStopsDataset();
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  // Feature E (modo "estoy en el bus"): parada de DESTINO elegida mientras seguís el bus.
+  // El countdown apunta acá (no a la parada de origen). Step 1 = cálculo/cableado; la UI
+  // que la setea llega en Step 2.
+  const [selectedDestStopId, setSelectedDestStopId] = useState<string | null>(null);
   // Opción A (R71): true si la parada abierta vino del Home (→ back/breadcrumb vuelven a Inicio).
   const [stopFromHome, setStopFromHome] = useState(false);
   const mapStopReq = useMapStopRequest();
@@ -255,6 +259,9 @@ export default function MapScreen() {
   const stm = useArrivals(interior ? null : selectedStopId, 15000);
   const int = useInteriorArrivals(interior ? selectedStopId : null, selectedStop?.stopLat, selectedStop?.stopLon, selectedStop?.lines);
   const arrivals = interior ? int.arrivals : stm.arrivals;
+  // Feature E: llegadas hacia el DESTINO elegido (mismo motor, target distinto). Inerte hasta
+  // que selectedDestStopId se setee (useArrivals(null) es no-op). Solo MVD por ahora.
+  const destArr = useArrivals(selectedDestStopId, 15000);
   const arrivalsLoading = interior ? int.loading : stm.loading;
   const lastUpdated = interior ? new Date() : stm.lastUpdated;
   const arrivalsFetchFailed = interior ? false : stm.lastFetchFailed;
@@ -368,10 +375,13 @@ export default function MapScreen() {
   // Transit GO / Citymapper / Moovit — la gente la quiere más que los minutos.
   const followed = useMemo(() => {
     if (!selectedVehicleId || !selectedStop) return null;
-    const a = arrivals.find((x) => x.vehicleId === selectedVehicleId && x.realtime);
+    // Modo viaje (Feature E): si elegiste destino, el countdown va hacia ESE target; sino,
+    // hacia la parada de origen (comportamiento de siempre).
+    const src = selectedDestStopId ? destArr.arrivals : arrivals;
+    const a = src.find((x) => x.vehicleId === selectedVehicleId && x.realtime);
     if (!a) return null;
-    return { eta: a.eta, remainingStops: a.remainingStops ?? null };
-  }, [selectedVehicleId, selectedStop, arrivals]);
+    return { eta: a.eta, remainingStops: a.remainingStops ?? null, toDest: !!selectedDestStopId };
+  }, [selectedVehicleId, selectedStop, arrivals, destArr.arrivals, selectedDestStopId]);
   const followedEta = followed?.eta ?? null;
   const followedStops = followed?.remainingStops ?? null;
   // Disparamos por paradas restantes si lo tenemos (más preciso que el ETA); si no, por ETA.
@@ -412,6 +422,7 @@ export default function MapScreen() {
     setNotifyForVehicle(selectedVehicleId);
     setNotifyAt(null);
     setNotifyDenied(false);
+    setSelectedDestStopId(null); // E: el destino elegido es por-bus, se limpia al cambiar
   }
   useEffect(() => { notifiedRef.current = false; }, [selectedVehicleId]);
   // Disparar UNA vez al cruzar el umbral elegido.
