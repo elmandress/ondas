@@ -6,9 +6,11 @@
  * "Seguir bus". El estado (arrivals, vehículos, filtro) vive en MapScreen
  * porque también alimenta los markers del mapa; acá solo se presenta.
  */
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { Arrival, BusStop, VehiclePosition } from "@/lib/stm";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { shareStop } from "@/lib/share";
+import { haptic } from "@/lib/haptics";
 import ArrivalRow from "@/components/ui/ArrivalRow";
 import EmptyState from "@/components/ui/EmptyState";
 import ColdModeSuggestion from "@/components/home/ColdModeSuggestion";
@@ -67,6 +69,17 @@ export default function StopPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef); // R70: la hoja de parada del mapa atrapa el foco (peer/drill con la ficha-bus)
 
+  // Compartir parada (B, R73): reusa shareStop → "El {línea} llega en ~N min a {parada}" +
+  // link. Web Share en mobile; copia en desktop (avisamos "Copiado"). Mismo patrón que el sheet.
+  const [shared, setShared] = useState(false);
+  const handleShare = async () => {
+    haptic(10);
+    const first = arrivals[0];
+    const next = first ? { line: first.lineName, etaMin: Math.max(0, Math.round(first.eta)) } : undefined;
+    const r = await shareStop(stop.stopId, stop.stopName, stop.stopCode, next);
+    if (r === "copied") { setShared(true); setTimeout(() => setShared(false), 1800); }
+  };
+
   return (
     <div ref={panelRef} role="dialog" aria-modal="true" aria-label={`Parada ${stop.stopName}`} className="map-stop-panel absolute bottom-0 left-0 right-0 z-[1001]">
       <div className="map-stop-panel-inner bg-[#0E1116]/[0.97] backdrop-blur-xl border-t border-white/[0.07] rounded-t-[18px] overflow-hidden" style={{ boxShadow: "var(--shadow-sheet)" }}>
@@ -98,6 +111,10 @@ export default function StopPanel({
               )}
             </p>
           </div>
+          <button onClick={handleShare} className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center flex-shrink-0 relative" aria-label="Compartir parada">
+            <Icons.Share size={15} />
+            {shared && <span role="status" className="absolute -top-7 right-0 whitespace-nowrap text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "var(--accent-bg)", color: "#1a1206" }}>Copiado ✓</span>}
+          </button>
           <button onClick={refetch} className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center flex-shrink-0" aria-label="Refrescar">
             <svg className={`w-3.5 h-3.5 text-slate-400 ${arrivalsLoading ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
               <polyline points="23 4 23 10 17 10" />
