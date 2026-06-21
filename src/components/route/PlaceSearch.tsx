@@ -111,8 +111,9 @@ export default function PlaceSearch({
           onClick={onChooseOnMap}
           className="w-full card-soft px-3 py-3 flex items-center gap-3 text-left"
         >
-          <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(168,85,247,0.15)" }}>
-            <svg className="w-4 h-4 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          {/* R73: pin SODIO (era púrpura off-brand). Mismo patrón que "Mi ubicación". */}
+          <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "var(--accent-soft)" }}>
+            <svg className="w-4 h-4 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
             </svg>
           </div>

@@ -329,13 +329,17 @@ export default function RouteScreen() {
           </button>
         </div>
 
-        <DepartTimePicker value={departAt} onChange={setDepartAt}>
-          {waypoints.length < 3 && (
-            <button className="depart-chip" onClick={addWaypoint} aria-label="Agregar parada intermedia">
-              <Icons.Plus size={14} /> Parada
-            </button>
-          )}
-        </DepartTimePicker>
+        {/* R73: los chips de hora/+Parada se ocultan mientras buscás un lugar — no son
+            relevantes al elegir destino y descomprimen la pantalla (el search toma el foco). */}
+        {!activeInput && (
+          <DepartTimePicker value={departAt} onChange={setDepartAt}>
+            {waypoints.length < 3 && (
+              <button className="depart-chip" onClick={addWaypoint} aria-label="Agregar parada intermedia">
+                <Icons.Plus size={14} /> Parada
+              </button>
+            )}
+          </DepartTimePicker>
+        )}
       </header>
 
       {/* Suggestions o resultados */}
