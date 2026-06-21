@@ -400,8 +400,13 @@ export default function MapScreen() {
       .filter((s) => s.sequence > curSeq)
       .map((s) => ({ stopId: s.stopId, name: s.name, distM: Math.round(distanceTo(selectedVehicle.lat, selectedVehicle.lon, s.lat, s.lon)) }));
   }, [selectedVehicle, lineStops.stops]);
-  // Nombre del destino elegido (E): para el re-enmarcado de voz/notificación hacia "bajate".
-  const selectedDestName = lineStops.stops.find((s) => s.stopId === selectedDestStopId)?.name;
+  // Destino elegido (E): nombre (para voz/notif) + coords (para el marker "Bajás acá" del mapa, P2).
+  const selectedDestStop = lineStops.stops.find((s) => s.stopId === selectedDestStopId);
+  const selectedDestName = selectedDestStop?.name;
+  const destMarkerForMap = useMemo(
+    () => (selectedDestStop ? { lat: selectedDestStop.lat, lon: selectedDestStop.lon, name: selectedDestStop.name } : null),
+    [selectedDestStop],
+  );
   // Disparamos por paradas restantes si lo tenemos (más preciso que el ETA); si no, por ETA.
   const followAlert: "now" | "soon" | null =
     followedStops != null
@@ -557,6 +562,7 @@ export default function MapScreen() {
           }
           routeLegs={routeLegsForMap}
           routeEndpoints={routeEndpointsForMap}
+          destMarker={destMarkerForMap}
           onStopSelect={selectStop}
           onVehicleSelect={setSelectedVehicleId}
           onMapClick={() => setSelectedVehicleId(null)}

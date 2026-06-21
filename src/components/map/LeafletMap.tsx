@@ -134,6 +134,8 @@ interface LeafletMapProps {
   }> | null;
   /** Origen y destino de la ruta planificada (para marcadores especiales). */
   routeEndpoints?: { origin: [number, number]; destination: [number, number] } | null;
+  /** Feature E: parada de DESTINO elegida en "Voy hasta…" → marker sodio "Bajás acá". */
+  destMarker?: { lat: number; lon: number; name: string } | null;
   /** false en el preview de Home: los markers no son focusables ni interactivos
    *  (todo el preview es un botón que abre el mapa) → evita nested-interactive y
    *  markers sin nombre accesible (WCAG). Default true. */
@@ -161,6 +163,7 @@ export default function LeafletMap({
   placePin,
   routeLegs,
   routeEndpoints,
+  destMarker,
   markersInteractive = true,
   onStopSelect,
   onVehicleSelect,
@@ -434,6 +437,30 @@ export default function LeafletMap({
       { direction: "top", className: "leaflet-tooltip-dark", offset: [0, -38], permanent: false }
     );
   }, [placePin]);
+
+  // Feature E (P2): marker de la parada de DESTINO ("Voy hasta…"). Sodio + "Bajás acá",
+  // distinto del dot de parada normal y del pin rojo "Llegás" del planificador. Aparece con
+  // selectedDestStopId, se va al cancelar. zIndex alto pero el label apunta ARRIBA para no
+  // quedar tapado por la VehicleCard anclada abajo (mobile-first).
+  const destMarkerRef = useRef<L.Marker | null>(null);
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const { map, L } = mapInstanceRef.current;
+    if (destMarkerRef.current) { map.removeLayer(destMarkerRef.current); destMarkerRef.current = null; }
+    if (!destMarker) return;
+    const icon = L.divIcon({
+      className: "",
+      html: `
+        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-6px);">
+          <div style="background:#F2A93B;color:#1a1206;font-weight:800;font-size:11px;line-height:1;padding:5px 9px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.5);white-space:nowrap;margin-bottom:3px;">Bajás acá</div>
+          <div style="width:24px;height:24px;border-radius:50% 50% 50% 0;background:#F2A93B;transform:rotate(-45deg);border:2.5px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.5);"></div>
+        </div>`,
+      iconSize: [70, 52],
+      iconAnchor: [35, 52], // punta del pin abajo
+    });
+    destMarkerRef.current = L.marker([destMarker.lat, destMarker.lon], { icon, zIndexOffset: 2400 }).addTo(map);
+    destMarkerRef.current.getElement()?.setAttribute("aria-label", `Tu parada de destino: ${destMarker.name}`);
+  }, [destMarker]);
 
   // Actualizar marcadores de PARADAS
   useEffect(() => {
