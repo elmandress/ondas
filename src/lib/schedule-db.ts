@@ -91,13 +91,18 @@ function toArrival(line: string, hora: number, refMinutes: number): ScheduledArr
  * valor TAMBIÉN sumándole 1440 (el día siguiente). Devuelve minutos relativos al día
  * de la consulta (00:15 del día siguiente → 1455), así minutesFromNow sale correcto.
  */
-function minutesInWindow(packed: string, min: number, max: number): number[] {
+export function minutesInWindow(packed: string, min: number, max: number): number[] {
   const out: number[] = [];
   for (const part of packed.split(",")) {
     const h = Number(part);
     if (h >= min && h <= max) out.push(h);
     else if (max > 1440 && h + 1440 >= min && h + 1440 <= max) out.push(h + 1440);
   }
+  // CRÍTICO (P0): ordenar CRONOLÓGICAMENTE. El packed está asc por minuto-de-día (0-1439),
+  // pero el +1440 del cruce de medianoche desordena: un 00:24 (→1464) quedaba antes de un
+  // 23:52 (→1432) porque "24" precede a "1432" en el orden raw → el pager mostraba el bus a
+  // 2 min ÚLTIMO. getScheduledArrivals re-ordenaba; getNextScheduledForLine (el pager) no.
+  out.sort((a, b) => a - b);
   return out;
 }
 
