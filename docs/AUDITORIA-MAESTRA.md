@@ -913,3 +913,17 @@ CLAUDE.md §6 afirma "157/233 líneas con bitset saturado 00:00-24:00". **El nú
 - ✅ **A** (avisame a N paradas) — `bus-notify.ts` (`registration.showNotification`) + `notificationclick` en el SW + control 3/2/1 en la VehicleCard. Verificado end-to-end @375px. Límite honesto: cliente vivo (no bajo suspensión total → eso es Web Push, diferido).
 - ⏸️ **C** (badge de desvío en favorito de línea) — **DIFERIDA, con razón concreta**: el feed `/api/stm/alerts` (`ServiceAlert = {id, title, body, date, url}`) **NO identifica la línea afectada de forma estructurada** — ni por número ni por ID interno; la línea solo aparece en el TEXTO LIBRE del título/cuerpo. Cruzar favoritos × alerts no es un join, es text-matching (extraer el nº de línea del texto) con riesgo de **falso positivo** (badge "tu línea tiene desvío" cuando no → erosiona la confianza). Además el feed **hoy trae 0 mensajes** → no hay con qué calibrar/testear el matcher. **Retomar cuando el feed tenga volumen real de alertas**, y construirlo como extractor con guards de borde de palabra + patrones de línea conocidos (G, CE1, números), no como badge trivial.
 - ⏳ **E** (modo "estoy en el bus") — mini-plan de UX pendiente antes de codear (elegir destino + "bajate en X paradas"; solapa con A).
+
+---
+
+## 🩹 TRIAGE R73 (2026-06-21) — bugs de testing
+
+### Fixes ejecutados (verificados @375px)
+- ✅ **P0 horarios desordenados al cruzar medianoche** — `minutesInWindow` no ordenaba; el `+1440` del cruce de medianoche dejaba el bus a 2 min ÚLTIMO (00:24/00:55/03:02 antes que 23:52). Fix: ordenar la salida. Test `schedule-order` fija el caso. Datos reales: stop 1122, línea 76.
+- ✅ **P2 marker de destino "Bajás acá"** — Feature E no marcaba la parada de bajada en el mapa. Pin sodio + `fitBounds` al elegir (encuadra bus+destino al instante).
+- ✅ **Honestidad sin GPS en RouteScreen** — replicaba el bug del Home (`0da83aa`): dot verde "GPS activo" + "Mi ubicación" del fallback. Extendido el mismo criterio.
+- ✅ **Señalética buscador HACIA** — pin "Elegir en el mapa" púrpura→sodio; chips de hora ocultos durante la búsqueda. (El "overflow de Cancelar" reportado **NO era real** — medido 19px de margen.)
+
+### Items investigados y CERRADOS (sin caso reproducible → no hay bug que arreglar)
+- 🔒 **P1 rutas "se dibujan mal"** — INVESTIGADO, **lado del dato LIMPIO**: 3 O-D (Ciudad Vieja→Malvín, 18 de Julio→Colón, barrio→barrio) contra `/api/route/plan` → los 3 con `heuristic: false`, polilíneas razonables basadas en paradas (19-38 pts), resuelve transbordos. Descarta el "fallback de rectas". El render del cliente (`sliceBusPolyline` / shape) **NO se confirmó buggy** sin un caso concreto. Probable: lo percibido como "se dibuja mal" eran casos del planificador PRE-fixes de honestidad (buses-fantasma, 181/183) ya resueltos. **Reabrir solo con un O-D exacto reproducible en producción.**
+- 🔒 **P1 POIs "cargan mal"** — INVESTIGADO, **dataset LIMPIO**: `data/mvd-pois.json`, 323 POIs fuente OSM, 0 coords malas/sin nombre/duplicados. Sin caso concreto ("busqué X y pasó Y") no hay bug. **Pendiente de caso reproducible.** (Lo accionable es EXPANDIR cobertura vía OSM Overpass — Frente A, trabajo con valor, no bug-fix.)
