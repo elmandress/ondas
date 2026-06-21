@@ -47,7 +47,7 @@ const HISTORY_KEY = "ondas_route_history";
 const MAX_HISTORY = 6;
 
 export default function RouteScreen() {
-  const { location } = useLocation();
+  const { location, isReal: locationIsReal, status: locationStatus, retry: retryLocation } = useLocation();
   const { ready: stopsReady } = useStopsDataset();
   const selectedPlace = useSelectedPlace();
   const [from, setFrom] = useState<Place | null>(null);
@@ -115,10 +115,10 @@ export default function RouteScreen() {
 
   // Inicializar "Desde" con ubicación actual
   useEffect(() => {
-    if (location && !from) {
+    if (location && locationIsReal && !from) {
       setFrom({ name: "Mi ubicación", subtitle: "Posición actual", lat: location.lat, lon: location.lon });
     }
-  }, [location, from]);
+  }, [location, locationIsReal, from]);
 
   // FR-3.8 ↔ FR-4: si el usuario llegó acá con un lugar pre-seleccionado (desde el buscador),
   // usar ese lugar como destino. Después limpiamos el selectedPlace para no resetear si vuelve.
@@ -140,7 +140,7 @@ export default function RouteScreen() {
     if (!routeInput) return;
     // Modo ruta completa (Mis rutas guardadas): origen + destino a la vez.
     if (routeInput.from || routeInput.to || routeInput.fromCurrentLocation) {
-      if (routeInput.fromCurrentLocation && location) {
+      if (routeInput.fromCurrentLocation && location && locationIsReal) {
         setFrom({ name: "Mi ubicación", subtitle: "Posición actual", lat: location.lat, lon: location.lon });
       } else if (routeInput.from) {
         setFrom({ name: routeInput.from.name || "Origen", lat: routeInput.from.lat, lon: routeInput.from.lon });
@@ -156,7 +156,7 @@ export default function RouteScreen() {
       else setTo(place);
     }
     setRouteInput(null);
-  }, [routeInput, location]);
+  }, [routeInput, location, locationIsReal]);
 
   function pickPlace(place: Place) {
     if (activeInput === "from") setFrom(place);
@@ -275,7 +275,16 @@ export default function RouteScreen() {
       {/* Header mobile */}
       <div className="app-header mobile-only" style={{ paddingLeft: 0, paddingRight: 0 }}>
         <LogoLockup size={24} ring="var(--text)" dot="var(--accent)" />
-        <span className="gps-dot" role="img" aria-label="GPS activo" />
+        {/* Honestidad (R73): sin GPS real no afirmamos "GPS activo" — gris + CTA (igual que el Home). */}
+        {locationStatus === "pending" ? (
+          <span style={{ font: "var(--font-badge)", color: "var(--text-3)" }}>Ubicando…</span>
+        ) : locationIsReal ? (
+          <span className="gps-dot" role="img" aria-label="GPS activo" />
+        ) : (
+          <button onClick={() => retryLocation()} className="gps-off" aria-label="Activá la ubicación">
+            <span className="gps-dot off" /> Activá ubicación
+          </button>
+        )}
       </div>
       {/* Header desktop */}
       <div className="desktop-header desktop-only">
@@ -338,7 +347,7 @@ export default function RouteScreen() {
               query={query}
               onQueryChange={setQuery}
               placeholder={activeInput === "from" ? "Desde dónde…" : "A dónde vas…"}
-              myLocation={activeInput === "from" && location
+              myLocation={activeInput === "from" && location && locationIsReal
                 ? { name: "Mi ubicación", subtitle: "Posición actual", lat: location.lat, lon: location.lon }
                 : null}
               history={history}
