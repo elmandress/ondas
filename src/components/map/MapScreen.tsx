@@ -407,6 +407,14 @@ export default function MapScreen() {
     () => (selectedDestStop ? { lat: selectedDestStop.lat, lon: selectedDestStop.lon, name: selectedDestStop.name } : null),
     [selectedDestStop],
   );
+  // P2: al ELEGIR destino, encuadrar bus + destino para que el marker "Bajás acá" se vea de
+  // una (no esperar a que el bus se acerque). Solo al cambiar selectedDestStopId — NO en cada
+  // update de posición (sino re-encuadraría siempre y no podrías panear). Lee la posición actual.
+  useEffect(() => {
+    if (!selectedDestStopId || !destMarkerForMap || !selectedVehicle || !mapApi) return;
+    mapApi.fitBounds([[selectedVehicle.lat, selectedVehicle.lon], [destMarkerForMap.lat, destMarkerForMap.lon]], 70);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intencional: solo al elegir destino
+  }, [selectedDestStopId, mapApi]);
   // Disparamos por paradas restantes si lo tenemos (más preciso que el ETA); si no, por ETA.
   const followAlert: "now" | "soon" | null =
     followedStops != null
